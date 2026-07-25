@@ -1,8 +1,10 @@
 name: Build JARVIS Debug APK
 
-# Manual trigger only until the first build is green. Once confirmed,
-# a "push" trigger will be added so every commit builds automatically.
+# Builds on every push (workflow_dispatch alone can't fire from a non-default
+# branch, so push is what actually runs builds on the working branch) and can
+# also be triggered manually once this workflow is present on the default branch.
 on:
+  push:
   workflow_dispatch:
 
 jobs:
