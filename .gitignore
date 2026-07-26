@@ -17,6 +17,11 @@ keystore.properties
 secrets.properties
 apikeys.properties
 gemini.properties
+# Exception: the DEBUG keystore only. It is the standard Android debug key
+# (password "android") — not a release key and not secret. Committing it gives
+# every CI build one stable signature so app updates install over each other.
+# Real release keystores are still ignored by the rules above.
+!app/debug.keystore
 *.env
 .env
 .env.*

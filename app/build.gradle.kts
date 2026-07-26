@@ -27,9 +27,24 @@ android {
         buildConfigField("String", "GROQ_API_KEY", "\"$groqApiKey\"")
     }
 
+    signingConfigs {
+        // A fixed debug key committed to the repo so every CI build shares one
+        // signature. Without this, each throwaway CI runner generates its own
+        // debug key and Android refuses to install the update ("App not
+        // installed"). This is the standard Android debug key/password — it is
+        // not a release key and guards nothing secret.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = false
