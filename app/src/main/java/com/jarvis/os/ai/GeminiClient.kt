@@ -1,6 +1,7 @@
 package com.jarvis.os.ai
 
 import com.jarvis.os.BuildConfig
+import com.jarvis.os.data.ChatTurn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -12,17 +13,12 @@ import java.net.URL
 class GeminiException(message: String) : Exception(message)
 
 /**
- * Minimal Gemini REST client (no SDK). Key comes from
- * [BuildConfig.GEMINI_API_KEY], injected at build time from a GitHub Actions
- * secret. Tries a list of models and falls through on quota/availability
- * errors (HTTP 429 / 404), since free-tier quotas are per-model. On failure it
- * throws [GeminiException] with a short reason so the UI can show what happened.
+ * Minimal Gemini REST client (no SDK). Key from [BuildConfig.GEMINI_API_KEY].
+ * Sends the recent conversation plus a grounding [context]. Falls through to the
+ * next model only on 404; 429 reports a short rate-limit message.
  */
 object GeminiClient {
 
-    // Current models that support generateContent (1.5 line is retired -> 404).
-    // We only fall through to the next on 404 (model unavailable), NOT on 429,
-    // so a single utterance makes a single request and stays under rate limits.
     private val MODELS = listOf(
         "gemini-2.5-flash",
         "gemini-2.0-flash",
@@ -37,25 +33,29 @@ object GeminiClient {
 
     fun hasKey(): Boolean = BuildConfig.GEMINI_API_KEY.isNotBlank()
 
-    suspend fun generate(userText: String): String = withContext(Dispatchers.IO) {
-        val key = BuildConfig.GEMINI_API_KEY
-        if (key.isBlank()) throw GeminiException("No API key set")
+    suspend fun generate(messages: List<ChatTurn>, context: String): String =
+        withContext(Dispatchers.IO) {
+            val key = BuildConfig.GEMINI_API_KEY
+            if (key.isBlank()) throw GeminiException("No API key set")
 
-        var lastReason = "No response"
-        for (model in MODELS) {
-            val outcome = requestModel(model, userText, key)
-            if (outcome.text != null) return@withContext outcome.text
-            lastReason = outcome.reason ?: "Unknown error"
-            // Only 429 (quota) / 404 (model unavailable) are worth trying another
-            // model for; key/format/network errors would fail the same way.
-            if (!outcome.retryable) throw GeminiException(lastReason)
+            var lastReason = "No response"
+            for (model in MODELS) {
+                val outcome = requestModel(model, messages, context, key)
+                if (outcome.text != null) return@withContext outcome.text
+                lastReason = outcome.reason ?: "Unknown error"
+                if (!outcome.retryable) throw GeminiException(lastReason)
+            }
+            throw GeminiException(lastReason)
         }
-        throw GeminiException(lastReason)
-    }
 
     private data class Outcome(val text: String?, val reason: String?, val retryable: Boolean)
 
-    private fun requestModel(model: String, userText: String, key: String): Outcome {
+    private fun requestModel(
+        model: String,
+        messages: List<ChatTurn>,
+        context: String,
+        key: String,
+    ): Outcome {
         val conn = try {
             URL("$ENDPOINT/$model:generateContent?key=$key").openConnection() as HttpURLConnection
         } catch (e: Exception) {
@@ -68,7 +68,9 @@ object GeminiClient {
         conn.setRequestProperty("Content-Type", "application/json")
 
         return try {
-            conn.outputStream.use { it.write(buildPayload(userText).toByteArray(Charsets.UTF_8)) }
+            conn.outputStream.use {
+                it.write(buildPayload(messages, context).toByteArray(Charsets.UTF_8))
+            }
             val code = conn.responseCode
             val ok = code in 200..299
             val stream = if (ok) conn.inputStream else conn.errorStream
@@ -78,10 +80,8 @@ object GeminiClient {
                 if (text.isBlank()) Outcome(null, "Empty reply from model", true)
                 else Outcome(text, null, false)
             } else {
-                // Only 404 (model unavailable) is worth trying another model.
-                // 429 is a rate/quota limit — trying more models just burns quota.
                 val reason = if (code == 429) {
-                    "Rate limit (429). Wait ~a minute and try once, or enable billing in Google AI Studio."
+                    "Rate limit (429). Wait a minute and try once, or enable billing."
                 } else {
                     "HTTP $code: ${extractError(body)}"
                 }
@@ -94,18 +94,25 @@ object GeminiClient {
         }
     }
 
-    private fun buildPayload(userText: String): String = JSONObject().apply {
-        put(
-            "system_instruction",
-            JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM_PROMPT))),
-        )
-        put(
-            "contents",
-            JSONArray().put(
-                JSONObject().put("parts", JSONArray().put(JSONObject().put("text", userText))),
-            ),
-        )
-    }.toString()
+    private fun buildPayload(messages: List<ChatTurn>, context: String): String {
+        val system = if (context.isBlank()) SYSTEM_PROMPT else "$SYSTEM_PROMPT\n\n$context"
+        val contents = JSONArray()
+        for (m in messages) {
+            val role = if (m.role == ChatTurn.ASSISTANT) "model" else "user"
+            contents.put(
+                JSONObject()
+                    .put("role", role)
+                    .put("parts", JSONArray().put(JSONObject().put("text", m.content))),
+            )
+        }
+        return JSONObject().apply {
+            put(
+                "system_instruction",
+                JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))),
+            )
+            put("contents", contents)
+        }.toString()
+    }
 
     private fun extractError(body: String): String {
         return try {

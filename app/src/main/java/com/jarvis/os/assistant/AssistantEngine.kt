@@ -6,6 +6,9 @@ import android.os.Looper
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import com.jarvis.os.ai.Brain
+import com.jarvis.os.data.ChatTurn
+import com.jarvis.os.data.ConversationStore
+import com.jarvis.os.data.todaysTasks
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.VoiceController
@@ -15,18 +18,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * Orchestrates the assistant loop with a wake word:
+ * Orchestrates the assistant loop with a wake word and memory:
  *   asleep (listening only for "Hey JARVIS") -> awake -> think -> speak -> ...
- * While awake it answers every utterance (no wake word needed) until it stays
- * silent for [SLEEP_MS], then it returns to sleep. Owns the single
- * [VoiceUiState] the UI observes; driven from the Activity lifecycle.
+ * Keeps a persisted conversation and sends recent turns + a grounding context
+ * (today's date and tasks) to the AI. Owns the single [VoiceUiState] the UI
+ * observes; driven from the Activity lifecycle.
  */
 class AssistantEngine(context: Context) {
 
     private val appContext = context.applicationContext
-    private val _state = mutableStateOf(VoiceUiState(status = "Starting…"))
+    private val store = ConversationStore(appContext)
+    private val conversation: MutableList<ChatTurn> = store.load()
+
+    private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
     val state: State<VoiceUiState> get() = _state
 
     private val main = Handler(Looper.getMainLooper())
@@ -50,8 +59,6 @@ class AssistantEngine(context: Context) {
             }
         }
         voice.onPartial = { text ->
-            // Only show live transcript while awake; when asleep we wait for the
-            // wake word on the final result.
             if (!busy && awake) {
                 set { it.copy(orb = OrbState.Listening, status = "Listening…", transcript = text) }
             }
@@ -91,6 +98,12 @@ class AssistantEngine(context: Context) {
         voice.destroy()
         speaker.shutdown()
         scope.cancel()
+    }
+
+    fun clearConversation() {
+        conversation.clear()
+        store.clear()
+        set { it.copy(messages = emptyList(), transcript = "", reply = "") }
     }
 
     private fun listen() {
@@ -143,6 +156,8 @@ class AssistantEngine(context: Context) {
         busy = true
         voice.stopListening()
         main.removeCallbacksAndMessages(null)
+
+        addTurn(ChatTurn(ChatTurn.USER, userText))
         set {
             it.copy(orb = OrbState.Thinking, status = "Thinking…", transcript = userText, reply = "", amplitude = 0f)
         }
@@ -154,9 +169,11 @@ class AssistantEngine(context: Context) {
             return
         }
 
+        val history = conversation.takeLast(MAX_CONTEXT_TURNS)
         scope.launch {
             try {
-                val reply = Brain.generate(userText)
+                val reply = Brain.generate(history, buildContext())
+                addTurn(ChatTurn(ChatTurn.ASSISTANT, reply))
                 set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = reply) }
                 speaker.speak(reply)
             } catch (e: Exception) {
@@ -174,6 +191,21 @@ class AssistantEngine(context: Context) {
         } else {
             set { it.copy(orb = OrbState.Idle, status = "Paused", amplitude = 0f) }
         }
+    }
+
+    private fun addTurn(turn: ChatTurn) {
+        conversation.add(turn)
+        while (conversation.size > MAX_STORED_TURNS) conversation.removeAt(0)
+        store.save(conversation)
+        set { it.copy(messages = conversation.toList()) }
+    }
+
+    private fun buildContext(): String {
+        val date = SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", Locale.getDefault()).format(Date())
+        val tasks = todaysTasks.joinToString("; ") { "${it.title} at ${it.time}" }
+        return "Current date/time: $date. The user's tasks today are: $tasks. " +
+            "When asked about the schedule or tasks, use ONLY this list and do not invent events. " +
+            "If you do not have information for something, say so briefly."
     }
 
     private fun armSleep() {
@@ -197,6 +229,8 @@ class AssistantEngine(context: Context) {
     private companion object {
         const val WAKE_HINT = "Say \"Hey JARVIS\""
         const val SLEEP_MS = 18_000L
+        const val MAX_CONTEXT_TURNS = 20 // turns sent to the AI as context
+        const val MAX_STORED_TURNS = 200 // turns kept on disk
 
         // Wake phrases, including common speech-to-text mishearings of "JARVIS".
         val WAKE_WORDS = listOf(

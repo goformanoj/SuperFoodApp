@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
             JarvisTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Background) {
                     val state by engine.state
-                    JarvisApp(state = state)
+                    JarvisApp(state = state, onClearChat = { engine.clearConversation() })
                 }
             }
         }

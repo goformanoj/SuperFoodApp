@@ -1,8 +1,11 @@
 package com.jarvis.os.ai
 
+import com.jarvis.os.data.ChatTurn
+
 /**
  * Chooses which AI provider answers. Groq is preferred (free, no billing);
- * Gemini is used if only its key is present.
+ * Gemini is used if only its key is present. Both receive the conversation
+ * history and a grounding [context].
  */
 object Brain {
 
@@ -14,10 +17,10 @@ object Brain {
         else -> "none"
     }
 
-    suspend fun generate(userText: String): String =
+    suspend fun generate(messages: List<ChatTurn>, context: String): String =
         if (GroqClient.hasKey()) {
-            GroqClient.generate(userText)
+            GroqClient.generate(messages, context)
         } else {
-            GeminiClient.generate(userText)
+            GeminiClient.generate(messages, context)
         }
 }

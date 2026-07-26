@@ -1,6 +1,7 @@
 package com.jarvis.os.ai
 
 import com.jarvis.os.BuildConfig
+import com.jarvis.os.data.ChatTurn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -13,9 +14,9 @@ class GroqException(message: String) : Exception(message)
 
 /**
  * Groq chat-completions client (OpenAI-compatible API). Free tier, no billing
- * card required. Key comes from [BuildConfig.GROQ_API_KEY], injected at build
- * time from a GitHub Actions secret. Falls through to the next model only on
- * 404 (model decommissioned); 429 reports a short rate-limit message.
+ * card required. Key comes from [BuildConfig.GROQ_API_KEY]. Sends the recent
+ * conversation plus a grounding [context]. Falls through to the next model only
+ * on 404 (model decommissioned); 429 reports a short rate-limit message.
  */
 object GroqClient {
 
@@ -33,23 +34,29 @@ object GroqClient {
 
     fun hasKey(): Boolean = BuildConfig.GROQ_API_KEY.isNotBlank()
 
-    suspend fun generate(userText: String): String = withContext(Dispatchers.IO) {
-        val key = BuildConfig.GROQ_API_KEY
-        if (key.isBlank()) throw GroqException("No Groq API key set")
+    suspend fun generate(messages: List<ChatTurn>, context: String): String =
+        withContext(Dispatchers.IO) {
+            val key = BuildConfig.GROQ_API_KEY
+            if (key.isBlank()) throw GroqException("No Groq API key set")
 
-        var lastReason = "No response"
-        for (model in MODELS) {
-            val outcome = requestModel(model, userText, key)
-            if (outcome.text != null) return@withContext outcome.text
-            lastReason = outcome.reason ?: "Unknown error"
-            if (!outcome.retryable) throw GroqException(lastReason)
+            var lastReason = "No response"
+            for (model in MODELS) {
+                val outcome = requestModel(model, messages, context, key)
+                if (outcome.text != null) return@withContext outcome.text
+                lastReason = outcome.reason ?: "Unknown error"
+                if (!outcome.retryable) throw GroqException(lastReason)
+            }
+            throw GroqException(lastReason)
         }
-        throw GroqException(lastReason)
-    }
 
     private data class Outcome(val text: String?, val reason: String?, val retryable: Boolean)
 
-    private fun requestModel(model: String, userText: String, key: String): Outcome {
+    private fun requestModel(
+        model: String,
+        messages: List<ChatTurn>,
+        context: String,
+        key: String,
+    ): Outcome {
         val conn = try {
             URL(ENDPOINT).openConnection() as HttpURLConnection
         } catch (e: Exception) {
@@ -63,7 +70,9 @@ object GroqClient {
         conn.setRequestProperty("Authorization", "Bearer $key")
 
         return try {
-            conn.outputStream.use { it.write(buildPayload(model, userText).toByteArray(Charsets.UTF_8)) }
+            conn.outputStream.use {
+                it.write(buildPayload(model, messages, context).toByteArray(Charsets.UTF_8))
+            }
             val code = conn.responseCode
             val ok = code in 200..299
             val stream = if (ok) conn.inputStream else conn.errorStream
@@ -87,17 +96,20 @@ object GroqClient {
         }
     }
 
-    private fun buildPayload(model: String, userText: String): String = JSONObject().apply {
-        put("model", model)
-        put("temperature", 0.7)
-        put("max_tokens", 300)
-        put(
-            "messages",
-            JSONArray()
-                .put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
-                .put(JSONObject().put("role", "user").put("content", userText)),
-        )
-    }.toString()
+    private fun buildPayload(model: String, messages: List<ChatTurn>, context: String): String {
+        val system = if (context.isBlank()) SYSTEM_PROMPT else "$SYSTEM_PROMPT\n\n$context"
+        val msgArray = JSONArray()
+        msgArray.put(JSONObject().put("role", "system").put("content", system))
+        messages.forEach {
+            msgArray.put(JSONObject().put("role", it.role).put("content", it.content))
+        }
+        return JSONObject().apply {
+            put("model", model)
+            put("temperature", 0.7)
+            put("max_tokens", 300)
+            put("messages", msgArray)
+        }.toString()
+    }
 
     private fun extractError(body: String): String {
         return try {

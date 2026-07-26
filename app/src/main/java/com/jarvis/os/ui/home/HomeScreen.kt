@@ -58,6 +58,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.jarvis.os.data.TaskItem
+import com.jarvis.os.data.todaysTasks
+import com.jarvis.os.ui.chat.ChatScreen
 import com.jarvis.os.ui.components.HudOrb
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.Cyan
@@ -76,7 +79,7 @@ import com.jarvis.os.voice.VoiceUiState
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-/** Drawer destinations. Home is the live voice screen; the rest are placeholders. */
+/** Drawer destinations. Home is the live voice screen; Chat shows history; others are placeholders. */
 private enum class Dest(val label: String, val icon: ImageVector, val blurb: String) {
     Home("Home", Icons.Filled.Home, ""),
     Speech("Speech", Icons.Filled.Mic, "Voice and speech options."),
@@ -90,20 +93,15 @@ private enum class Dest(val label: String, val icon: ImageVector, val blurb: Str
     Settings("Settings", Icons.Filled.Settings, "Preferences and configuration."),
 }
 
-private data class Task(val title: String, val time: String, val accent: Color)
-
-private val sampleTasks = listOf(
-    Task("Team sync", "10:00", Cyan),
-    Task("Finish physics assignment", "14:00", WarningOrange),
-    Task("Call mentor", "18:30", SuccessGreen),
-)
+private val taskAccents = listOf(Cyan, WarningOrange, SuccessGreen)
 
 /**
  * App shell: a top-left menu opens the module drawer. Home shows the live voice
- * screen; other destinations show themed placeholders. Back returns to Home.
+ * screen, Chat shows the conversation history, other destinations show themed
+ * placeholders. Back returns to Home.
  */
 @Composable
-fun JarvisApp(state: VoiceUiState, modifier: Modifier = Modifier) {
+fun JarvisApp(state: VoiceUiState, onClearChat: () -> Unit, modifier: Modifier = Modifier) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var current by remember { mutableStateOf(Dest.Home) }
@@ -127,6 +125,7 @@ fun JarvisApp(state: VoiceUiState, modifier: Modifier = Modifier) {
         Box(modifier = modifier.fillMaxSize().background(Background)) {
             when (current) {
                 Dest.Home -> HomeContent(state)
+                Dest.Chat -> ChatScreen(state.messages, onClearChat)
                 else -> PlaceholderScreen(current)
             }
 
@@ -165,6 +164,8 @@ private fun HomeContent(state: VoiceUiState) {
 @Composable
 private fun HeroSection(state: VoiceUiState, height: Dp) {
     val greeting = remember { greetingForHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
+    // Show live transcript/reply only during an active conversation; hide when asleep.
+    val active = state.orb != OrbState.Idle && state.orb != OrbState.Offline
 
     Column(
         modifier = Modifier
@@ -188,21 +189,24 @@ private fun HeroSection(state: VoiceUiState, height: Dp) {
         Spacer(Modifier.height(24.dp))
 
         Text(state.status, style = MaterialTheme.typography.labelLarge, color = statusColor(state.orb))
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = state.transcript.ifBlank { "Listening for your command…" },
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (state.transcript.isBlank()) TextSecondary else TextPrimary,
-            textAlign = TextAlign.Center,
-        )
-        if (state.reply.isNotBlank()) {
-            Spacer(Modifier.height(12.dp))
+
+        if (active) {
+            Spacer(Modifier.height(10.dp))
             Text(
-                text = state.reply,
+                text = state.transcript.ifBlank { "Listening…" },
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (state.orb == OrbState.Error) ErrorRed else Cyan,
+                color = if (state.transcript.isBlank()) TextSecondary else TextPrimary,
                 textAlign = TextAlign.Center,
             )
+            if (state.reply.isNotBlank()) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = state.reply,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (state.orb == OrbState.Error) ErrorRed else Cyan,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }
@@ -300,9 +304,9 @@ private fun TasksCard() {
             .padding(18.dp),
     ) {
         Column {
-            sampleTasks.forEachIndexed { index, task ->
-                TaskRow(task)
-                if (index != sampleTasks.lastIndex) {
+            todaysTasks.forEachIndexed { index, task ->
+                TaskRow(task, taskAccents[index % taskAccents.size])
+                if (index != todaysTasks.lastIndex) {
                     Spacer(Modifier.height(14.dp))
                 }
             }
@@ -311,13 +315,13 @@ private fun TasksCard() {
 }
 
 @Composable
-private fun TaskRow(task: Task) {
+private fun TaskRow(task: TaskItem, accent: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
                 .size(10.dp)
                 .clip(CircleShape)
-                .background(task.accent),
+                .background(accent),
         )
         Spacer(Modifier.size(14.dp))
         Text(
@@ -353,13 +357,14 @@ private fun greetingForHour(hour: Int): String = when {
 private fun JarvisAppPreview() {
     JarvisTheme {
         JarvisApp(
-            VoiceUiState(
+            state = VoiceUiState(
                 orb = OrbState.Speaking,
                 status = "Speaking…",
-                transcript = "What's the capital of Japan",
-                reply = "Tokyo is the capital of Japan.",
+                transcript = "What's my schedule today",
+                reply = "You have a team sync at 10:00 and a call with your mentor at 18:30.",
                 amplitude = 0.4f,
             ),
+            onClearChat = {},
         )
     }
 }

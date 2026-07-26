@@ -132,6 +132,21 @@ answers any command spoken after the phrase (or says "Yes?" if just the wake
 word), then stays awake so follow-ups need no wake word. After 18s of silence
 it returns to sleep. Wake handling lives in `AssistantEngine.onFinalTranscript`.
 
+### 2026-07-26 — V1 memory: context, persistence, Chat screen, grounding
+Completes "V1: memory".
+- **Conversation memory:** AI clients (`GroqClient`/`GeminiClient`/`Brain`) now
+  take a `List<ChatTurn>` history + a grounding `context`. The engine keeps a
+  running conversation and sends the last 20 turns, so follow-ups have context.
+- **Persistence:** `ConversationStore` saves the conversation as JSON in
+  SharedPreferences (no DB/codegen dependency); loaded on engine init.
+- **Chat screen:** the drawer's Chat destination now shows the real
+  conversation history (terminal style) with a clear button.
+- **Grounding:** the engine feeds today's date + `todaysTasks` into the prompt
+  and instructs the model to use only that list — fixes schedule hallucinations.
+  Task list moved to `data/Schedule.kt` (single source for UI + AI).
+- **Home text lifecycle:** transcript/reply show only while the orb is active
+  (listening/thinking/speaking) and disappear when JARVIS returns to sleep.
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach
