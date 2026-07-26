@@ -1,8 +1,10 @@
 package com.jarvis.os.assistant
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import com.jarvis.os.ai.Brain
@@ -10,6 +12,9 @@ import com.jarvis.os.calendar.CalAction
 import com.jarvis.os.calendar.CalendarActions
 import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.calendar.CalendarWriter
+import com.jarvis.os.control.AppLauncher
+import com.jarvis.os.control.ScreenActions
+import com.jarvis.os.control.ScreenControlService
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.ConversationStore
 import com.jarvis.os.voice.OrbState
@@ -193,8 +198,10 @@ class AssistantEngine(context: Context) {
                 // The model appends <<END>> when the conversation is finished.
                 val wantsEnd = raw.contains("<<END>>", ignoreCase = true)
                 val reply = raw.replace("<<END>>", "", ignoreCase = true)
-                // Execute any calendar commands the model emitted, then strip them.
-                val (clean, actions) = CalendarActions.parse(reply)
+                // Strip the two command families out of the reply, then execute them.
+                val (afterCal, actions) = CalendarActions.parse(reply)
+                val plan = ScreenActions.parse(afterCal)
+                val clean = plan.clean
                 val (added, deleted) = withContext(Dispatchers.IO) {
                     var a = 0
                     var d = 0
@@ -208,11 +215,15 @@ class AssistantEngine(context: Context) {
                     }
                     a to d
                 }
+                val screen = withContext(Dispatchers.IO) { executeScreen(plan) }
                 val spoken = when {
+                    screen == ScreenOutcome.NEEDS_PERMISSION ->
+                        "To control the screen, switch JARVIS on under Accessibility in Settings, then ask me again."
                     clean.isNotBlank() -> clean
                     added > 0 && deleted > 0 -> "Done, I've rescheduled it."
                     added > 0 -> "Okay, I've added it to your calendar."
                     deleted > 0 -> "Done, I've removed it from your calendar."
+                    screen == ScreenOutcome.DISPATCHED -> "On it."
                     else -> reply
                 }
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
@@ -264,6 +275,40 @@ class AssistantEngine(context: Context) {
         "Current date/time: $now. $schedule When asked about the schedule, use ONLY this " +
             "real calendar data and do not invent events. When rescheduling or deleting, " +
             "identify the exact event from this list."
+    }
+
+    private enum class ScreenOutcome { NONE, DISPATCHED, NEEDS_PERMISSION }
+
+    /**
+     * Runs any screen-control actions the model asked for: opens an app and/or
+     * taps a visible control. Requires the accessibility service to be enabled;
+     * if it isn't, we send the user to the settings screen and report back.
+     */
+    private fun executeScreen(plan: ScreenActions.Plan): ScreenOutcome {
+        if (!plan.hasAction) return ScreenOutcome.NONE
+        // Opening an app needs no special permission; tapping needs the a11y service.
+        if (plan.tapLabel != null && !ScreenControlService.isRunning()) {
+            openAccessibilitySettings()
+            return ScreenOutcome.NEEDS_PERMISSION
+        }
+        var launchedPackage: String? = null
+        if (plan.openApp != null) {
+            launchedPackage = AppLauncher.launch(appContext, plan.openApp)
+        }
+        if (plan.tapLabel != null) {
+            ScreenControlService.instance?.tapWhenReady(launchedPackage, plan.tapLabel)
+        }
+        return ScreenOutcome.DISPATCHED
+    }
+
+    private fun openAccessibilitySettings() {
+        try {
+            appContext.startActivity(
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (e: Exception) {
+            // No settings activity available — the spoken guidance still tells the user what to do.
+        }
     }
 
     private fun armSleep() {

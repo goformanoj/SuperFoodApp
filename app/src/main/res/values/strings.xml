@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_desc">Lets JARVIS see the screen that is currently open and tap a control you ask for — for example, opening an app and tapping a button. It only acts when you give a spoken command and never reads or shares your screen otherwise.</string>
+</resources>

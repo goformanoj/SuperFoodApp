@@ -282,3 +282,36 @@ on-device hotword engine (Porcupine / openWakeWord / Vosk) running its own tiny
 always-on model, with the heavy Google recognizer only spun up AFTER the
 hotword fires — and even then it fights OEM battery killers. That's a separate,
 larger piece of work; the app now reliably does in-app "Hey JARVIS" again.
+
+### 2026-07-26 — Screen control v1 (open app + tap a visible control)
+First narrow, reliable slice of the "JARVIS controls the screen" vision, using
+Android's **AccessibilityService** (separate mechanism from the mic — no repeat
+of the background-wake conflict).
+- **`ScreenControlService`** (AccessibilityService): given a label, BFS-searches
+  the current window's node tree for text/contentDescription containing it,
+  climbs to the nearest clickable ancestor, draws a cyan glow outline over its
+  bounds (WindowManager TYPE_ACCESSIBILITY_OVERLAY — no SYSTEM_ALERT_WINDOW
+  needed), then performs ACTION_CLICK (fallback: tap gesture at centre).
+  `tapWhenReady(pkg, label)` polls up to ~7s for the target app to be foreground
+  before acting, so "open X then tap Y" works. Static `instance` / `isRunning()`.
+- **`AppLauncher`**: resolves a spoken app name to an installed launchable
+  package (needs QUERY_ALL_PACKAGES on Android 11+) and starts it.
+- **`ScreenActions`**: parses `<<OPEN|App>>` / `<<TAP|Label>>` markers out of the
+  reply (same pattern as calendar markers).
+- **Engine**: after LLM reply, strips + runs OPEN/TAP. App-open needs no
+  permission; tap needs the a11y service — if it's off, JARVIS opens Accessibility
+  settings and says to switch it on, then retry.
+- **Prompts** (Groq + Gemini): CAN now includes open-app + tap-visible-control;
+  CANNOT clarifies it can't type yet and only taps on-screen labelled controls,
+  best-effort, and needs the a11y toggle on.
+- **Manifest**: QUERY_ALL_PACKAGES + the accessibility `<service>` +
+  `res/xml/accessibility_config.xml` + `res/values/strings.xml`.
+- **Why "open + tap":** tapping only makes sense on an app that's in front; the
+  a11y service runs independently of JARVIS's Activity, so JARVIS launches the
+  app and the service completes the tap once it's foreground. No overlay-summon,
+  no background mic.
+- **Honest limits:** best-effort (breaks if a control has no readable label or an
+  app restructures its UI), tap-only (no typing yet), one open + one tap per
+  turn, requires the user to enable JARVIS under Settings > Accessibility.
+- **Next steps:** typing into the focused field (ACTION_SET_TEXT), scrolling,
+  multi-step sequences, and waiting-for-content instead of a fixed poll.
