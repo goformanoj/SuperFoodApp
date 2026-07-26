@@ -4,10 +4,13 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Gemini API key is provided at build time via a Gradle property or environment
-// variable (e.g. a GitHub Actions secret). It is NEVER committed. Empty when unset.
+// AI keys are provided at build time via Gradle properties or environment
+// variables (e.g. GitHub Actions secrets). They are NEVER committed; empty when unset.
 val geminiApiKey: String = (project.findProperty("GEMINI_API_KEY") as String?)
     ?: System.getenv("GEMINI_API_KEY")
+    ?: ""
+val groqApiKey: String = (project.findProperty("GROQ_API_KEY") as String?)
+    ?: System.getenv("GROQ_API_KEY")
     ?: ""
 
 android {
@@ -21,6 +24,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
+        buildConfigField("String", "GROQ_API_KEY", "\"$groqApiKey\"")
     }
 
     buildTypes {

@@ -32,6 +32,11 @@ sessions (the build container is ephemeral).
   reacts to mic amplitude.
 - `ui/theme/*` — colors, Orbitron/Inter typography, dark theme.
 
+## Secrets in use
+- `GROQ_API_KEY` — **primary brain** (Groq, free, no billing). Add in GitHub →
+  Settings → Secrets and variables → Actions.
+- `GEMINI_API_KEY` — optional fallback (needs billing to be useful).
+
 ## Log
 
 ### 2026-07-26 — Step 1: minimal buildable app
@@ -99,3 +104,10 @@ is not "too many requests" — the key's free-tier allocation is effectively zer
 the API needs **billing enabled** to serve any request. No code change; this is
 account-side. Recommended: enable pay-as-you-go billing on the key's Google
 Cloud project (Flash cost is negligible), then retry once.
+
+### 2026-07-26 — Switch primary brain to Groq (free, no billing)
+User declined billing. Added `GroqClient` (OpenAI-compatible chat completions,
+models: llama-3.3-70b-versatile → llama-3.1-8b-instant → gemma2-9b-it) and a
+`Brain` facade that prefers Groq when `GROQ_API_KEY` is set, else Gemini.
+Added `GROQ_API_KEY` BuildConfig field + workflow secret. Engine now calls
+`Brain`. User must add the `GROQ_API_KEY` repository secret, then rebuild.

@@ -1,0 +1,124 @@
+package com.jarvis.os.ai
+
+import com.jarvis.os.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+
+/** Thrown with a short, safe (no key) reason when a Groq call fails. */
+class GroqException(message: String) : Exception(message)
+
+/**
+ * Groq chat-completions client (OpenAI-compatible API). Free tier, no billing
+ * card required. Key comes from [BuildConfig.GROQ_API_KEY], injected at build
+ * time from a GitHub Actions secret. Falls through to the next model only on
+ * 404 (model decommissioned); 429 reports a short rate-limit message.
+ */
+object GroqClient {
+
+    private val MODELS = listOf(
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "gemma2-9b-it",
+    )
+
+    private const val ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+
+    private const val SYSTEM_PROMPT =
+        "You are JARVIS, a concise and helpful voice assistant. " +
+            "Answer in one or two short sentences suitable to be spoken aloud."
+
+    fun hasKey(): Boolean = BuildConfig.GROQ_API_KEY.isNotBlank()
+
+    suspend fun generate(userText: String): String = withContext(Dispatchers.IO) {
+        val key = BuildConfig.GROQ_API_KEY
+        if (key.isBlank()) throw GroqException("No Groq API key set")
+
+        var lastReason = "No response"
+        for (model in MODELS) {
+            val outcome = requestModel(model, userText, key)
+            if (outcome.text != null) return@withContext outcome.text
+            lastReason = outcome.reason ?: "Unknown error"
+            if (!outcome.retryable) throw GroqException(lastReason)
+        }
+        throw GroqException(lastReason)
+    }
+
+    private data class Outcome(val text: String?, val reason: String?, val retryable: Boolean)
+
+    private fun requestModel(model: String, userText: String, key: String): Outcome {
+        val conn = try {
+            URL(ENDPOINT).openConnection() as HttpURLConnection
+        } catch (e: Exception) {
+            return Outcome(null, "Connection error: ${e.javaClass.simpleName}", false)
+        }
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.connectTimeout = 15000
+        conn.readTimeout = 30000
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Authorization", "Bearer $key")
+
+        return try {
+            conn.outputStream.use { it.write(buildPayload(model, userText).toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val ok = code in 200..299
+            val stream = if (ok) conn.inputStream else conn.errorStream
+            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            if (ok) {
+                val text = parseContent(body)
+                if (text.isBlank()) Outcome(null, "Empty reply from model", true)
+                else Outcome(text, null, false)
+            } else {
+                val reason = if (code == 429) {
+                    "Rate limit (429). Wait a moment and try once."
+                } else {
+                    "HTTP $code: ${extractError(body)}"
+                }
+                Outcome(null, reason, retryable = code == 404)
+            }
+        } catch (e: Exception) {
+            Outcome(null, "Network error: ${e.message ?: e.javaClass.simpleName}", false)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun buildPayload(model: String, userText: String): String = JSONObject().apply {
+        put("model", model)
+        put("temperature", 0.7)
+        put("max_tokens", 300)
+        put(
+            "messages",
+            JSONArray()
+                .put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
+                .put(JSONObject().put("role", "user").put("content", userText)),
+        )
+    }.toString()
+
+    private fun extractError(body: String): String {
+        return try {
+            val msg = JSONObject(body).optJSONObject("error")?.optString("message").orEmpty()
+            if (msg.isNotBlank()) msg.take(160) else body.take(160)
+        } catch (e: Exception) {
+            body.take(160)
+        }
+    }
+
+    private fun parseContent(json: String): String {
+        return try {
+            val choices = JSONObject(json).optJSONArray("choices") ?: return ""
+            if (choices.length() == 0) return ""
+            choices.getJSONObject(0)
+                .optJSONObject("message")
+                ?.optString("content")
+                .orEmpty()
+                .trim()
+        } catch (e: Exception) {
+            ""
+        }
+    }
+}

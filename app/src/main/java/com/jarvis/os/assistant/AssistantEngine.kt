@@ -5,7 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
-import com.jarvis.os.ai.GeminiClient
+import com.jarvis.os.ai.Brain
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.VoiceController
@@ -102,8 +102,8 @@ class AssistantEngine(context: Context) {
             it.copy(orb = OrbState.Thinking, status = "Thinking…", transcript = userText, reply = "", amplitude = 0f)
         }
 
-        if (!GeminiClient.hasKey()) {
-            val msg = "No Gemini key yet. Add a GEMINI_API_KEY secret in GitHub to switch on my brain."
+        if (!Brain.hasKey()) {
+            val msg = "No AI key yet. Add a GROQ_API_KEY secret in GitHub to switch on my brain."
             set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = msg) }
             speaker.speak(msg)
             return
@@ -111,7 +111,7 @@ class AssistantEngine(context: Context) {
 
         scope.launch {
             try {
-                val reply = GeminiClient.generate(userText)
+                val reply = Brain.generate(userText)
                 set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = reply) }
                 speaker.speak(reply)
             } catch (e: Exception) {
