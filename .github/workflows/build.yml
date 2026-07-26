@@ -1,10 +1,10 @@
 name: Build JARVIS Debug APK
 
-# Builds on every push (workflow_dispatch alone can't fire from a non-default
-# branch, so push is what actually runs builds on the working branch) and can
-# also be triggered manually once this workflow is present on the default branch.
+# Manual trigger only, so pushes never start a build (and never consume CI
+# credits). Run it yourself from the Actions tab when you want an APK. Note:
+# workflow_dispatch only appears in the UI once this workflow exists on the
+# repository's default branch.
 on:
-  push:
   workflow_dispatch:
 
 jobs:
