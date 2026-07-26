@@ -128,7 +128,7 @@ class AssistantEngine(context: Context) {
 
     private fun restartSoon() {
         if (!visible || busy || !micGranted) return
-        main.postDelayed({ if (visible && !busy && micGranted) voice.startListening() }, 350L)
+        main.postDelayed({ if (visible && !busy && micGranted) voice.startListening() }, 200L)
     }
 
     private fun onFinalTranscript(text: String) {

@@ -208,6 +208,16 @@ in the background layer. Still a pure vector adaptive icon.
 - Note: calendar edits can take a couple minutes to reflect due to Google
   Calendar sync — not an app bug.
 
+### 2026-07-26 — Smoother conversation (latency tuning)
+- Recognizer endpointing hints (complete/possibly-complete silence ~900ms, min
+  length 800ms) so it responds sooner after the user stops talking; also set
+  EXTRA_CALLING_PACKAGE.
+- Turn-restart delay 350ms → 200ms for quicker back-and-forth.
+- Prompts ask for a single short spoken sentence (less TTS wait).
+- Known limitation: Android SpeechRecognizer plays a start "beep" and can't do
+  true always-on wake detection without a dedicated engine; smoothing that fully
+  would need something like Porcupine (future).
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach
