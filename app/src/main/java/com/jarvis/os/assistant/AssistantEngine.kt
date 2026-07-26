@@ -140,12 +140,14 @@ class AssistantEngine(context: Context) {
         } else {
             set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, amplitude = 0f) }
         }
-        voice.startListening()
+        voice.startListening(snappy = awake)
     }
 
     private fun restartSoon() {
         if (!visible || busy || !micGranted) return
-        main.postDelayed({ if (visible && !busy && micGranted) voice.startListening() }, 200L)
+        // Give the recogniser time to fully release before restarting; too tight a
+        // loop causes "busy" errors (and a machine-gun restart cycle).
+        main.postDelayed({ if (visible && !busy && micGranted) voice.startListening(snappy = awake) }, RESTART_MS)
     }
 
     private fun onFinalTranscript(text: String) {
@@ -332,6 +334,7 @@ class AssistantEngine(context: Context) {
 
     private companion object {
         const val WAKE_HINT = "Say \"Hey JARVIS\""
+        const val RESTART_MS = 600L // gap before restarting the recogniser
         const val SLEEP_MS = 30_000L
         const val MAX_CONTEXT_TURNS = 20 // turns sent to the AI as context
         const val MAX_STORED_TURNS = 200 // turns kept on disk

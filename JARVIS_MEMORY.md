@@ -315,3 +315,22 @@ of the background-wake conflict).
   turn, requires the user to enable JARVIS under Settings > Accessibility.
 - **Next steps:** typing into the focused field (ACTION_SET_TEXT), scrolling,
   multi-step sequences, and waiting-for-content instead of a fixed poll.
+
+### 2026-07-26 — Fix machine-gun recognizer beep + "doesn't hear me"
+User: the mic start-beep repeats on/off every second and JARVIS never hears
+them / the orb never reacts. Two causes addressed:
+- **The earcon.** Android's SpeechRecognizer plays a start/stop beep every
+  session and has no flag to disable it; wake-word mode restarts constantly, so
+  it machine-guns. Fix: `VoiceController` now mutes the earcon streams
+  (STREAM_MUSIC/SYSTEM/NOTIFICATION via AudioManager.ADJUST_MUTE) while
+  listening and restores them on stop/destroy/fatal — listening and TTS never
+  overlap, so JARVIS's voice stays audible.
+- **Tight restart loop / stuck recognizer.** `startListening(snappy)` now only
+  applies the short silence timeouts during an active conversation; when idle
+  (waiting for the wake word) it uses the recognizer's default longer session so
+  it stays up and actually catches "Hey JARVIS." On ERROR_RECOGNIZER_BUSY /
+  ERROR_CLIENT it destroys + recreates the recognizer instead of hammering the
+  broken instance. Restart gap 200ms -> 600ms.
+- **Note:** the same symptom also appears if the old background-service build is
+  still installed (two recognizers fighting the mic). Getting onto this clean
+  build is part of the cure.
