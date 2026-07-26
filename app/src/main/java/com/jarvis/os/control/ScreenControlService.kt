@@ -18,11 +18,13 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
- * Accessibility service that lets JARVIS act on the screen: it can find a
- * control by its visible label, draw a glowing outline around it, and tap it.
- * Runs independently of the app's Activity, so it can act on whatever app is in
- * front (e.g. one JARVIS just opened). It only ever does something when the app
- * explicitly calls [tapWhenReady]; it does not react on its own.
+ * Accessibility service that lets JARVIS act on the screen: it finds a control by
+ * its visible label — preferring an exact name over a partial one, and real text
+ * over a content-description — draws a glowing outline around it, and taps it. If
+ * the target isn't on screen it scrolls to look for it. Runs independently of the
+ * app's Activity so it can act on whatever app is in front. It only ever does
+ * something when the app explicitly calls [tapWhenReady]; it never reacts on its
+ * own.
  */
 class ScreenControlService : AccessibilityService() {
 
@@ -53,55 +55,138 @@ class ScreenControlService : AccessibilityService() {
 
     /**
      * Wait (briefly) until [targetPackage] is the foreground app — or, if it is
-     * null, until any app other than JARVIS is in front — then find [label],
-     * outline it, and tap it. [onDone] reports whether a tap happened.
+     * null, until any app other than JARVIS is in front — then find [label]
+     * (scrolling to look for it if needed), outline it, and tap it. [onDone]
+     * reports whether a tap happened.
      */
     fun tapWhenReady(targetPackage: String?, label: String, onDone: (Boolean) -> Unit = {}) {
-        attempt(targetPackage, label, 0, onDone)
+        awaitApp(targetPackage, label, 0, onDone)
     }
 
-    private fun attempt(targetPackage: String?, label: String, tries: Int, onDone: (Boolean) -> Unit) {
+    private fun awaitApp(targetPackage: String?, label: String, tries: Int, onDone: (Boolean) -> Unit) {
         val root = rootInActiveWindow
         val frontPkg = root?.packageName?.toString()
         val ready = root != null && when {
             targetPackage != null -> frontPkg == targetPackage
             else -> frontPkg != null && frontPkg != packageName
         }
-        if (ready && root != null) {
-            val node = findByLabel(root, label)
-            if (node != null) {
-                tapNode(node)
-                onDone(true)
-                return
-            }
-        }
-        if (tries < MAX_TRIES) {
-            handler.postDelayed({ attempt(targetPackage, label, tries + 1, onDone) }, STEP_MS)
+        if (ready) {
+            seek(label, 0, onDone)
+        } else if (tries < APP_WAIT_TRIES) {
+            handler.postDelayed({ awaitApp(targetPackage, label, tries + 1, onDone) }, STEP_MS)
         } else {
             onDone(false)
         }
     }
 
-    /** Breadth-first search for a node whose text or description contains [label]. */
-    private fun findByLabel(root: AccessibilityNodeInfo, label: String): AccessibilityNodeInfo? {
-        val query = label.lowercase()
+    /**
+     * Look for [label] on the current screen. Tap immediately on a confident match;
+     * otherwise scroll and try again. When there's nothing left to scroll, tap the
+     * best weak match we saw, or give up.
+     */
+    private fun seek(label: String, scrolls: Int, onDone: (Boolean) -> Unit) {
+        val root = rootInActiveWindow
+        if (root == null) {
+            onDone(false)
+            return
+        }
+        val (node, score) = bestMatch(root, label)
+        if (node != null && score >= GOOD_SCORE) {
+            tapNode(node)
+            onDone(true)
+            return
+        }
+        if (scrolls < MAX_SCROLLS && scrollForward(root)) {
+            handler.postDelayed({ seek(label, scrolls + 1, onDone) }, SCROLL_SETTLE_MS)
+            return
+        }
+        if (node != null) {
+            tapNode(node)
+            onDone(true)
+        } else {
+            onDone(false)
+        }
+    }
+
+    /** Best-scoring clickable node for [label] anywhere in the tree, with its score. */
+    private fun bestMatch(root: AccessibilityNodeInfo, label: String): Pair<AccessibilityNodeInfo?, Int> {
+        val query = label.trim().lowercase()
+        if (query.isEmpty()) return null to 0
+        var best: AccessibilityNodeInfo? = null
+        var bestScore = 0
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
-        var textFallback: AccessibilityNodeInfo? = null
         while (queue.isNotEmpty()) {
             val node = queue.removeFirst()
-            val text = node.text?.toString()?.lowercase().orEmpty()
-            val desc = node.contentDescription?.toString()?.lowercase().orEmpty()
-            if (text.contains(query) || desc.contains(query)) {
-                val clickable = clickableSelfOrAncestor(node)
-                if (clickable != null) return clickable
-                if (textFallback == null) textFallback = node
+            val score = matchScore(node, query)
+            if (score > bestScore) {
+                best = clickableSelfOrAncestor(node) ?: node
+                bestScore = score
             }
             for (i in 0 until node.childCount) {
                 node.getChild(i)?.let { queue.add(it) }
             }
         }
-        return textFallback
+        return best to bestScore
+    }
+
+    /** Higher = better. Exact beats partial; visible text beats content-description. */
+    private fun matchScore(node: AccessibilityNodeInfo, query: String): Int {
+        val text = node.text?.toString()?.trim()?.lowercase().orEmpty()
+        val desc = node.contentDescription?.toString()?.trim()?.lowercase().orEmpty()
+        return maxOf(fieldScore(text, query, isText = true), fieldScore(desc, query, isText = false))
+    }
+
+    private fun fieldScore(value: String, query: String, isText: Boolean): Int {
+        if (value.isEmpty()) return 0
+        return when {
+            value == query -> if (isText) 100 else 85
+            startsWithWord(value, query) -> if (isText) 90 else 60
+            containsWord(value, query) -> if (isText) 65 else 45
+            value.contains(query) -> if (isText) 55 else 35
+            else -> 0
+        }
+    }
+
+    /** [s] starts with [q] followed by a word boundary (so "mom" matches "mom (dad)" but not "mom's status"). */
+    private fun startsWithWord(s: String, q: String): Boolean {
+        if (!s.startsWith(q)) return false
+        if (s.length == q.length) return true
+        val next = s[q.length]
+        return !next.isLetterOrDigit() && next != '\''
+    }
+
+    /** [q] appears in [s] as a standalone word. */
+    private fun containsWord(s: String, q: String): Boolean {
+        var idx = s.indexOf(q)
+        while (idx >= 0) {
+            val before = if (idx == 0) ' ' else s[idx - 1]
+            val afterIdx = idx + q.length
+            val after = if (afterIdx >= s.length) ' ' else s[afterIdx]
+            if (!before.isLetterOrDigit() && before != '\'' && !after.isLetterOrDigit() && after != '\'') {
+                return true
+            }
+            idx = s.indexOf(q, idx + 1)
+        }
+        return false
+    }
+
+    private fun scrollForward(root: AccessibilityNodeInfo): Boolean {
+        val scrollable = findScrollable(root) ?: return false
+        return scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+    }
+
+    private fun findScrollable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        while (queue.isNotEmpty()) {
+            val node = queue.removeFirst()
+            if (node.isScrollable) return node
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
+        }
+        return null
     }
 
     private fun clickableSelfOrAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -187,8 +272,14 @@ class ScreenControlService : AccessibilityService() {
         /** True when the user has enabled JARVIS under Accessibility settings. */
         fun isRunning(): Boolean = instance != null
 
-        private const val MAX_TRIES = 20      // ~ MAX_TRIES * STEP_MS before giving up
-        private const val STEP_MS = 350L
+        // How long to wait for the launched app to reach the foreground.
+        private const val APP_WAIT_TRIES = 20
+        private const val STEP_MS = 300L
+        // Scrolling to hunt for an off-screen target.
+        private const val MAX_SCROLLS = 8
+        private const val SCROLL_SETTLE_MS = 550L
+        // A match this good is tapped immediately; weaker ones make us scroll first.
+        private const val GOOD_SCORE = 70
         private const val OUTLINE_MS = 1100L
     }
 }

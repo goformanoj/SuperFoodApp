@@ -44,7 +44,7 @@ object GeminiClient {
         Screen commands (only when the user clearly asks you to open an app or tap something on screen; each on its own line, never read them aloud):
         open an app -> <<OPEN|AppName>>
         tap a visible control -> <<TAP|VisibleLabel>>
-        To open an app and then tap inside it, output <<OPEN|AppName>> then <<TAP|Label>>, using a label that would really be visible on that screen. Only claim you opened or tapped something if you actually output the matching command.
+        To open an app and then tap inside it, output <<OPEN|AppName>> then <<TAP|Label>>. For the tap label use the exact short on-screen name of the target (e.g. a contact's name like "Mom"), not a whole phrase. Only claim you opened or tapped something if you actually output the matching command.
 
         After finishing a task, briefly confirm it and ask if there's anything else. When the user is done (e.g. "no", "that's all", "thanks"), give a short sign-off and append <<END>> on its own line (never read it aloud).
     """.trimIndent()

@@ -422,3 +422,19 @@ voice + brain + memory + calendar + screen control all working on-device.
 
 ### Phase 5 — Polish & durability
 - Offline handling, battery/perf, app polish, full icon set.
+
+### 2026-07-26 — Screen control: smarter matching + scrolling
+User: "open WhatsApp and open the Mom chat" tapped the wrong thing ("XYZ Mom",
+then "Mom's status"), and couldn't reach the Mom chat because it's below the fold
+(no scrolling). Rewrote ScreenControlService matching:
+- Scored matching: exact name (100) > starts-with-word (90) > whole-word (65) >
+  contains (55); visible TEXT outranks contentDescription. So "Mom" prefers the
+  real chat row over "XYZ Mom" and a "Mom's status" entry. startsWithWord ignores
+  apostrophe boundaries so "Mom" doesn't match "Mom's status".
+- **Scrolling**: if no confident (>=70) match is on screen, find a scrollable
+  node, ACTION_SCROLL_FORWARD, and re-scan (up to 8 scrolls) to hunt for the
+  target below the fold. Tap a confident match immediately; only tap a weak match
+  once scrolling is exhausted.
+- Prompt nudge (both brains): for <<TAP|..>> use the exact short on-screen name
+  (e.g. "Mom"), not a phrase.
+Still best-effort by nature (accessibility tree varies per app).
