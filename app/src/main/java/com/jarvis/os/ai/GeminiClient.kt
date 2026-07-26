@@ -20,12 +20,13 @@ class GeminiException(message: String) : Exception(message)
  */
 object GeminiClient {
 
-    // Ordered by free-tier friendliness; the first that has quota wins.
+    // Current models that support generateContent (1.5 line is retired -> 404).
+    // We only fall through to the next on 404 (model unavailable), NOT on 429,
+    // so a single utterance makes a single request and stays under rate limits.
     private val MODELS = listOf(
-        "gemini-2.0-flash-lite",
         "gemini-2.5-flash",
         "gemini-2.0-flash",
-        "gemini-1.5-flash",
+        "gemini-2.0-flash-lite",
     )
 
     private const val ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -77,8 +78,14 @@ object GeminiClient {
                 if (text.isBlank()) Outcome(null, "Empty reply from model", true)
                 else Outcome(text, null, false)
             } else {
-                val retryable = code == 429 || code == 404
-                Outcome(null, "HTTP $code: ${extractError(body)}", retryable)
+                // Only 404 (model unavailable) is worth trying another model.
+                // 429 is a rate/quota limit — trying more models just burns quota.
+                val reason = if (code == 429) {
+                    "Rate limit (429). Wait ~a minute and try once, or enable billing in Google AI Studio."
+                } else {
+                    "HTTP $code: ${extractError(body)}"
+                }
+                Outcome(null, reason, retryable = code == 404)
             }
         } catch (e: Exception) {
             Outcome(null, "Network error: ${e.message ?: e.javaClass.simpleName}", false)

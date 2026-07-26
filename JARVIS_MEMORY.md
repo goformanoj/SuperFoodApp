@@ -81,3 +81,12 @@ quota for gemini-2.0-flash was exhausted. Added a model fallback list
 (gemini-2.0-flash-lite → 2.5-flash → 2.0-flash → 1.5-flash): on 429/404 it
 tries the next model. User-side options: wait for the quota to reset, or enable
 pay-as-you-go billing in Google AI Studio.
+
+### 2026-07-26 — Fallback was amplifying rate limits; fix
+AI Studio dashboard: only ~5 total requests, 4 were 429 — so it's the
+per-minute rate limit, not the daily quota. The fallback fired all 4 models per
+utterance (3×429 + 1×404 for the now-retired gemini-1.5-flash), which burns the
+rate limit faster. Fixes: removed gemini-1.5-flash; models are now
+2.5-flash → 2.0-flash → 2.0-flash-lite; only fall through on 404 (model missing),
+NOT on 429 — so one utterance = one request. 429 now shows a friendly
+"wait a minute or enable billing" message.
