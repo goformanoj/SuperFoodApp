@@ -10,6 +10,7 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -172,21 +173,64 @@ class ScreenControlService : AccessibilityService() {
     }
 
     private fun scrollForward(root: AccessibilityNodeInfo): Boolean {
-        val scrollable = findScrollable(root) ?: return false
-        return scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+        val node = findVerticalScrollable(root) ?: return false
+        // Prefer an explicit downward scroll (API 30+) so we never flip sideways
+        // through tabs; fall back to generic forward on the chosen vertical node.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val down = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN
+            if (node.actionList.contains(down)) return node.performAction(down.id)
+        }
+        return node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
     }
 
-    private fun findScrollable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+    /**
+     * The largest VERTICALLY-scrollable node (a chat/message list) — not a
+     * horizontal tab pager (Chats / Updates / Calls), which the old code grabbed
+     * first and scrolled sideways.
+     */
+    private fun findVerticalScrollable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var best: AccessibilityNodeInfo? = null
+        var bestArea = -1
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
         while (queue.isNotEmpty()) {
             val node = queue.removeFirst()
-            if (node.isScrollable) return node
+            if (node.isScrollable && isVertical(node)) {
+                val r = Rect()
+                node.getBoundsInScreen(r)
+                val area = r.width() * r.height()
+                if (area > bestArea) {
+                    best = node
+                    bestArea = area
+                }
+            }
             for (i in 0 until node.childCount) {
                 node.getChild(i)?.let { queue.add(it) }
             }
         }
-        return null
+        return best
+    }
+
+    /** True if [node] scrolls vertically rather than horizontally. */
+    private fun isVertical(node: AccessibilityNodeInfo): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val actions = node.actionList
+            val down = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN
+            val up = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP
+            val right = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT
+            val left = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT
+            if (actions.contains(down) || actions.contains(up)) return true
+            if (actions.contains(right) || actions.contains(left)) return false
+        }
+        // A vertical list has one (or few) columns and many rows.
+        node.collectionInfo?.let { ci ->
+            if (ci.columnCount <= 1) return true
+            if (ci.rowCount <= 1) return false
+        }
+        // Last resort: taller than wide is usually a vertical list.
+        val r = Rect()
+        node.getBoundsInScreen(r)
+        return r.height() >= r.width()
     }
 
     private fun clickableSelfOrAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {

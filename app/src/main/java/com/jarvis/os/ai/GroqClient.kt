@@ -47,7 +47,7 @@ object GroqClient {
         tap a visible control -> <<TAP|VisibleLabel>>
         To open an app and then tap inside it, output <<OPEN|AppName>> then <<TAP|Label>>. For the tap label use the exact short on-screen name of the target (e.g. a contact's name like "Mom"), not a whole phrase. A <<TAP|..>> automatically scrolls to find the target if it's below the fold, so if the user asks you to scroll to, find, or open something like a chat, just output the tap — never say you cannot scroll. Only claim you opened or tapped something if you actually output the matching command.
 
-        After finishing a task, briefly confirm it and ask if there's anything else. When the user is done (e.g. "no", "that's all", "thanks"), give a short sign-off and append <<END>> on its own line (never read it aloud).
+        Keep replies natural, brief, and varied. Do NOT end every reply with the same phrase like "is there anything else?" — only offer more help occasionally, when it genuinely fits. After doing a task, a short confirmation is enough. If the user just says your name or greets you, reply briefly and naturally (e.g. "Yes?").
     """.trimIndent()
 
     fun hasKey(): Boolean = BuildConfig.GROQ_API_KEY.isNotBlank()

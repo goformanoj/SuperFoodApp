@@ -448,3 +448,16 @@ a <<TAP|..>> automatically scrolls, so "scroll to / find / open <chat>" should
 just emit the tap and it must never claim it can't scroll. (Scrolling is
 automatic — the user doesn't need to say "scroll"; "open the chat with Mother"
 is enough.)
+
+### 2026-07-26 — Scroll DOWN the list (not across tabs) + stop the "anything else?" tic
+Two fixes:
+- **Vertical scroll:** the scroll code grabbed the first scrollable node, which in
+  WhatsApp is the horizontal tab pager (Chats/Updates/Communities/Calls), so it
+  flipped tabs instead of scrolling the chat list. Now `findVerticalScrollable`
+  picks the largest VERTICAL scrollable (via ACTION_SCROLL_DOWN/UP support on
+  API 30+, else collectionInfo columns/rows, else taller-than-wide) and scrolls
+  with ACTION_SCROLL_DOWN.
+- **Repetitive closing:** the prompt told it to "ask if there's anything else"
+  after every task, so it repeated that line constantly (even to a bare "Jarvis").
+  Rewrote both prompts: keep replies natural/varied, don't repeat that phrase, and
+  reply briefly (e.g. "Yes?") to a bare name/greeting.
