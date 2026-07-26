@@ -178,7 +178,7 @@ private fun HeroSection(state: VoiceUiState, height: androidx.compose.ui.unit.Dp
             Text(
                 text = state.reply,
                 style = MaterialTheme.typography.bodyLarge,
-                color = Cyan,
+                color = if (state.orb == OrbState.Error) ErrorRed else Cyan,
                 textAlign = TextAlign.Center,
             )
         }

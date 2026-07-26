@@ -110,17 +110,15 @@ class AssistantEngine(context: Context) {
         }
 
         scope.launch {
-            val reply = try {
-                GeminiClient.generate(userText)
-            } catch (e: Exception) {
-                ""
-            }
-            if (reply.isBlank()) {
-                set { it.copy(orb = OrbState.Error, status = "Couldn't reach the JARVIS brain") }
-                main.postDelayed({ onSpokenDone() }, 1200L)
-            } else {
+            try {
+                val reply = GeminiClient.generate(userText)
                 set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = reply) }
                 speaker.speak(reply)
+            } catch (e: Exception) {
+                // Surface the real reason on screen so failures are diagnosable.
+                val detail = e.message ?: e.javaClass.simpleName
+                set { it.copy(orb = OrbState.Error, status = "Brain error", reply = detail) }
+                main.postDelayed({ onSpokenDone() }, 3000L)
             }
         }
     }

@@ -8,11 +8,14 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
+/** Thrown with a short, safe (no key) reason when a Gemini call fails. */
+class GeminiException(message: String) : Exception(message)
+
 /**
- * Minimal Gemini REST client (no SDK dependency). The API key comes from
+ * Minimal Gemini REST client (no SDK). The API key comes from
  * [BuildConfig.GEMINI_API_KEY], injected at build time from a GitHub Actions
- * secret. Returns an empty string on any failure; the caller treats blank as
- * an error.
+ * secret. On failure it throws [GeminiException] with a short reason (HTTP code
+ * + API message, or a network error) so the UI can show what went wrong.
  */
 object GeminiClient {
 
@@ -27,32 +30,28 @@ object GeminiClient {
 
     suspend fun generate(userText: String): String = withContext(Dispatchers.IO) {
         val key = BuildConfig.GEMINI_API_KEY
-        if (key.isBlank()) return@withContext ""
+        if (key.isBlank()) throw GeminiException("No API key set")
 
-        val url = URL("$ENDPOINT/$MODEL:generateContent?key=$key")
-        val conn = (url.openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            doOutput = true
-            connectTimeout = 15000
-            readTimeout = 30000
-            setRequestProperty("Content-Type", "application/json")
+        val conn = try {
+            URL("$ENDPOINT/$MODEL:generateContent?key=$key").openConnection() as HttpURLConnection
+        } catch (e: Exception) {
+            throw GeminiException("Connection error: ${e.javaClass.simpleName}")
         }
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.connectTimeout = 15000
+        conn.readTimeout = 30000
+        conn.setRequestProperty("Content-Type", "application/json")
 
         val payload = JSONObject().apply {
             put(
                 "system_instruction",
-                JSONObject().put(
-                    "parts",
-                    JSONArray().put(JSONObject().put("text", SYSTEM_PROMPT)),
-                ),
+                JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM_PROMPT))),
             )
             put(
                 "contents",
                 JSONArray().put(
-                    JSONObject().put(
-                        "parts",
-                        JSONArray().put(JSONObject().put("text", userText)),
-                    ),
+                    JSONObject().put("parts", JSONArray().put(JSONObject().put("text", userText))),
                 ),
             )
         }
@@ -60,14 +59,28 @@ object GeminiClient {
         try {
             conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
             val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val ok = code in 200..299
+            val stream = if (ok) conn.inputStream else conn.errorStream
             val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) return@withContext ""
-            parseFirstText(body)
+            if (!ok) throw GeminiException("HTTP $code: ${extractError(body)}")
+            val text = parseFirstText(body)
+            if (text.isBlank()) throw GeminiException("Empty reply from model")
+            text
+        } catch (e: GeminiException) {
+            throw e
         } catch (e: Exception) {
-            ""
+            throw GeminiException("Network error: ${e.message ?: e.javaClass.simpleName}")
         } finally {
             conn.disconnect()
+        }
+    }
+
+    private fun extractError(body: String): String {
+        return try {
+            val msg = JSONObject(body).optJSONObject("error")?.optString("message").orEmpty()
+            if (msg.isNotBlank()) msg.take(160) else body.take(160)
+        } catch (e: Exception) {
+            body.take(160)
         }
     }
 

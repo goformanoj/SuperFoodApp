@@ -65,3 +65,11 @@ User added the `GEMINI_API_KEY` repository secret. The key is injected at build
 time, so the previous APK (built before the secret existed) still has an empty
 key. Pushed this commit to trigger a fresh build that bakes the key into
 `BuildConfig`; the new APK's voice loop should reach Gemini.
+
+### 2026-07-26 — Gemini call failing; surface the real error
+On device: mic + speech recognition work (transcribed "hello"), key is injected
+(app showed "Couldn't reach the JARVIS brain", not the missing-key message), but
+the Gemini HTTP call failed. The client was swallowing the cause. Changed
+`GeminiClient` to throw `GeminiException` with a short reason (HTTP code + API
+message, or network error) and the UI now shows it in red, so we can diagnose
+(bad/restricted key vs model access vs network) and fix precisely.
