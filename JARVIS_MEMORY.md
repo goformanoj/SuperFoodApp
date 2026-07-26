@@ -383,3 +383,42 @@ what to say and stashes the plan in `pendingScreen`; `onSpokenDone()` runs it
 once speaking finishes, so JARVIS says "Opening WhatsApp" fully, then opens it.
 Needs-permission message is decided up front via a ScreenControlService.isRunning
 pre-check (executeScreen no longer runs before speaking).
+
+### 2026-07-26 — ✅ End-to-end confirmed + ROADMAP
+User confirmed: JARVIS spoke, opened YouTube, tapped Search, clean handoff —
+voice + brain + memory + calendar + screen control all working on-device.
+
+## Guiding principles (learned the hard way this session)
+1. One small change -> one green build -> test on device -> next change.
+2. Never stack a fragile feature on a working one without a fallback / known-good baseline.
+3. When patches pile up and it's still broken, STOP patching and reset to the last version that worked.
+4. Be honest about what stock Android can and cannot do (no reliable always-on wake word; screen control is best-effort).
+
+## Roadmap
+### Phase 1 — Make it feel finished (RECOMMENDED NEXT)
+- Tap-to-talk toggle: choose always-on vs press-to-talk (stops it answering random speech).
+- Clear the on-screen transcript/reply when idle.
+- First-run onboarding for the 3 permissions (mic / calendar / accessibility) incl. the Realme "Downloaded apps" path.
+- Simple Settings screen (clear memory, switch listening mode).
+- Graceful error states (no network, missing permission).
+
+### Phase 2 — Grow screen control
+- Type into fields (ACTION_SET_TEXT): "type ... and send".
+- Scroll / back / home global actions.
+- Multi-step chains: "open Messages, tap Mom, type 'running late', send".
+- Smarter/fuzzier on-screen element matching.
+
+### Phase 3 — Reliable device skills (real APIs, not screen-poking)
+- Alarms / timers / reminders (AlarmClock intents).
+- Send SMS, place calls (confirm first).
+- Toggle wifi / torch / DND, brightness, volume; media play/pause/next.
+- Weather + web answers (needs an API).
+
+### Phase 4 — Smarter & smoother
+- Proper wake word (Porcupine / openWakeWord) for real hands-free.
+- Streaming replies (snappier feel).
+- Long-term memory of user facts/preferences.
+- Vision: "what's on my screen?" (screenshot -> model).
+
+### Phase 5 — Polish & durability
+- Offline handling, battery/perf, app polish, full icon set.
