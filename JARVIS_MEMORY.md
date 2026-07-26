@@ -231,3 +231,34 @@ when a detail is missing. Prompts are now triple-quoted `val`s (not const).
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach
 Groq and finally answer.
+
+### 2026-07-26 — Siri-style background wake mode ("Hey JARVIS" anywhere)
+User wants JARVIS reachable without launching the app: say "Hey JARVIS" from
+any screen and a translucent panel appears to talk. Implementation:
+- **`JarvisService`** (foreground service, `foregroundServiceType="microphone"`):
+  runs a `WakeWordListener` that continuously listens *only* for the wake word.
+  Shows a low-priority ongoing notification ("JARVIS is listening"). On wake it
+  launches `OverlayActivity` with the trailing command as an extra.
+- **`WakeWordListener`**: thin loop over `VoiceController` that restarts on
+  no-input and calls back only when `WakeWord.extractCommand` matches.
+- **`OverlayActivity`**: translucent, `singleTask`, excluded from recents. Runs
+  its own `AssistantEngine`; `engine.wakeUp(command)` starts it already awake;
+  closes itself on `onConversationEnd` (the `<<END>>` / graceful-end path), on
+  tap-away, or when it loses focus.
+- **Mic-conflict guard**: only one thing can hold the mic. `JarvisService`
+  keeps an `appActive` flag; `pauseWake()`/`resumeWake()` are called by both
+  `MainActivity` and `OverlayActivity` in onStart/onStop so the foreground
+  screen owns the mic while visible and the service resumes wake-listening when
+  it's gone.
+- **`MainActivity`**: now also requests `SYSTEM_ALERT_WINDOW` ("display over
+  other apps", via `Settings.ACTION_MANAGE_OVERLAY_PERMISSION`) and
+  `POST_NOTIFICATIONS`, then starts `JarvisService` once mic + overlay are
+  granted.
+- **Manifest**: added FOREGROUND_SERVICE, FOREGROUND_SERVICE_MICROPHONE,
+  POST_NOTIFICATIONS, SYSTEM_ALERT_WINDOW permissions; registered
+  `OverlayActivity` (translucent) and `JarvisService`.
+- **Honest limits**: this uses Android's `SpeechRecognizer`, not a dedicated
+  always-on wake engine (Porcupine etc.), so background listening is best-effort
+  — it can be killed by aggressive OEM battery managers, plays a start chime,
+  and drains more battery than a real hotword DSP. Requires the user to grant
+  "Display over other apps" + notifications.

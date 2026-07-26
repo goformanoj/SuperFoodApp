@@ -16,6 +16,7 @@ import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.VoiceController
 import com.jarvis.os.voice.VoiceUiState
+import com.jarvis.os.voice.WakeWord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +42,9 @@ class AssistantEngine(context: Context) {
 
     private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
     val state: State<VoiceUiState> get() = _state
+
+    /** Called when the conversation ends (used by the overlay to close itself). */
+    var onConversationEnd: () -> Unit = {}
 
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -87,6 +91,14 @@ class AssistantEngine(context: Context) {
     fun resume() {
         visible = true
         if (micGranted && !busy) listen()
+    }
+
+    /** Start already awake (used when launched by the background wake word). */
+    fun wakeUp(command: String?) {
+        micGranted = true
+        visible = true
+        awake = true
+        if (!command.isNullOrBlank()) ask(command) else listen()
     }
 
     fun pause() {
@@ -137,7 +149,7 @@ class AssistantEngine(context: Context) {
             ask(text)
             return
         }
-        val command = extractAfterWakeWord(text)
+        val command = WakeWord.extractCommand(text)
         if (command == null) {
             // No wake word — stay asleep and keep listening for it.
             set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, transcript = "", amplitude = 0f) }
@@ -266,6 +278,7 @@ class AssistantEngine(context: Context) {
     private fun goToSleep() {
         awake = false
         set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, transcript = "", reply = "", amplitude = 0f) }
+        onConversationEnd()
     }
 
     private fun set(block: (VoiceUiState) -> VoiceUiState) {
@@ -277,23 +290,5 @@ class AssistantEngine(context: Context) {
         const val SLEEP_MS = 30_000L
         const val MAX_CONTEXT_TURNS = 20 // turns sent to the AI as context
         const val MAX_STORED_TURNS = 200 // turns kept on disk
-
-        // Wake phrases, including common speech-to-text mishearings of "JARVIS".
-        val WAKE_WORDS = listOf(
-            "hey jarvis", "hey, jarvis", "hi jarvis", "hello jarvis",
-            "ok jarvis", "okay jarvis", "hey jervis", "hey travis", "hey jarvis,",
-        )
-
-        /** Returns the command after the wake word (may be blank), or null if absent. */
-        fun extractAfterWakeWord(raw: String): String? {
-            val lower = raw.lowercase()
-            for (w in WAKE_WORDS) {
-                val idx = lower.indexOf(w)
-                if (idx >= 0) {
-                    return raw.substring(idx + w.length).trimStart(' ', ',', '.', '!', '?')
-                }
-            }
-            return null
-        }
     }
 }

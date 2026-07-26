@@ -1,8 +1,12 @@
 package com.jarvis.os
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -13,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.jarvis.os.assistant.AssistantEngine
+import com.jarvis.os.service.JarvisService
 import com.jarvis.os.ui.home.JarvisApp
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.JarvisTheme
@@ -21,13 +26,17 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var engine: AssistantEngine
     private var permissionsAsked = false
+    private var overlayAsked = false
 
-    // One launcher for all permissions — requesting mic and calendar in a single
-    // sequence avoids the second request being dropped while the first dialog shows.
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             val micOk = result[Manifest.permission.RECORD_AUDIO] ?: hasPermission(Manifest.permission.RECORD_AUDIO)
             engine.onMicPermission(micOk)
+        }
+
+    private val overlayLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            startBackgroundServiceIfReady()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,14 +55,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        engine.resume()
+        JarvisService.pauseWake() // in-app engine owns the mic while this screen is visible
         if (hasPermission(Manifest.permission.RECORD_AUDIO)) engine.onMicPermission(true)
+        engine.resume()
         requestMissingPermissions()
+        ensureBackgroundMode()
     }
 
     override fun onStop() {
         super.onStop()
         engine.pause()
+        JarvisService.resumeWake() // hand the mic back to the background wake listener
     }
 
     override fun onDestroy() {
@@ -69,14 +81,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Background "Hey JARVIS" needs the mic plus permission to draw over other apps.
+    private fun ensureBackgroundMode() {
+        if (!hasPermission(Manifest.permission.RECORD_AUDIO)) return
+        if (Settings.canDrawOverlays(this)) {
+            startBackgroundServiceIfReady()
+        } else if (!overlayAsked) {
+            overlayAsked = true
+            overlayLauncher.launch(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName"),
+                ),
+            )
+        }
+    }
+
+    private fun startBackgroundServiceIfReady() {
+        if (Settings.canDrawOverlays(this) && hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            ContextCompat.startForegroundService(this, Intent(this, JarvisService::class.java))
+        }
+    }
+
     private fun hasPermission(permission: String): Boolean =
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     private companion object {
-        val REQUIRED = arrayOf(
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.READ_CALENDAR,
-            Manifest.permission.WRITE_CALENDAR,
-        )
+        val REQUIRED: Array<String> = buildList {
+            add(Manifest.permission.RECORD_AUDIO)
+            add(Manifest.permission.READ_CALENDAR)
+            add(Manifest.permission.WRITE_CALENDAR)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }.toTypedArray()
     }
 }
