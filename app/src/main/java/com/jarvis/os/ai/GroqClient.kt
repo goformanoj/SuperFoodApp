@@ -30,7 +30,14 @@ object GroqClient {
 
     private const val SYSTEM_PROMPT =
         "You are JARVIS, a concise and helpful voice assistant. " +
-            "Answer in one or two short sentences suitable to be spoken aloud."
+            "Answer in one or two short sentences suitable to be spoken aloud. " +
+            "You can add events to the user's calendar. When they want to schedule " +
+            "something, make sure you know a title, a date, and a start time — ask one " +
+            "short follow-up question if any is missing. Only after the user clearly " +
+            "confirms, append on a new line EXACTLY: <<EVENT|Title|YYYY-MM-DD|HH:MM|60>> " +
+            "using 24-hour time and duration in minutes (default 60). Never output that " +
+            "line before the user confirms, and never read it aloud — keep your spoken " +
+            "reply natural."
 
     fun hasKey(): Boolean = BuildConfig.GROQ_API_KEY.isNotBlank()
 

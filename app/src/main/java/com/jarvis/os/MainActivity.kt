@@ -21,10 +21,17 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var engine: AssistantEngine
 
+    private var calendarAsked = false
+
     private val micPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             engine.onMicPermission(granted)
         }
+
+    // Result unused: CalendarWriter checks the permission when it needs it, and
+    // falls back to opening the calendar app if it was denied.
+    private val calendarPermission =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -46,6 +53,19 @@ class MainActivity : ComponentActivity() {
         engine.onMicPermission(granted)
         engine.resume()
         if (!granted) micPermission.launch(Manifest.permission.RECORD_AUDIO)
+        maybeRequestCalendar()
+    }
+
+    private fun maybeRequestCalendar() {
+        if (calendarAsked) return
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_CALENDAR) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            calendarAsked = true
+            calendarPermission.launch(
+                arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR),
+            )
+        }
     }
 
     override fun onStop() {

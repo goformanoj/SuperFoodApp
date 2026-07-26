@@ -147,6 +147,18 @@ Completes "V1: memory".
 - **Home text lifecycle:** transcript/reply show only while the orb is active
   (listening/thinking/speaking) and disappear when JARVIS returns to sleep.
 
+### 2026-07-26 — Calendar tool use (add events by voice)
+JARVIS can now add calendar events conversationally.
+- System prompt teaches the model to gather title/date/time (asking one short
+  follow-up if missing) and, only after the user confirms, emit a hidden marker
+  `<<EVENT|Title|YYYY-MM-DD|HH:MM|60>>`.
+- `EventParser` strips the marker from the spoken reply and parses the event.
+- `CalendarWriter` inserts directly via CalendarContract when READ/WRITE_CALENDAR
+  are granted and a writable calendar exists; otherwise it opens the calendar
+  app's new-event screen pre-filled (works without permission).
+- Manifest gains READ/WRITE_CALENDAR; MainActivity requests them once at startup.
+- Pattern: LLM "tool use" via a confirm-gated structured marker, executed app-side.
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach

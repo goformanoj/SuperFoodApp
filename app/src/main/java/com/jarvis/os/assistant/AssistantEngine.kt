@@ -6,6 +6,8 @@ import android.os.Looper
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import com.jarvis.os.ai.Brain
+import com.jarvis.os.calendar.CalendarWriter
+import com.jarvis.os.calendar.EventParser
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.ConversationStore
 import com.jarvis.os.data.todaysTasks
@@ -173,9 +175,19 @@ class AssistantEngine(context: Context) {
         scope.launch {
             try {
                 val reply = Brain.generate(history, buildContext())
-                addTurn(ChatTurn(ChatTurn.ASSISTANT, reply))
-                set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = reply) }
-                speaker.speak(reply)
+                // If the model confirmed a calendar event, act on it and strip the marker.
+                val (clean, event) = EventParser.parse(reply)
+                if (event != null) {
+                    CalendarWriter.addEvent(appContext, event.title, event.startMillis, event.durationMin)
+                }
+                val spoken = when {
+                    clean.isNotBlank() -> clean
+                    event != null -> "Okay, I've added it to your calendar."
+                    else -> reply
+                }
+                addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
+                set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = spoken) }
+                speaker.speak(spoken)
             } catch (e: Exception) {
                 val detail = e.message ?: e.javaClass.simpleName
                 set { it.copy(orb = OrbState.Error, status = "Brain error", reply = detail) }
