@@ -73,3 +73,11 @@ the Gemini HTTP call failed. The client was swallowing the cause. Changed
 `GeminiClient` to throw `GeminiException` with a short reason (HTTP code + API
 message, or network error) and the UI now shows it in red, so we can diagnose
 (bad/restricted key vs model access vs network) and fix precisely.
+
+### 2026-07-26 — Diagnosis: HTTP 429 quota; add model fallback
+The surfaced error was `HTTP 429: You exceeded your current quota…` — so the
+whole pipeline works (speech → key → Gemini → parsing); only the free-tier
+quota for gemini-2.0-flash was exhausted. Added a model fallback list
+(gemini-2.0-flash-lite → 2.5-flash → 2.0-flash → 1.5-flash): on 429/404 it
+tries the next model. User-side options: wait for the quota to reset, or enable
+pay-as-you-go billing in Google AI Studio.
