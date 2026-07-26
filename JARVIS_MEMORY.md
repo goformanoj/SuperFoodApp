@@ -124,6 +124,14 @@ Groq answers well (conversational replies on device). Changes:
 - **Orb states:** `HudOrb` accent color now follows the state — Listening=cyan,
   Thinking=blue (and spins faster), Speaking=green, Error=red — animated between.
 
+### 2026-07-26 — "Hey JARVIS" wake word
+The engine now has an asleep/awake model. Asleep: always listening but only
+reacts when a final transcript contains a wake phrase ("hey jarvis" + common
+mishears); until then it shows `Say "Hey JARVIS"` and stays silent. On wake it
+answers any command spoken after the phrase (or says "Yes?" if just the wake
+word), then stays awake so follow-ups need no wake word. After 18s of silence
+it returns to sleep. Wake handling lives in `AssistantEngine.onFinalTranscript`.
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach
