@@ -171,6 +171,14 @@ Two fixes after on-device testing:
   real device calendar (or says it needs access if permission is missing).
   The Home "Today's Tasks" card remains a separate sample widget for now.
 
+### 2026-07-26 — App launcher icon (JARVIS orb)
+Replaced the default Android icon with a custom adaptive icon: a vector orb
+(glow, cyan/electric-blue rings, orange accent arc, glowing core) on the dark
+background. Files: `drawable/ic_launcher_foreground.xml` +
+`ic_launcher_background.xml`, `mipmap-anydpi-v26/ic_launcher(.round).xml`;
+manifest now sets `android:icon`/`android:roundIcon`. minSdk 26 → adaptive icon
+covers all devices, no PNGs needed.
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach
