@@ -90,3 +90,12 @@ rate limit faster. Fixes: removed gemini-1.5-flash; models are now
 2.5-flash → 2.0-flash → 2.0-flash-lite; only fall through on 404 (model missing),
 NOT on 429 — so one utterance = one request. 429 now shows a friendly
 "wait a minute or enable billing" message.
+
+### 2026-07-26 — 429 persists with ~zero usage → free-tier quota is 0
+Build #20 (single request per utterance) still returns 429 on the very first
+call, with almost no usage and 0 output tokens ever recorded. Conclusion: this
+is not "too many requests" — the key's free-tier allocation is effectively zero
+(commonly because the Gemini free tier is unavailable in the user's region), so
+the API needs **billing enabled** to serve any request. No code change; this is
+account-side. Recommended: enable pay-as-you-go billing on the key's Google
+Cloud project (Flash cost is negligible), then retry once.
