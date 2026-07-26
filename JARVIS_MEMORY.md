@@ -111,3 +111,8 @@ models: llama-3.3-70b-versatile → llama-3.1-8b-instant → gemma2-9b-it) and a
 `Brain` facade that prefers Groq when `GROQ_API_KEY` is set, else Gemini.
 Added `GROQ_API_KEY` BuildConfig field + workflow secret. Engine now calls
 `Brain`. User must add the `GROQ_API_KEY` repository secret, then rebuild.
+
+### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
+User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
+that bakes the key into `BuildConfig`; the new APK's voice loop should reach
+Groq and finally answer.
