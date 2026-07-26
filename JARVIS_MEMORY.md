@@ -438,3 +438,13 @@ then "Mom's status"), and couldn't reach the Mom chat because it's below the fol
 - Prompt nudge (both brains): for <<TAP|..>> use the exact short on-screen name
   (e.g. "Mom"), not a phrase.
 Still best-effort by nature (accessibility tree varies per app).
+
+### 2026-07-26 — Tell the brain it can scroll (prompt caught up to the code)
+Build #65 gave the CODE auto-scroll (a <<TAP|..>> scrolls to find off-screen
+targets), but the system prompt still said "cannot tap things not currently on
+screen" — so when the user said "scroll and find the Mother chat," the LLM
+refused. Fixed both prompts: removed the off-screen restriction, and noted that
+a <<TAP|..>> automatically scrolls, so "scroll to / find / open <chat>" should
+just emit the tap and it must never claim it can't scroll. (Scrolling is
+automatic — the user doesn't need to say "scroll"; "open the chat with Mother"
+is enough.)
