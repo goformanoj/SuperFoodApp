@@ -262,3 +262,23 @@ any screen and a translucent panel appears to talk. Implementation:
   — it can be killed by aggressive OEM battery managers, plays a start chime,
   and drains more battery than a real hotword DSP. Requires the user to grant
   "Display over other apps" + notifications.
+
+### 2026-07-26 — Reverted background wake mode (mic conflict, broke in-app)
+The Siri-style background service **did not work and broke the working in-app
+flow**, so it was rolled back. Root cause confirmed on-device: Android's
+`SpeechRecognizer` is a single shared system resource. Running it continuously
+inside a foreground service AND in-app means two mic holders at once — a
+screenshot showed the mic "in use by JARVIS" (the service) and "in use by
+Speech Recognition and Synthesis from Google" (the recognizer) simultaneously,
+producing RECOGNIZER_BUSY so neither the overlay nor the in-app wake word
+responded. Removed `JarvisService`, `WakeWordListener`, `OverlayActivity`;
+restored `MainActivity` + `AndroidManifest` to the b73e28a (known-good) state
+(mic + calendar permissions only, no foreground service / overlay / notif
+permissions). Kept the harmless `WakeWord.kt` shared matcher.
+
+**Honest conclusion for the record:** true "Hey Siri" always-on background wake
+is NOT achievable with the stock `SpeechRecognizer` API. It needs a dedicated
+on-device hotword engine (Porcupine / openWakeWord / Vosk) running its own tiny
+always-on model, with the heavy Google recognizer only spun up AFTER the
+hotword fires — and even then it fights OEM battery killers. That's a separate,
+larger piece of work; the app now reliably does in-app "Hey JARVIS" again.
