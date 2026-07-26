@@ -59,3 +59,9 @@ with a live transcript.
   shown and spoken via `TextToSpeech`, then listening resumes. Key comes from the
   `GEMINI_API_KEY` GitHub secret (empty ⇒ the app tells you to set it).
 - Created this memory file; will update it every prompt.
+
+### 2026-07-26 — Gemini key added, rebuild to inject it
+User added the `GEMINI_API_KEY` repository secret. The key is injected at build
+time, so the previous APK (built before the secret existed) still has an empty
+key. Pushed this commit to trigger a fresh build that bakes the key into
+`BuildConfig`; the new APK's voice loop should reach Gemini.
