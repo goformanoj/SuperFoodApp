@@ -23,10 +23,14 @@ class Speaker(context: Context) {
                 tts?.language = Locale.getDefault()
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
-                    override fun onDone(utteranceId: String?) = main.post { onDone() }
+                    override fun onDone(utteranceId: String?) {
+                        main.post { this@Speaker.onDone() }
+                    }
 
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) = main.post { onDone() }
+                    override fun onError(utteranceId: String?) {
+                        main.post { this@Speaker.onDone() }
+                    }
                 })
             }
         }
