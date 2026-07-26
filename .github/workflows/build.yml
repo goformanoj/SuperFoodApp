@@ -31,6 +31,9 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build debug APK
+        env:
+          # Injected from the repository secret; empty if the secret is unset.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload debug APK

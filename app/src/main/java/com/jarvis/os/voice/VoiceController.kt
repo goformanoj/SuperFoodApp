@@ -3,72 +3,35 @@ package com.jarvis.os.voice
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import androidx.compose.runtime.State
-import androidx.compose.runtime.mutableStateOf
 import java.util.Locale
 
 /**
- * Wraps Android's [SpeechRecognizer] and exposes a Compose [State]. Listens
- * continuously by restarting after each result / recoverable error. Must be
- * driven from the main thread (Activity lifecycle callbacks).
+ * Thin, callback-based wrapper around Android's [SpeechRecognizer]. It reports
+ * events; the caller (AssistantEngine) decides what to do — including when to
+ * restart listening. Must be driven from the main thread.
  */
 class VoiceController(private val context: Context) {
 
-    private val _state = mutableStateOf(VoiceUiState(status = "Starting…"))
-    val state: State<VoiceUiState> get() = _state
+    var onReady: () -> Unit = {}
+    var onPartial: (String) -> Unit = {}
+    var onFinal: (String) -> Unit = {}
+    var onAmplitude: (Float) -> Unit = {}
+    var onNoInput: () -> Unit = {}     // no-match / timeout / busy — caller may retry
+    var onFatal: (String) -> Unit = {} // e.g. permission missing
 
-    private val handler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
-    private var wantListening = false
 
-    fun start() {
-        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-            _state.value = _state.value.copy(
-                orb = OrbState.Error,
-                status = "Speech recognition unavailable",
-                amplitude = 0f,
-            )
-            return
-        }
-        wantListening = true
+    fun isAvailable(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
+
+    fun startListening() {
         if (recognizer == null) {
             recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
                 setRecognitionListener(listener)
             }
         }
-        beginListening()
-    }
-
-    fun stop() {
-        wantListening = false
-        handler.removeCallbacksAndMessages(null)
-        recognizer?.cancel()
-        _state.value = _state.value.copy(orb = OrbState.Idle, status = "Paused", amplitude = 0f)
-    }
-
-    fun destroy() {
-        wantListening = false
-        handler.removeCallbacksAndMessages(null)
-        recognizer?.destroy()
-        recognizer = null
-    }
-
-    fun onPermissionDenied() {
-        wantListening = false
-        _state.value = _state.value.copy(
-            orb = OrbState.Error,
-            status = "Microphone permission needed",
-            amplitude = 0f,
-        )
-    }
-
-    private fun beginListening() {
-        if (!wantListening) return
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
@@ -79,63 +42,35 @@ class VoiceController(private val context: Context) {
         }
         try {
             recognizer?.startListening(intent)
-            _state.value = _state.value.copy(orb = OrbState.Listening, status = "Listening…")
         } catch (e: Exception) {
-            _state.value = _state.value.copy(
-                orb = OrbState.Error,
-                status = "Could not start microphone",
-                amplitude = 0f,
-            )
+            onFatal("Could not start microphone")
         }
     }
 
-    private fun scheduleRestart() {
-        if (!wantListening) return
-        handler.postDelayed({
-            if (wantListening) {
-                recognizer?.cancel()
-                beginListening()
-            }
-        }, 350L)
+    fun stopListening() {
+        recognizer?.cancel()
+    }
+
+    fun destroy() {
+        recognizer?.destroy()
+        recognizer = null
     }
 
     private val listener = object : RecognitionListener {
-        override fun onReadyForSpeech(params: Bundle?) {
-            _state.value = _state.value.copy(orb = OrbState.Listening, status = "Listening…")
-        }
-
-        override fun onBeginningOfSpeech() {
-            _state.value = _state.value.copy(orb = OrbState.Listening, status = "Listening…")
-        }
-
-        override fun onRmsChanged(rmsdB: Float) {
-            val amp = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
-            _state.value = _state.value.copy(amplitude = amp)
-        }
+        override fun onReadyForSpeech(params: Bundle?) = onReady()
+        override fun onBeginningOfSpeech() {}
+        override fun onRmsChanged(rmsdB: Float) =
+            onAmplitude(((rmsdB + 2f) / 12f).coerceIn(0f, 1f))
 
         override fun onBufferReceived(buffer: ByteArray?) {}
-
-        override fun onEndOfSpeech() {
-            _state.value = _state.value.copy(
-                orb = OrbState.Thinking,
-                status = "Processing…",
-                amplitude = 0f,
-            )
-        }
+        override fun onEndOfSpeech() {}
 
         override fun onError(error: Int) {
             if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
-                wantListening = false
-                _state.value = _state.value.copy(
-                    orb = OrbState.Error,
-                    status = "Microphone permission needed",
-                    amplitude = 0f,
-                )
+                onFatal("Microphone permission needed")
                 return
             }
-            // NO_MATCH / SPEECH_TIMEOUT / BUSY etc. are normal in continuous mode.
-            _state.value = _state.value.copy(amplitude = 0f)
-            scheduleRestart()
+            onNoInput()
         }
 
         override fun onResults(results: Bundle?) {
@@ -143,10 +78,7 @@ class VoiceController(private val context: Context) {
                 ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()
                 .orEmpty()
-            if (text.isNotBlank()) {
-                _state.value = _state.value.copy(transcript = text)
-            }
-            scheduleRestart()
+            if (text.isNotBlank()) onFinal(text) else onNoInput()
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
@@ -154,13 +86,7 @@ class VoiceController(private val context: Context) {
                 ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()
                 .orEmpty()
-            if (text.isNotBlank()) {
-                _state.value = _state.value.copy(
-                    orb = OrbState.Listening,
-                    status = "Listening…",
-                    transcript = text,
-                )
-            }
+            if (text.isNotBlank()) onPartial(text)
         }
 
         override fun onEvent(eventType: Int, params: Bundle?) {}

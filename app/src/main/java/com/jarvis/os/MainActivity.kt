@@ -12,28 +12,28 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import com.jarvis.os.assistant.AssistantEngine
 import com.jarvis.os.ui.home.VoiceHome
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.JarvisTheme
-import com.jarvis.os.voice.VoiceController
 
 class MainActivity : ComponentActivity() {
 
-    private lateinit var controller: VoiceController
+    private lateinit var engine: AssistantEngine
 
     private val micPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) controller.start() else controller.onPermissionDenied()
+            engine.onMicPermission(granted)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        controller = VoiceController(applicationContext)
+        engine = AssistantEngine(applicationContext)
         setContent {
             JarvisTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Background) {
-                    val state by controller.state
+                    val state by engine.state
                     VoiceHome(state = state)
                 }
             }
@@ -42,22 +42,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        // Start listening as soon as the app is visible; ask for the mic once if needed.
-        if (hasMicPermission()) {
-            controller.start()
-        } else {
-            micPermission.launch(Manifest.permission.RECORD_AUDIO)
-        }
+        val granted = hasMicPermission()
+        engine.onMicPermission(granted)
+        engine.resume()
+        if (!granted) micPermission.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     override fun onStop() {
         super.onStop()
-        controller.stop()
+        engine.pause()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        controller.destroy()
+        engine.destroy()
     }
 
     private fun hasMicPermission(): Boolean =
