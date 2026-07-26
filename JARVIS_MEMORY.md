@@ -192,6 +192,12 @@ the old, and repeated "remove it" requests kept adding duplicates (user had 4
   target the exact event; system prompts updated: DEL to remove, DEL+ADD to
   reschedule, never add a replacement when removing.
 
+### 2026-07-26 — Redesigned launcher icon (HUD orb)
+First orb icon looked too plain. Redrew it to match the in-app HUD orb:
+segmented outer ring (6 cyan + 2 orange accent segments), dashed inner ring,
+soft middle ring, and a bright white→cyan→blue glowing core, with a faint glow
+in the background layer. Still a pure vector adaptive icon.
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach
