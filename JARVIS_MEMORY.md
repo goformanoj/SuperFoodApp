@@ -179,6 +179,19 @@ background. Files: `drawable/ic_launcher_foreground.xml` +
 manifest now sets `android:icon`/`android:roundIcon`. minSdk 26 → adaptive icon
 covers all devices, no PNGs needed.
 
+### 2026-07-26 — Calendar delete/reschedule (fix duplicate events bug)
+Bug: JARVIS could only ADD, so "reschedule" added a new event without removing
+the old, and repeated "remove it" requests kept adding duplicates (user had 4
+"seminar" copies). Fixes:
+- New command protocol (replaces add-only EventParser): `CalendarActions` parses
+  `<<CAL|ADD|Title|date|time|dur>>` and `<<CAL|DEL|Title|date|time>>` (multiple
+  per reply). Reschedule = DEL old + ADD new.
+- `CalendarReader.findMatchingEventIds` matches by title (± time window) on a
+  date; `CalendarWriter.deleteEvents` removes them via CalendarContract.
+- Grounding now lists upcoming events with dates (next 7 days) so the model can
+  target the exact event; system prompts updated: DEL to remove, DEL+ADD to
+  reschedule, never add a replacement when removing.
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach

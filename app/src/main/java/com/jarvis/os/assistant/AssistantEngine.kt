@@ -6,9 +6,10 @@ import android.os.Looper
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import com.jarvis.os.ai.Brain
+import com.jarvis.os.calendar.CalAction
+import com.jarvis.os.calendar.CalendarActions
 import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.calendar.CalendarWriter
-import com.jarvis.os.calendar.EventParser
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.ConversationStore
 import com.jarvis.os.voice.OrbState
@@ -176,14 +177,26 @@ class AssistantEngine(context: Context) {
         scope.launch {
             try {
                 val reply = Brain.generate(history, buildContext())
-                // If the model confirmed a calendar event, act on it and strip the marker.
-                val (clean, event) = EventParser.parse(reply)
-                if (event != null) {
-                    CalendarWriter.addEvent(appContext, event.title, event.startMillis, event.durationMin)
+                // Execute any calendar commands the model emitted, then strip them.
+                val (clean, actions) = CalendarActions.parse(reply)
+                val (added, deleted) = withContext(Dispatchers.IO) {
+                    var a = 0
+                    var d = 0
+                    for (action in actions) {
+                        when (action) {
+                            is CalAction.Add ->
+                                if (CalendarWriter.addEvent(appContext, action.title, action.startMillis, action.durationMin)) a++
+                            is CalAction.Delete ->
+                                d += CalendarWriter.deleteEvents(appContext, action.title, action.date, action.time)
+                        }
+                    }
+                    a to d
                 }
                 val spoken = when {
                     clean.isNotBlank() -> clean
-                    event != null -> "Okay, I've added it to your calendar."
+                    added > 0 && deleted > 0 -> "Done, I've rescheduled it."
+                    added > 0 -> "Okay, I've added it to your calendar."
+                    deleted > 0 -> "Done, I've removed it from your calendar."
                     else -> reply
                 }
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
@@ -215,18 +228,19 @@ class AssistantEngine(context: Context) {
 
     private suspend fun buildContext(): String = withContext(Dispatchers.IO) {
         val now = SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", Locale.getDefault()).format(Date())
-        val events = CalendarReader.todaysEvents(appContext)
+        val events = CalendarReader.upcomingEvents(appContext)
         val schedule = when {
             events == null ->
                 "You do NOT have calendar access yet. If asked about the schedule, tell the " +
                     "user you need calendar permission and to grant it in the app."
             events.isEmpty() ->
-                "The user's calendar has nothing scheduled for today."
+                "The user's calendar has nothing scheduled in the next 7 days."
             else ->
-                "The user's calendar today: ${events.joinToString("; ")}."
+                "Upcoming calendar events: ${events.joinToString("; ")}."
         }
         "Current date/time: $now. $schedule When asked about the schedule, use ONLY this " +
-            "real calendar data and do not invent events."
+            "real calendar data and do not invent events. When rescheduling or deleting, " +
+            "identify the exact event from this list."
     }
 
     private fun armSleep() {
