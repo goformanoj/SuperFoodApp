@@ -112,6 +112,18 @@ models: llama-3.3-70b-versatile → llama-3.1-8b-instant → gemma2-9b-it) and a
 Added `GROQ_API_KEY` BuildConfig field + workflow secret. Engine now calls
 `Brain`. User must add the `GROQ_API_KEY` repository secret, then rebuild.
 
+### 2026-07-26 — Groq works; TTS fix + Step 3 (nav, screens, orb states)
+Groq answers well (conversational replies on device). Changes:
+- **TTS fix:** Groq is so fast the reply often arrived before TextToSpeech
+  finished initializing, so speech was skipped. `Speaker` now buffers the reply
+  and speaks it once ready, with a language fallback (default → en-US).
+- **Step 3 — navigation:** self-rolled (no nav dependency). `JarvisApp` shell:
+  top-left menu → drawer with all destinations; Home = live voice screen, others
+  are themed "coming soon" placeholders; Back returns to Home; drawer highlights
+  the current screen.
+- **Orb states:** `HudOrb` accent color now follows the state — Listening=cyan,
+  Thinking=blue (and spins faster), Speaking=green, Error=red — animated between.
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach

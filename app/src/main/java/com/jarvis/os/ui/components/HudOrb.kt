@@ -1,5 +1,6 @@
 package com.jarvis.os.ui.components
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -28,26 +29,41 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.ElectricBlue
+import com.jarvis.os.ui.theme.ErrorRed
+import com.jarvis.os.ui.theme.SuccessGreen
 import com.jarvis.os.ui.theme.WarningOrange
+import com.jarvis.os.voice.OrbState
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
  * JARVIS HUD orb — concentric segmented rings, radial tick marks, an orange
- * accent arc and a reactive core. Rings rotate continuously; [amplitude]
- * (0..1, mic level) drives the glow and inner-ring intensity.
+ * accent arc and a reactive core. The accent color reflects the [orb] state
+ * (Listening/Thinking/Speaking/Error), rings rotate continuously, and
+ * [amplitude] (0..1, mic level) drives the glow and inner-ring intensity.
  */
 @Composable
 fun HudOrb(
     modifier: Modifier = Modifier,
+    orb: OrbState = OrbState.Idle,
     amplitude: Float = 0f,
     size: Dp = 300.dp,
 ) {
+    val targetAccent = when (orb) {
+        OrbState.Listening -> Cyan
+        OrbState.Thinking -> ElectricBlue
+        OrbState.Speaking -> SuccessGreen
+        OrbState.Error -> ErrorRed
+        else -> Cyan.copy(alpha = 0.75f)
+    }
+    val accent by animateColorAsState(targetAccent, tween(400), label = "accent")
+
     val transition = rememberInfiniteTransition(label = "hud")
+    val spinDuration = if (orb == OrbState.Thinking) 6000 else 14000
     val spin by transition.animateFloat(
         0f, 360f,
-        infiniteRepeatable(tween(14000, easing = LinearEasing)),
+        infiniteRepeatable(tween(spinDuration, easing = LinearEasing)),
         label = "spin",
     )
     val spin2 by transition.animateFloat(
@@ -72,7 +88,7 @@ fun HudOrb(
             val glowR = r * (0.85f + amp * 0.18f)
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(Cyan.copy(alpha = 0.18f + amp * 0.35f), Color.Transparent),
+                    colors = listOf(accent.copy(alpha = 0.18f + amp * 0.35f), Color.Transparent),
                     center = c,
                     radius = glowR,
                 ),
@@ -90,7 +106,7 @@ fun HudOrb(
                 val ca = cos(a)
                 val sa = sin(a)
                 drawLine(
-                    color = Cyan.copy(alpha = if (longTick) 0.85f else 0.35f),
+                    color = accent.copy(alpha = if (longTick) 0.85f else 0.35f),
                     start = Offset(c.x + ca * rIn, c.y + sa * rIn),
                     end = Offset(c.x + ca * rOut, c.y + sa * rOut),
                     strokeWidth = if (longTick) 2.5.dp.toPx() else 1.dp.toPx(),
@@ -99,7 +115,7 @@ fun HudOrb(
 
             // Outer ring
             drawCircle(
-                color = Cyan.copy(alpha = 0.5f),
+                color = accent.copy(alpha = 0.5f),
                 radius = r * 0.97f,
                 center = c,
                 style = Stroke(1.5.dp.toPx()),
@@ -113,7 +129,7 @@ fun HudOrb(
                 val sweep = step - 6f
                 for (i in 0 until segs) {
                     drawArc(
-                        color = Cyan.copy(alpha = 0.55f),
+                        color = accent.copy(alpha = 0.55f),
                         startAngle = i * step,
                         sweepAngle = sweep,
                         useCenter = false,
@@ -124,7 +140,7 @@ fun HudOrb(
                 }
             }
 
-            // Orange accent arcs
+            // Orange accent arcs (JARVIS signature)
             val accR = r * 0.86f
             rotate(spin2, c) {
                 drawArc(
@@ -164,7 +180,7 @@ fun HudOrb(
                 val sweep = step * 0.5f
                 for (i in 0 until segs) {
                     drawArc(
-                        color = Cyan.copy(alpha = 0.4f),
+                        color = accent.copy(alpha = 0.4f),
                         startAngle = i * step,
                         sweepAngle = sweep,
                         useCenter = false,
@@ -180,7 +196,7 @@ fun HudOrb(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Cyan.copy(alpha = 0.5f),
+                        accent.copy(alpha = 0.5f),
                         ElectricBlue.copy(alpha = 0.15f),
                         Color.Transparent,
                     ),
@@ -195,7 +211,7 @@ fun HudOrb(
         Text(
             text = "J.A.R.V.I.S.",
             style = MaterialTheme.typography.headlineSmall,
-            color = Cyan,
+            color = accent,
         )
     }
 }

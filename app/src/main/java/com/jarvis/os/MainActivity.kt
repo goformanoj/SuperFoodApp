@@ -13,7 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.jarvis.os.assistant.AssistantEngine
-import com.jarvis.os.ui.home.VoiceHome
+import com.jarvis.os.ui.home.JarvisApp
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.JarvisTheme
 
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
             JarvisTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Background) {
                     val state by engine.state
-                    VoiceHome(state = state)
+                    JarvisApp(state = state)
                 }
             }
         }

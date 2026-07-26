@@ -1,5 +1,6 @@
 package com.jarvis.os.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,8 +44,11 @@ import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.jarvis.os.ui.components.HudOrb
 import com.jarvis.os.ui.theme.Background
@@ -71,20 +76,19 @@ import com.jarvis.os.voice.VoiceUiState
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-private data class DrawerDest(val label: String, val icon: ImageVector)
-
-private val drawerDestinations = listOf(
-    DrawerDest("Home", Icons.Filled.Home),
-    DrawerDest("Speech", Icons.Filled.Mic),
-    DrawerDest("Chat", Icons.Filled.Forum),
-    DrawerDest("Memory", Icons.Filled.Memory),
-    DrawerDest("Files", Icons.Filled.Folder),
-    DrawerDest("Calendar", Icons.Filled.CalendarMonth),
-    DrawerDest("Vision", Icons.Filled.Visibility),
-    DrawerDest("Automation", Icons.Filled.Bolt),
-    DrawerDest("Skills", Icons.Filled.Extension),
-    DrawerDest("Settings", Icons.Filled.Settings),
-)
+/** Drawer destinations. Home is the live voice screen; the rest are placeholders. */
+private enum class Dest(val label: String, val icon: ImageVector, val blurb: String) {
+    Home("Home", Icons.Filled.Home, ""),
+    Speech("Speech", Icons.Filled.Mic, "Voice and speech options."),
+    Chat("Chat", Icons.Filled.Forum, "A terminal-style history of your conversation."),
+    Memory("Memory", Icons.Filled.Memory, "Reminders, projects, and what JARVIS remembers."),
+    Files("Files", Icons.Filled.Folder, "Browse and act on your files."),
+    Calendar("Calendar", Icons.Filled.CalendarMonth, "Your schedule and events."),
+    Vision("Vision", Icons.Filled.Visibility, "Let JARVIS see and understand your screen."),
+    Automation("Automation", Icons.Filled.Bolt, "Automate taps, typing, and actions."),
+    Skills("Skills", Icons.Filled.Extension, "Plugins and extra abilities."),
+    Settings("Settings", Icons.Filled.Settings, "Preferences and configuration."),
+}
 
 private data class Task(val title: String, val time: String, val accent: Color)
 
@@ -95,34 +99,37 @@ private val sampleTasks = listOf(
 )
 
 /**
- * Voice-first home. A menu button (top-left) opens the module drawer. The orb
- * fills the first screen; the schedule sits below it (scroll down to reach it).
+ * App shell: a top-left menu opens the module drawer. Home shows the live voice
+ * screen; other destinations show themed placeholders. Back returns to Home.
  */
 @Composable
-fun VoiceHome(state: VoiceUiState, modifier: Modifier = Modifier) {
+fun JarvisApp(state: VoiceUiState, modifier: Modifier = Modifier) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    var current by remember { mutableStateOf(Dest.Home) }
+
+    if (current != Dest.Home) {
+        BackHandler { current = Dest.Home }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            JarvisDrawer(onItemClick = { scope.launch { drawerState.close() } })
+            JarvisDrawer(
+                selected = current,
+                onSelect = {
+                    current = it
+                    scope.launch { drawerState.close() }
+                },
+            )
         },
     ) {
         Box(modifier = modifier.fillMaxSize().background(Background)) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val viewport = maxHeight
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    HeroSection(state = state, height = viewport)
-                    ScheduleSection()
-                }
+            when (current) {
+                Dest.Home -> HomeContent(state)
+                else -> PlaceholderScreen(current)
             }
 
-            // Menu button pinned to the top-left corner.
             Icon(
                 imageVector = Icons.Filled.Menu,
                 contentDescription = "Open menu",
@@ -141,7 +148,22 @@ fun VoiceHome(state: VoiceUiState, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun HeroSection(state: VoiceUiState, height: androidx.compose.ui.unit.Dp) {
+private fun HomeContent(state: VoiceUiState) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val viewport = maxHeight
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            HeroSection(state = state, height = viewport)
+            ScheduleSection()
+        }
+    }
+}
+
+@Composable
+private fun HeroSection(state: VoiceUiState, height: Dp) {
     val greeting = remember { greetingForHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
 
     Column(
@@ -162,7 +184,7 @@ private fun HeroSection(state: VoiceUiState, height: androidx.compose.ui.unit.Dp
         )
 
         Spacer(Modifier.height(28.dp))
-        HudOrb(amplitude = state.amplitude, size = 280.dp)
+        HudOrb(orb = state.orb, amplitude = state.amplitude, size = 280.dp)
         Spacer(Modifier.height(24.dp))
 
         Text(state.status, style = MaterialTheme.typography.labelLarge, color = statusColor(state.orb))
@@ -204,7 +226,32 @@ private fun ScheduleSection() {
 }
 
 @Composable
-private fun JarvisDrawer(onItemClick: () -> Unit) {
+private fun PlaceholderScreen(dest: Dest) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(dest.icon, contentDescription = null, tint = Cyan, modifier = Modifier.size(64.dp))
+        Spacer(Modifier.height(20.dp))
+        Text(dest.label, style = MaterialTheme.typography.displayMedium, color = TextPrimary)
+        Spacer(Modifier.height(10.dp))
+        Text("COMING SOON", style = MaterialTheme.typography.labelSmall, color = Cyan)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = dest.blurb,
+            style = MaterialTheme.typography.bodyLarge,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
     ModalDrawerSheet(drawerContainerColor = Surface) {
         Spacer(Modifier.height(28.dp))
         Text(
@@ -222,11 +269,11 @@ private fun JarvisDrawer(onItemClick: () -> Unit) {
         HorizontalDivider(color = GlassBorder)
         Spacer(Modifier.height(8.dp))
 
-        drawerDestinations.forEach { dest ->
+        Dest.entries.forEach { dest ->
             NavigationDrawerItem(
                 label = { Text(dest.label, style = MaterialTheme.typography.titleMedium) },
-                selected = dest.label == "Home",
-                onClick = onItemClick,
+                selected = dest == selected,
+                onClick = { onSelect(dest) },
                 icon = { Icon(dest.icon, contentDescription = dest.label) },
                 colors = NavigationDrawerItemDefaults.colors(
                     selectedContainerColor = SurfaceGlass,
@@ -289,7 +336,8 @@ private fun TaskRow(task: Task) {
 
 private fun statusColor(orb: OrbState): Color = when (orb) {
     OrbState.Listening -> Cyan
-    OrbState.Thinking, OrbState.Speaking -> ElectricBlue
+    OrbState.Thinking -> ElectricBlue
+    OrbState.Speaking -> SuccessGreen
     OrbState.Error -> ErrorRed
     else -> TextSecondary
 }
@@ -302,15 +350,15 @@ private fun greetingForHour(hour: Int): String = when {
 
 @Preview(showBackground = true, backgroundColor = 0xFF050B18)
 @Composable
-private fun VoiceHomePreview() {
+private fun JarvisAppPreview() {
     JarvisTheme {
-        VoiceHome(
+        JarvisApp(
             VoiceUiState(
-                orb = OrbState.Listening,
-                status = "Listening…",
-                transcript = "What's the weather today",
-                reply = "It's sunny and 24 degrees.",
-                amplitude = 0.5f,
+                orb = OrbState.Speaking,
+                status = "Speaking…",
+                transcript = "What's the capital of Japan",
+                reply = "Tokyo is the capital of Japan.",
+                amplitude = 0.4f,
             ),
         )
     }
