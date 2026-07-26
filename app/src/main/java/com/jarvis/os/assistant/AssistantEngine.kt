@@ -59,6 +59,9 @@ class AssistantEngine(context: Context) {
     private var micGranted = false
     private var visible = false
     private var busy = false // thinking or speaking — do not listen
+    // A screen action (open app / tap) to run AFTER JARVIS finishes speaking, so
+    // the spoken reply isn't cut off when the screen switches away.
+    private var pendingScreen: ScreenActions.Plan? = null
 
     init {
         voice.onReady = { if (!busy) set { it.copy(orb = OrbState.Listening, status = "Listening…") } }
@@ -129,6 +132,7 @@ class AssistantEngine(context: Context) {
 
     private fun ask(userText: String) {
         busy = true
+        pendingScreen = null
         voice.stopListening()
         main.removeCallbacksAndMessages(null)
 
@@ -167,17 +171,20 @@ class AssistantEngine(context: Context) {
                     }
                     a to d
                 }
-                val screen = withContext(Dispatchers.IO) { executeScreen(plan) }
+                // Decide what to SAY now, but defer any app switch until after we
+                // finish speaking (run in onSpokenDone) so the reply isn't cut off.
+                val needsPerm = plan.tapLabel != null && !ScreenControlService.isRunning()
                 val spoken = when {
-                    screen == ScreenOutcome.NEEDS_PERMISSION ->
+                    needsPerm ->
                         "To control the screen, open Accessibility settings, go to Downloaded apps, and switch on JARVIS Screen Control, then ask me again."
                     clean.isNotBlank() -> clean
                     added > 0 && deleted > 0 -> "Done, I've rescheduled it."
                     added > 0 -> "Okay, I've added it to your calendar."
                     deleted > 0 -> "Done, I've removed it from your calendar."
-                    screen == ScreenOutcome.DISPATCHED -> "On it."
+                    plan.hasAction -> "On it."
                     else -> reply
                 }
+                pendingScreen = if (plan.hasAction) plan else null
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
                 set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = spoken) }
                 speaker.speak(spoken)
@@ -191,6 +198,15 @@ class AssistantEngine(context: Context) {
 
     private fun onSpokenDone() {
         busy = false
+        // Speaking is finished — now carry out any screen action (open app / tap /
+        // send to Settings). Doing it here means JARVIS completes its sentence
+        // before the screen switches. If it launches an app we get backgrounded,
+        // and resume() restarts listening when the user returns.
+        val plan = pendingScreen
+        pendingScreen = null
+        if (plan != null) {
+            scope.launch { withContext(Dispatchers.IO) { executeScreen(plan) } }
+        }
         if (visible && micGranted) {
             listen()
         } else {

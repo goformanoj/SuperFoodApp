@@ -374,3 +374,12 @@ User screenshot: asked a question by voice, it was heard and answered (Speaking)
 - **Realme a11y location:** Screen control lives under Settings > Accessibility &
   convenience > Accessibility > General tab > "Downloaded apps" > JARVIS Screen
   Control. Updated the spoken NEEDS_PERMISSION guidance to name "Downloaded apps".
+
+### 2026-07-26 — Speak first, THEN switch apps (don't cut off the reply)
+User: opening WhatsApp works, but JARVIS's spoken reply gets cut off because the
+screen switches before it finishes talking. Fix: the screen action (open app /
+tap / send-to-Settings) is now DEFERRED until after TTS completes. ask() decides
+what to say and stashes the plan in `pendingScreen`; `onSpokenDone()` runs it
+once speaking finishes, so JARVIS says "Opening WhatsApp" fully, then opens it.
+Needs-permission message is decided up front via a ScreenControlService.isRunning
+pre-check (executeScreen no longer runs before speaking).
