@@ -218,6 +218,15 @@ in the background layer. Still a pure vector adaptive icon.
   true always-on wake detection without a dedicated engine; smoothing that fully
   would need something like Porcupine (future).
 
+### 2026-07-26 — Conversational quality: honesty + capabilities in prompt
+User clarified "smoother" = better conversation, not latency: ask relevant
+clarifying questions, don't lose context, and be honest when it can't do
+something. Rewrote both system prompts to state explicit CAN (chat, read/add/
+delete/reschedule calendar) and CANNOT-yet (alarms/reminders, texting, calls,
+opening apps, media, screen vision) capabilities, with a rule to never pretend
+or claim an action it didn't perform, plus ask one short clarifying question
+when a detail is missing. Prompts are now triple-quoted `val`s (not const).
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach
