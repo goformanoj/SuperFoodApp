@@ -8,7 +8,7 @@ There is no local build required — every build runs on GitHub Actions.
 
 - **Stack:** Kotlin, Jetpack Compose, Material 3
 - **Android Gradle Plugin:** 9.1.0 (built-in Kotlin support)
-- **Gradle:** 9.1.0 · **JDK:** 17
+- **Gradle:** 9.3.1 (AGP 9.1.0 requires 9.3.1+) · **JDK:** 17
 - **SDK:** compileSdk 36, targetSdk 36, minSdk 26
 - **Application ID:** `com.jarvis.os`
 
