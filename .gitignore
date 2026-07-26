@@ -10,10 +10,19 @@ local.properties
 captures/
 .cxx/
 
-# Keystore / secrets
+# Keystore / secrets — NEVER commit these (repo is public)
 *.keystore
 *.jks
 keystore.properties
+secrets.properties
+apikeys.properties
+gemini.properties
+*.env
+.env
+.env.*
+google-services.json
+# The Gemini API key is injected at build time from a GitHub Actions secret,
+# never stored in the repo.
 
 # OS
 .DS_Store
