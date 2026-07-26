@@ -363,3 +363,14 @@ machinery and rebuilt the simple, proven loop from before:
 - Kept everything valuable: conversation memory, calendar add/delete/reschedule,
   and screen control (open app / tap). Deleted `WakeWord.kt`.
 This restores the reliable behavior and keeps the features built since.
+
+### 2026-07-26 — Voice rebuild CONFIRMED working + 2 small screen-control fixes
+User screenshot: asked a question by voice, it was heard and answered (Speaking)
+— the rebuilt always-on loop works. Two follow-ups:
+- **Resume bug:** after JARVIS sent the user to Accessibility settings, returning
+  to the app didn't resume listening — the `busy` flag stayed true (TTS was cut
+  by backgrounding so onSpokenDone never fired). Fix: `resume()` now clears
+  `busy` and always re-listens on foreground.
+- **Realme a11y location:** Screen control lives under Settings > Accessibility &
+  convenience > Accessibility > General tab > "Downloaded apps" > JARVIS Screen
+  Control. Updated the spoken NEEDS_PERMISSION guidance to name "Downloaded apps".

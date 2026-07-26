@@ -83,7 +83,12 @@ class AssistantEngine(context: Context) {
 
     fun resume() {
         visible = true
-        if (micGranted && !busy) listen()
+        // Coming back to the foreground (e.g. after being sent to Settings) — any
+        // interrupted think/speak is abandoned, so clear busy and start listening
+        // again. Without this the "busy" flag could stay stuck and it never
+        // resumes hearing you.
+        busy = false
+        if (micGranted) listen()
     }
 
     fun pause() {
@@ -165,7 +170,7 @@ class AssistantEngine(context: Context) {
                 val screen = withContext(Dispatchers.IO) { executeScreen(plan) }
                 val spoken = when {
                     screen == ScreenOutcome.NEEDS_PERMISSION ->
-                        "To control the screen, switch JARVIS on under Accessibility in Settings, then ask me again."
+                        "To control the screen, open Accessibility settings, go to Downloaded apps, and switch on JARVIS Screen Control, then ask me again."
                     clean.isNotBlank() -> clean
                     added > 0 && deleted > 0 -> "Done, I've rescheduled it."
                     added > 0 -> "Okay, I've added it to your calendar."
