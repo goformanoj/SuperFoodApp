@@ -334,3 +334,15 @@ them / the orb never reacts. Two causes addressed:
 - **Note:** the same symptom also appears if the old background-service build is
   still installed (two recognizers fighting the mic). Getting onto this clean
   build is part of the cure.
+
+### 2026-07-26 — Fix "hears the command but never responds"
+Symptom (screenshots): "Hey JARVIS" -> "Yes?" works, then the follow-up command
+is heard (transcript shows it) but JARVIS stays on "Listening…" and never
+answers. Root cause: the app reused ONE SpeechRecognizer instance across turns.
+After `cancel()` (which fires when JARVIS speaks "Yes?"), many devices return
+only PARTIAL results on the next session and never deliver a final — so ask()
+is never called. Fix: `stopListening()` now fully destroys the recognizer so the
+next turn builds a fresh instance. (Earlier "known-good" was tap-to-speak =
+fresh recognizer per tap, so it never hit this; continuous wake-word listening
+exposed it.) This is the real regression behind the recent voice trouble, not
+the background service itself.

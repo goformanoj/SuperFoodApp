@@ -78,7 +78,24 @@ class VoiceController(private val context: Context) {
     }
 
     fun stopListening() {
-        recognizer?.cancel()
+        // Fully tear the recogniser down so the NEXT session starts on a fresh
+        // instance. Reusing one instance across cancel/restart cycles makes many
+        // devices return only partial results (never a final) on later turns —
+        // i.e. it "hears" you but never responds. A new instance per turn avoids
+        // that. The earcon is muted, so the extra start makes no extra noise.
+        recognizer?.let {
+            try {
+                it.cancel()
+            } catch (e: Exception) {
+                // ignore
+            }
+            try {
+                it.destroy()
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+        recognizer = null
         unmuteEarcon()
     }
 
