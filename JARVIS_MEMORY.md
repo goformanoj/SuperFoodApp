@@ -461,3 +461,15 @@ Two fixes:
   after every task, so it repeated that line constantly (even to a bare "Jarvis").
   Rewrote both prompts: keep replies natural/varied, don't repeat that phrase, and
   reply briefly (e.g. "Yes?") to a bare name/greeting.
+
+### 2026-07-26 — Scroll fix take 2 (only scroll DOWN-capable nodes) + natural spoken replies
+Still scrolled sideways because isVertical() misclassified WhatsApp's full-screen
+tab pager as vertical (tall + no directional action -> height>width fallback said
+vertical), then ACTION_SCROLL_FORWARD moved it right. New approach: scrollForward
+only ever scrolls the largest node that EXPLICITLY supports ACTION_SCROLL_DOWN
+(guaranteed vertical) on API 30+; if none, don't scroll. Older APIs use a strict
+list-shape fallback.
+Also: JARVIS kept saying "On it" for every screen command because the model
+emitted only the <<OPEN|..>>/<<TAP|..>> markers and no spoken text (clean was
+blank -> "On it" fallback). Prompt now tells it to ALWAYS include a short, varied,
+natural spoken sentence alongside the markers, so the user hears real replies.
