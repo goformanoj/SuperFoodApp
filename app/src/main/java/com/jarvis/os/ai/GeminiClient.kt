@@ -39,7 +39,12 @@ object GeminiClient {
             "DEL line — never add a replacement. Use the provided upcoming events to find " +
             "the exact current title/date/time. Ask one short follow-up only if you cannot " +
             "identify the event or are missing the new time. Never output a command before " +
-            "the user confirms; keep your spoken reply short and natural."
+            "the user confirms; keep your spoken reply short and natural. " +
+            "This is a continuing conversation — use the prior turns for context and do " +
+            "not act as if you have no memory. After completing a task, briefly confirm it " +
+            "and ask if there's anything else. When the user indicates they are done " +
+            "(e.g. 'no', 'nothing', 'that's all', 'thanks'), give a short sign-off and " +
+            "append <<END>> on its own line (never read it aloud)."
 
     fun hasKey(): Boolean = BuildConfig.GEMINI_API_KEY.isNotBlank()
 

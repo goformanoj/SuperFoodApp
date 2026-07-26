@@ -52,6 +52,7 @@ class AssistantEngine(context: Context) {
     private var visible = false
     private var busy = false  // thinking or speaking — do not listen
     private var awake = false // in an active conversation (wake word heard)
+    private var endAfterSpeak = false // model signalled the conversation is over
 
     private val sleepRunnable = Runnable { goToSleep() }
 
@@ -176,7 +177,10 @@ class AssistantEngine(context: Context) {
         val history = conversation.takeLast(MAX_CONTEXT_TURNS)
         scope.launch {
             try {
-                val reply = Brain.generate(history, buildContext())
+                val raw = Brain.generate(history, buildContext())
+                // The model appends <<END>> when the conversation is finished.
+                val wantsEnd = raw.contains("<<END>>", ignoreCase = true)
+                val reply = raw.replace("<<END>>", "", ignoreCase = true)
                 // Execute any calendar commands the model emitted, then strip them.
                 val (clean, actions) = CalendarActions.parse(reply)
                 val (added, deleted) = withContext(Dispatchers.IO) {
@@ -200,6 +204,7 @@ class AssistantEngine(context: Context) {
                     else -> reply
                 }
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
+                endAfterSpeak = wantsEnd
                 set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = spoken) }
                 speaker.speak(spoken)
             } catch (e: Exception) {
@@ -212,6 +217,12 @@ class AssistantEngine(context: Context) {
 
     private fun onSpokenDone() {
         busy = false
+        if (endAfterSpeak) {
+            // Conversation is over — drop back to the wake-word (asleep) state.
+            endAfterSpeak = false
+            awake = false
+            set { it.copy(transcript = "", reply = "") }
+        }
         if (visible && micGranted) {
             listen()
         } else {
@@ -263,7 +274,7 @@ class AssistantEngine(context: Context) {
 
     private companion object {
         const val WAKE_HINT = "Say \"Hey JARVIS\""
-        const val SLEEP_MS = 18_000L
+        const val SLEEP_MS = 30_000L
         const val MAX_CONTEXT_TURNS = 20 // turns sent to the AI as context
         const val MAX_STORED_TURNS = 200 // turns kept on disk
 

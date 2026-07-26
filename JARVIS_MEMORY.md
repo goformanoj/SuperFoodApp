@@ -198,6 +198,16 @@ segmented outer ring (6 cyan + 2 orange accent segments), dashed inner ring,
 soft middle ring, and a bright white→cyan→blue glowing core, with a faint glow
 in the background layer. Still a pure vector adaptive icon.
 
+### 2026-07-26 — Conversation flow: longer awake window + graceful end
+- Bumped the awake timeout 18s → 30s so multi-turn exchanges don't sleep too
+  soon (the "it forgets" feeling was partly the short window; history was always
+  sent — reinforced that in the prompt too).
+- Model can append `<<END>>` when the user is done ("no", "that's all", …). The
+  engine strips it, speaks the sign-off, then drops back to the asleep
+  (wake-word) state. Prompts also ask it to say "anything else?" after a task.
+- Note: calendar edits can take a couple minutes to reflect due to Google
+  Calendar sync — not an app bug.
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach
