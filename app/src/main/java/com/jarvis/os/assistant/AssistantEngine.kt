@@ -21,7 +21,6 @@ import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.VoiceController
 import com.jarvis.os.voice.VoiceUiState
-import com.jarvis.os.voice.WakeWord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,11 +32,14 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Orchestrates the assistant loop with a wake word and memory:
- *   asleep (listening only for "Hey JARVIS") -> awake -> think -> speak -> ...
- * Keeps a persisted conversation and sends recent turns + a grounding context
- * (today's date and tasks) to the AI. Owns the single [VoiceUiState] the UI
- * observes; driven from the Activity lifecycle.
+ * Orchestrates the assistant loop:
+ *   listen (SpeechRecognizer) -> think (Groq) -> speak (TextToSpeech) -> listen…
+ *
+ * Deliberately simple and always-on: while the screen is visible it just listens,
+ * answers, and listens again — no wake word, no "are you there" hand-off. It
+ * keeps a persisted conversation for context and can act on the calendar and the
+ * screen. Owns the single [VoiceUiState] the UI observes; driven from the
+ * Activity lifecycle (onMicPermission / resume / pause / destroy).
  */
 class AssistantEngine(context: Context) {
 
@@ -48,9 +50,6 @@ class AssistantEngine(context: Context) {
     private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
     val state: State<VoiceUiState> get() = _state
 
-    /** Called when the conversation ends (used by the overlay to close itself). */
-    var onConversationEnd: () -> Unit = {}
-
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -59,28 +58,17 @@ class AssistantEngine(context: Context) {
 
     private var micGranted = false
     private var visible = false
-    private var busy = false  // thinking or speaking — do not listen
-    private var awake = false // in an active conversation (wake word heard)
-    private var endAfterSpeak = false // model signalled the conversation is over
-
-    private val sleepRunnable = Runnable { goToSleep() }
+    private var busy = false // thinking or speaking — do not listen
 
     init {
-        voice.onReady = {
-            if (!busy) {
-                if (awake) set { it.copy(orb = OrbState.Listening, status = "Listening…") }
-                else set { it.copy(orb = OrbState.Idle, status = WAKE_HINT) }
-            }
-        }
+        voice.onReady = { if (!busy) set { it.copy(orb = OrbState.Listening, status = "Listening…") } }
         voice.onPartial = { text ->
-            if (!busy && awake) {
-                set { it.copy(orb = OrbState.Listening, status = "Listening…", transcript = text) }
-            }
+            if (!busy) set { it.copy(orb = OrbState.Listening, status = "Listening…", transcript = text) }
         }
         voice.onAmplitude = { amp -> if (!busy) set { it.copy(amplitude = amp) } }
         voice.onNoInput = { restartSoon() }
         voice.onFatal = { msg -> set { it.copy(orb = OrbState.Error, status = msg, amplitude = 0f) } }
-        voice.onFinal = { text -> onFinalTranscript(text) }
+        voice.onFinal = { text -> ask(text) }
         speaker.onDone = { onSpokenDone() }
     }
 
@@ -98,17 +86,8 @@ class AssistantEngine(context: Context) {
         if (micGranted && !busy) listen()
     }
 
-    /** Start already awake (used when launched by the background wake word). */
-    fun wakeUp(command: String?) {
-        micGranted = true
-        visible = true
-        awake = true
-        if (!command.isNullOrBlank()) ask(command) else listen()
-    }
-
     fun pause() {
         visible = false
-        awake = false
         main.removeCallbacksAndMessages(null)
         voice.stopListening()
         speaker.stop()
@@ -134,46 +113,13 @@ class AssistantEngine(context: Context) {
             return
         }
         busy = false
-        if (awake) {
-            set { it.copy(orb = OrbState.Listening, status = "Listening…", amplitude = 0f) }
-            armSleep()
-        } else {
-            set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, amplitude = 0f) }
-        }
-        voice.startListening(snappy = awake)
+        set { it.copy(orb = OrbState.Listening, status = "Listening…", amplitude = 0f) }
+        voice.startListening()
     }
 
     private fun restartSoon() {
         if (!visible || busy || !micGranted) return
-        // Give the recogniser time to fully release before restarting; too tight a
-        // loop causes "busy" errors (and a machine-gun restart cycle).
-        main.postDelayed({ if (visible && !busy && micGranted) voice.startListening(snappy = awake) }, RESTART_MS)
-    }
-
-    private fun onFinalTranscript(text: String) {
-        if (awake) {
-            cancelSleep()
-            ask(text)
-            return
-        }
-        val command = WakeWord.extractCommand(text)
-        if (command == null) {
-            // No wake word — stay asleep and keep listening for it.
-            set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, transcript = "", amplitude = 0f) }
-            restartSoon()
-        } else {
-            awake = true
-            if (command.isBlank()) respondAck() else ask(command)
-        }
-    }
-
-    private fun respondAck() {
-        busy = true
-        voice.stopListening()
-        main.removeCallbacksAndMessages(null)
-        val ack = "Yes?"
-        set { it.copy(orb = OrbState.Speaking, status = "Speaking…", transcript = "Hey JARVIS", reply = ack, amplitude = 0f) }
-        speaker.speak(ack)
+        main.postDelayed({ if (visible && !busy && micGranted) voice.startListening() }, RESTART_MS)
     }
 
     private fun ask(userText: String) {
@@ -197,10 +143,9 @@ class AssistantEngine(context: Context) {
         scope.launch {
             try {
                 val raw = Brain.generate(history, buildContext())
-                // The model appends <<END>> when the conversation is finished.
-                val wantsEnd = raw.contains("<<END>>", ignoreCase = true)
+                // Strip any leftover end-marker the model may add; we simply keep listening.
                 val reply = raw.replace("<<END>>", "", ignoreCase = true)
-                // Strip the two command families out of the reply, then execute them.
+                // Pull out and run the two command families (calendar + screen).
                 val (afterCal, actions) = CalendarActions.parse(reply)
                 val plan = ScreenActions.parse(afterCal)
                 val clean = plan.clean
@@ -229,7 +174,6 @@ class AssistantEngine(context: Context) {
                     else -> reply
                 }
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
-                endAfterSpeak = wantsEnd
                 set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = spoken) }
                 speaker.speak(spoken)
             } catch (e: Exception) {
@@ -242,12 +186,6 @@ class AssistantEngine(context: Context) {
 
     private fun onSpokenDone() {
         busy = false
-        if (endAfterSpeak) {
-            // Conversation is over — drop back to the wake-word (asleep) state.
-            endAfterSpeak = false
-            awake = false
-            set { it.copy(transcript = "", reply = "") }
-        }
         if (visible && micGranted) {
             listen()
         } else {
@@ -283,12 +221,11 @@ class AssistantEngine(context: Context) {
 
     /**
      * Runs any screen-control actions the model asked for: opens an app and/or
-     * taps a visible control. Requires the accessibility service to be enabled;
-     * if it isn't, we send the user to the settings screen and report back.
+     * taps a visible control. Opening an app needs no special permission; tapping
+     * needs the accessibility service — if it's off, send the user to settings.
      */
     private fun executeScreen(plan: ScreenActions.Plan): ScreenOutcome {
         if (!plan.hasAction) return ScreenOutcome.NONE
-        // Opening an app needs no special permission; tapping needs the a11y service.
         if (plan.tapLabel != null && !ScreenControlService.isRunning()) {
             openAccessibilitySettings()
             return ScreenOutcome.NEEDS_PERMISSION
@@ -313,29 +250,12 @@ class AssistantEngine(context: Context) {
         }
     }
 
-    private fun armSleep() {
-        main.removeCallbacks(sleepRunnable)
-        main.postDelayed(sleepRunnable, SLEEP_MS)
-    }
-
-    private fun cancelSleep() {
-        main.removeCallbacks(sleepRunnable)
-    }
-
-    private fun goToSleep() {
-        awake = false
-        set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, transcript = "", reply = "", amplitude = 0f) }
-        onConversationEnd()
-    }
-
     private fun set(block: (VoiceUiState) -> VoiceUiState) {
         _state.value = block(_state.value)
     }
 
     private companion object {
-        const val WAKE_HINT = "Say \"Hey JARVIS\""
-        const val RESTART_MS = 600L // gap before restarting the recogniser
-        const val SLEEP_MS = 30_000L
+        const val RESTART_MS = 400L // gap before restarting the recogniser after no input
         const val MAX_CONTEXT_TURNS = 20 // turns sent to the AI as context
         const val MAX_STORED_TURNS = 200 // turns kept on disk
     }

@@ -346,3 +346,20 @@ next turn builds a fresh instance. (Earlier "known-good" was tap-to-speak =
 fresh recognizer per tap, so it never hit this; continuous wake-word listening
 exposed it.) This is the real regression behind the recent voice trouble, not
 the background service itself.
+
+### 2026-07-26 — Voice input REBUILT from scratch (back to the version that worked)
+The wake-word layer had made voice input unreliable ("Hey JARVIS" heard, "Yes?"
+said, but the follow-up command was heard yet never answered). Root cause: the
+command path listened differently from the wake path — a spoken "Yes?" hand-off
+plus an aggressive 900ms silence timeout — and that combination never finalized
+on the user's device. Per the user's request, deleted the whole wake-word voice
+machinery and rebuilt the simple, proven loop from before:
+- **VoiceController**: minimal recognizer intent (no custom silence-timeout
+  hints — those were the culprit), reused instance, earcon streams still muted so
+  continuous listening doesn't beep.
+- **AssistantEngine**: plain always-on loop — listen -> think (Groq) -> speak ->
+  listen. No wake word, no "Yes?", no awake/asleep state, no sleep timers, no
+  snappy/patient split, no `<<END>>` sleep behavior (marker still stripped).
+- Kept everything valuable: conversation memory, calendar add/delete/reschedule,
+  and screen control (open app / tap). Deleted `WakeWord.kt`.
+This restores the reliable behavior and keeps the features built since.

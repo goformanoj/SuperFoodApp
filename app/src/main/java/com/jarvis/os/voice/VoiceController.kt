@@ -10,9 +10,12 @@ import android.speech.SpeechRecognizer
 import java.util.Locale
 
 /**
- * Thin, callback-based wrapper around Android's [SpeechRecognizer]. It reports
- * events; the caller (AssistantEngine) decides what to do — including when to
- * restart listening. Must be driven from the main thread.
+ * Thin, callback-based wrapper around Android's [SpeechRecognizer]. Deliberately
+ * simple: it uses the recogniser's own default end-of-speech timing (custom
+ * silence-timeout hints proved unreliable on some devices), reports events, and
+ * lets the caller decide when to restart. The one extra is muting the recogniser
+ * "earcon" while listening so continuous listening doesn't beep every session.
+ * Must be driven from the main thread.
  */
 class VoiceController(private val context: Context) {
 
@@ -20,19 +23,13 @@ class VoiceController(private val context: Context) {
     var onPartial: (String) -> Unit = {}
     var onFinal: (String) -> Unit = {}
     var onAmplitude: (Float) -> Unit = {}
-    var onNoInput: () -> Unit = {}     // no-match / timeout / busy — caller may retry
+    var onNoInput: () -> Unit = {}     // no-match / timeout — caller may retry
     var onFatal: (String) -> Unit = {} // e.g. permission missing
 
     private var recognizer: SpeechRecognizer? = null
 
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var beepMuted = false
-
-    // The recognizer plays a start/stop "earcon" every session, and there is no
-    // API flag to disable it. In wake-word mode we restart constantly, so it
-    // machine-guns. Mute the streams the earcon plays on while listening, and
-    // restore them the moment we stop (before JARVIS speaks — the two never
-    // overlap, so its voice stays audible).
     private val earconStreams = intArrayOf(
         AudioManager.STREAM_MUSIC,
         AudioManager.STREAM_SYSTEM,
@@ -41,13 +38,7 @@ class VoiceController(private val context: Context) {
 
     fun isAvailable(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
 
-    /**
-     * @param snappy when true (an active conversation) end the turn quickly after
-     * the user stops talking; when false (idle, waiting for the wake word) let the
-     * session run on the recogniser's default longer timeouts so it stays up and
-     * actually catches "Hey JARVIS" instead of restarting every second.
-     */
-    fun startListening(snappy: Boolean = false) {
+    fun startListening() {
         muteEarcon()
         if (recognizer == null) {
             recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
@@ -62,12 +53,6 @@ class VoiceController(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-            if (snappy) {
-                // In-conversation: respond sooner after the user stops talking.
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 900)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800)
-            }
         }
         try {
             recognizer?.startListening(intent)
@@ -78,24 +63,7 @@ class VoiceController(private val context: Context) {
     }
 
     fun stopListening() {
-        // Fully tear the recogniser down so the NEXT session starts on a fresh
-        // instance. Reusing one instance across cancel/restart cycles makes many
-        // devices return only partial results (never a final) on later turns —
-        // i.e. it "hears" you but never responds. A new instance per turn avoids
-        // that. The earcon is muted, so the extra start makes no extra noise.
-        recognizer?.let {
-            try {
-                it.cancel()
-            } catch (e: Exception) {
-                // ignore
-            }
-            try {
-                it.destroy()
-            } catch (e: Exception) {
-                // ignore
-            }
-        }
-        recognizer = null
+        recognizer?.cancel()
         unmuteEarcon()
     }
 
@@ -124,7 +92,7 @@ class VoiceController(private val context: Context) {
             try {
                 audioManager.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0)
             } catch (e: Exception) {
-                // Ignore; nothing else we can safely do.
+                // ignore
             }
         }
     }
@@ -143,18 +111,6 @@ class VoiceController(private val context: Context) {
                 unmuteEarcon()
                 onFatal("Microphone permission needed")
                 return
-            }
-            // A busy/stuck recogniser can machine-gun errors. Drop it so the next
-            // start builds a fresh one instead of hammering the broken instance.
-            if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
-                error == SpeechRecognizer.ERROR_CLIENT
-            ) {
-                try {
-                    recognizer?.destroy()
-                } catch (e: Exception) {
-                    // ignore
-                }
-                recognizer = null
             }
             onNoInput()
         }
