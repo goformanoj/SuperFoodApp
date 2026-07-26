@@ -20,18 +20,15 @@ import com.jarvis.os.ui.theme.JarvisTheme
 class MainActivity : ComponentActivity() {
 
     private lateinit var engine: AssistantEngine
+    private var permissionsAsked = false
 
-    private var calendarAsked = false
-
-    private val micPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            engine.onMicPermission(granted)
+    // One launcher for all permissions — requesting mic and calendar in a single
+    // sequence avoids the second request being dropped while the first dialog shows.
+    private val permissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            val micOk = result[Manifest.permission.RECORD_AUDIO] ?: hasPermission(Manifest.permission.RECORD_AUDIO)
+            engine.onMicPermission(micOk)
         }
-
-    // Result unused: CalendarWriter checks the permission when it needs it, and
-    // falls back to opening the calendar app if it was denied.
-    private val calendarPermission =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -49,23 +46,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        val granted = hasMicPermission()
-        engine.onMicPermission(granted)
         engine.resume()
-        if (!granted) micPermission.launch(Manifest.permission.RECORD_AUDIO)
-        maybeRequestCalendar()
-    }
-
-    private fun maybeRequestCalendar() {
-        if (calendarAsked) return
-        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_CALENDAR) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!granted) {
-            calendarAsked = true
-            calendarPermission.launch(
-                arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR),
-            )
-        }
+        if (hasPermission(Manifest.permission.RECORD_AUDIO)) engine.onMicPermission(true)
+        requestMissingPermissions()
     }
 
     override fun onStop() {
@@ -78,7 +61,22 @@ class MainActivity : ComponentActivity() {
         engine.destroy()
     }
 
-    private fun hasMicPermission(): Boolean =
-        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
+    private fun requestMissingPermissions() {
+        val missing = REQUIRED.filter { !hasPermission(it) }
+        if (missing.isNotEmpty() && !permissionsAsked) {
+            permissionsAsked = true
+            permissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
+    private fun hasPermission(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+    private companion object {
+        val REQUIRED = arrayOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.READ_CALENDAR,
+            Manifest.permission.WRITE_CALENDAR,
+        )
+    }
 }

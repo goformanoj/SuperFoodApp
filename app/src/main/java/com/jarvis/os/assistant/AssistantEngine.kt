@@ -6,11 +6,11 @@ import android.os.Looper
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import com.jarvis.os.ai.Brain
+import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.calendar.CalendarWriter
 import com.jarvis.os.calendar.EventParser
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.ConversationStore
-import com.jarvis.os.data.todaysTasks
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.VoiceController
@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -212,12 +213,20 @@ class AssistantEngine(context: Context) {
         set { it.copy(messages = conversation.toList()) }
     }
 
-    private fun buildContext(): String {
-        val date = SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", Locale.getDefault()).format(Date())
-        val tasks = todaysTasks.joinToString("; ") { "${it.title} at ${it.time}" }
-        return "Current date/time: $date. The user's tasks today are: $tasks. " +
-            "When asked about the schedule or tasks, use ONLY this list and do not invent events. " +
-            "If you do not have information for something, say so briefly."
+    private suspend fun buildContext(): String = withContext(Dispatchers.IO) {
+        val now = SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", Locale.getDefault()).format(Date())
+        val events = CalendarReader.todaysEvents(appContext)
+        val schedule = when {
+            events == null ->
+                "You do NOT have calendar access yet. If asked about the schedule, tell the " +
+                    "user you need calendar permission and to grant it in the app."
+            events.isEmpty() ->
+                "The user's calendar has nothing scheduled for today."
+            else ->
+                "The user's calendar today: ${events.joinToString("; ")}."
+        }
+        "Current date/time: $now. $schedule When asked about the schedule, use ONLY this " +
+            "real calendar data and do not invent events."
     }
 
     private fun armSleep() {

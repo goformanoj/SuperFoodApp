@@ -159,6 +159,18 @@ JARVIS can now add calendar events conversationally.
 - Manifest gains READ/WRITE_CALENDAR; MainActivity requests them once at startup.
 - Pattern: LLM "tool use" via a confirm-gated structured marker, executed app-side.
 
+### 2026-07-26 — Read the REAL device calendar + fix permission prompt
+Two fixes after on-device testing:
+- **Permission prompt:** requesting mic then calendar in two back-to-back
+  launchers dropped the calendar dialog. MainActivity now requests all missing
+  permissions (RECORD_AUDIO, READ/WRITE_CALENDAR) in a single
+  RequestMultiplePermissions call.
+- **Real calendar grounding:** the AI was fed the hardcoded sample task list, so
+  "what's my schedule" read fake events. Added `CalendarReader` (queries
+  CalendarContract.Instances for today) and `buildContext` now grounds on the
+  real device calendar (or says it needs access if permission is missing).
+  The Home "Today's Tasks" card remains a separate sample widget for now.
+
 ### 2026-07-26 — GROQ_API_KEY added; rebuild to inject it
 User added the `GROQ_API_KEY` secret. Pushed this commit to trigger a build
 that bakes the key into `BuildConfig`; the new APK's voice loop should reach
