@@ -1,10 +1,9 @@
 name: Build JARVIS Debug APK
 
-# Manual trigger only, so pushes never start a build (and never consume CI
-# credits). Run it yourself from the Actions tab when you want an APK. Note:
-# workflow_dispatch only appears in the UI once this workflow exists on the
-# repository's default branch.
+# Builds on every push and can also be run manually from the Actions tab.
+# (Public repo: GitHub Actions minutes are free, so per-push builds are fine.)
 on:
+  push:
   workflow_dispatch:
 
 jobs:
