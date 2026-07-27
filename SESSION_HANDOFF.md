@@ -31,9 +31,11 @@
 - `user.email = noreply@anthropic.com`, `user.name = Claude`. The model identifier never appears in commits or artifacts.
 
 ## How Claude tests (before handoff)
-- **Deterministic logic locally** — e.g. port the `MARKER`/`CAL` regexes to Python and run cases (verified the multi-step parser this way).
+- **Unit tests in CI** — real JUnit tests for `ScreenActions`, `CalendarActions`, `DebugLog`. `./gradlew testDebugUnitTest` runs *before* `assembleDebug`, so a regression produces **no artifact**. (This replaced the old habit of porting the regexes to Python, which only tested the Python translation and was thrown away each time.)
 - **Compile** — via CI (artifact = green).
-- **Reply quality** — reviewed **on-device by the user** (Claude can't reach Groq from here).
+- **On-device, without speaking** — the **Diagnostics** screen (drawer): self-checks, a **Test AI** round-trip button, a **typed command box** that drives the whole pipeline minus the microphone, and a **Share** button that exports the trace as text.
+- **Reply quality, speech, TTS, real apps** — reviewed **on-device by the user**; Claude can't reach Groq from the build environment and there is no mic or emulator here (no KVM, no Android SDK, Gradle can't fetch through the proxy).
+- **When something breaks:** ask for the shared trace rather than guessing. It shows heard → raw reply → markers parsed → actions run → spoken, with keys redacted.
 
 ## User install runbook
 1. **Uninstall** any existing JARVIS.

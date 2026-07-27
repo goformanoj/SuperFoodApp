@@ -1,7 +1,7 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `4029979` · last green build **#76** · updated 2026-07-27
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `e6d89e5` · last green build **#85** · updated 2026-07-27
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
@@ -23,6 +23,12 @@
 - Multi-step commands + typing (build #76) — e.g. "show me a standup comedy video".
 - Conversational-first prompt (build #76) — JARVIS talks like a real assistant, tools when you want an action.
 - Swipe-scroll for the buried-chat case (WhatsApp "open the Mom chat below the fold").
+
+## 🧪 Testing (new — build #85)
+- **Unit tests in CI** ✅ — `ScreenActions`, `CalendarActions` and `DebugLog` are covered by real JUnit tests. `testDebugUnitTest` runs **before** `assembleDebug`, so a logic regression means **no artifact**. "Artifact present" now means compiles **and** the logic is right.
+- **Diagnostics screen** 🔬 — self-checks (mic, calendar, speech recognition, accessibility service, AI key) plus a **Test AI** button that does a real round-trip and reports provider + latency.
+- **Shareable trace** 🔬 — every turn records heard → raw reply → markers parsed → actions run → spoken. One **Share** button exports it as text. API keys are redacted before anything can leave.
+- **Typed command box** 🔬 — runs the full pipeline without the microphone, so brain/marker/tap failures can be reproduced by typing.
 
 ## 🔨 In progress
 - **Part B** — continuous "work session" (background-listen after a command; stop on "thank you Jarvis"), built Play-compliant from the start.
@@ -54,6 +60,9 @@
 | Multi-step chained commands | 🔬 | #76 | "standup comedy video" |
 | Conversational-first replies | 🔬 | #76 | |
 | Fixed signing (clean updates) | ✅ | #52 | |
+| Unit tests gating CI | ✅ | #85 | parsers + DebugLog |
+| Diagnostics + shareable trace | 🔬 | #85 | drawer → Diagnostics |
+| Typed command box (no mic) | 🔬 | #85 | full pipeline test |
 | Continuous work session | 🔨 | — | Part B, in progress |
 | Accuracy (on-screen text to AI) | ⏸️ | — | Part C |
 | Polish (toggle/onboarding) | ⏸️ | — | Part D |

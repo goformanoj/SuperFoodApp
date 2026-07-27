@@ -16,7 +16,7 @@
 
 ## Pre-handoff checklist (run before saying "ready")
 - [ ] No secrets / model id in the diff: `grep -rniE "gsk_|AIza|claude-opus" app/src *.md` → clean.
-- [ ] Marker parsers still correct: port the `MARKER` (`ScreenActions`) + `CAL` (`CalendarActions`) regexes to Python and run sample cases (open/tap/type/enter chain, calendar add/del, pure chat, case-insensitive).
+- [ ] Unit tests updated and passing (CI runs `testDebugUnitTest` before the build; a failure means no artifact). Add a test with any new pure-Kotlin logic — do **not** go back to porting regexes to Python.
 - [ ] No dangling references after refactors: `grep` for removed symbols.
 - [ ] Manifest well-formed if touched: `python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('app/src/main/AndroidManifest.xml')"`.
 - [ ] Build green (artifact present).

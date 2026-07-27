@@ -571,3 +571,45 @@ type that Part B needs anyway, and the Part C constraint that screen text going 
 LLM needs consent plus password/OTP redaction before it leaves the device.
 
 Next: Part B — continuous work session, built Play-compliant from day one.
+
+### 2026-07-27 — Real testing: unit tests in CI, diagnostics, and a typed command box
+User asked how the app actually gets tested, and whether Claude could run it.
+Checked the container honestly: **no /dev/kvm, no virtualisation extensions, no
+Android SDK, and Gradle cannot even download its own wrapper through the proxy**
+— so no emulator and no local build here, ever. Everything runs on CI.
+
+Also found the repo had **zero automated tests** — no `src/test`, no JUnit
+dependency. The "testing" was porting the regexes to Python and running cases,
+which only tests the Python translation and gets thrown away. Fixed properly:
+
+1. **Unit tests (build #83/#85).** `ScreenActions` has no imports at all and
+   `CalendarActions` only imports SimpleDateFormat/Locale — both are pure JVM,
+   so plain JUnit covers them with no device. Added tests for the open→tap→type
+   →enter chain, marker stripping, case-insensitivity, empty args, calendar
+   add/del/reschedule, bad dates, and defaults. CI runs `testDebugUnitTest`
+   BEFORE `assembleDebug`, so "artifact present" now means compiles AND correct.
+   Test reports upload as an artifact on failure.
+2. **DebugLog (#85).** Capped in-memory trace of every turn: heard → raw model
+   reply → markers parsed → calendar/screen actions → spoken. Every entry goes
+   through a redactor (gsk_*, AIza*, Bearer tokens) because the log is designed
+   to be shared out of the app. Ring buffer + redaction are unit-tested.
+3. **Diagnostics screen (#85).** Drawer → Diagnostics. Self-checks for mic,
+   calendar r/w, speech recognition, accessibility service, AI key, device info;
+   a "Test AI" button doing a real round-trip reporting provider + latency (the
+   one check impossible from the build environment); Share exports checks + trace
+   as plain text.
+4. **Typed command box (#85).** `AssistantEngine.submitText()` runs a typed
+   command through the identical pipeline, skipping only the mic. Most failures
+   are in the reasoning or the taps, not the speech.
+
+Rejected: driving the user's phone remotely (behind NAT, restricted egress,
+would need an open ADB tunnel on their daily driver — fragile and a security
+hole). Deferred to later: emulator in GitHub Actions with screenshot artifacts
+(good for launch/UI regressions, useless for the mic and for real WhatsApp/
+YouTube), and Firebase Test Lab Robo tests on real devices (free tier: 5
+physical + 10 virtual runs/day) before the Play launch.
+
+Housekeeping: two commits this session carried a Co-Authored-By trailer naming
+the model, which PRODUCT_PLAN forbids in any pushed artifact. With the user's
+go-ahead, rewrote both messages (trees verified identical) and force-pushed
+main and the branch. Do not add that trailer here.
