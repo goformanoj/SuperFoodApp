@@ -511,3 +511,14 @@ Built Part A now:
   it taps what's really there; verify a tap changed the screen and retry; ask to
   disambiguate ties; per-app hints for common flows.
 - **Part D — polish:** tap-to-talk toggle, clear idle text, onboarding.
+
+### 2026-07-27 — Free the LLM: conversational-first prompt (user feedback)
+User: "we have an AI, why can't you make the AI think and act... you're
+restricting the right of the LLM to think." Rewrote both system prompts to put
+being a smart, natural, knowledgeable conversational assistant FIRST — answer
+questions, explain, reason, chat, give fuller answers when asked — and frame the
+phone-control + calendar abilities as TOOLS it reaches for when the user wants an
+action, not a rigid CAN/CANNOT cage. Dropped the "single short sentence only"
+constraint (allow fuller answers when asked). Kept the command protocols intact.
+(Per user: Part A is the stopping point for the screen-control feature; awaiting
+further instructions before Part B/C/D.)
