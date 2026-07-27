@@ -18,6 +18,7 @@ import com.jarvis.os.control.ScreenControlService
 import com.jarvis.os.control.ScreenStep
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.ConversationStore
+import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.VoiceController
@@ -116,6 +117,17 @@ class AssistantEngine(context: Context) {
         set { it.copy(messages = emptyList(), transcript = "", reply = "") }
     }
 
+    /**
+     * Runs a typed command through the exact same pipeline as a spoken one
+     * (brain -> markers -> calendar/screen actions), skipping only the
+     * microphone. This is how the app is tested without speech: see the
+     * Diagnostics screen.
+     */
+    fun submitText(text: String) {
+        if (text.isBlank()) return
+        ask(text, source = "typed")
+    }
+
     private fun listen() {
         if (!voice.isAvailable()) {
             set { it.copy(orb = OrbState.Error, status = "Speech recognition unavailable") }
@@ -131,12 +143,13 @@ class AssistantEngine(context: Context) {
         main.postDelayed({ if (visible && !busy && micGranted) voice.startListening() }, RESTART_MS)
     }
 
-    private fun ask(userText: String) {
+    private fun ask(userText: String, source: String = "voice") {
         busy = true
         pendingScreen = null
         voice.stopListening()
         main.removeCallbacksAndMessages(null)
 
+        DebugLog.log(DebugLog.Stage.HEARD, "($source) $userText")
         addTurn(ChatTurn(ChatTurn.USER, userText))
         set {
             it.copy(orb = OrbState.Thinking, status = "Thinking…", transcript = userText, reply = "", amplitude = 0f)
@@ -153,12 +166,17 @@ class AssistantEngine(context: Context) {
         scope.launch {
             try {
                 val raw = Brain.generate(history, buildContext())
+                DebugLog.log(DebugLog.Stage.REPLY, "${Brain.providerName()}: $raw")
                 // Strip any leftover end-marker the model may add; we simply keep listening.
                 val reply = raw.replace("<<END>>", "", ignoreCase = true)
                 // Pull out and run the two command families (calendar + screen).
                 val (afterCal, actions) = CalendarActions.parse(reply)
                 val plan = ScreenActions.parse(afterCal)
                 val clean = plan.clean
+                DebugLog.log(
+                    DebugLog.Stage.MARKERS,
+                    "calendar=${actions.size} screen=${plan.steps.joinToString(", ").ifEmpty { "none" }}",
+                )
                 val (added, deleted) = withContext(Dispatchers.IO) {
                     var a = 0
                     var d = 0
@@ -171,6 +189,9 @@ class AssistantEngine(context: Context) {
                         }
                     }
                     a to d
+                }
+                if (actions.isNotEmpty()) {
+                    DebugLog.log(DebugLog.Stage.CALENDAR, "added=$added deleted=$deleted")
                 }
                 // Decide what to SAY now, but defer any app switch until after we
                 // finish speaking (run in onSpokenDone) so the reply isn't cut off.
@@ -187,10 +208,12 @@ class AssistantEngine(context: Context) {
                 }
                 pendingScreen = if (plan.hasAction) plan else null
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
+                DebugLog.log(DebugLog.Stage.SPOKE, spoken)
                 set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = spoken) }
                 speaker.speak(spoken)
             } catch (e: Exception) {
                 val detail = e.message ?: e.javaClass.simpleName
+                DebugLog.log(DebugLog.Stage.ERROR, "Brain error: $detail")
                 set { it.copy(orb = OrbState.Error, status = "Brain error", reply = detail) }
                 main.postDelayed({ onSpokenDone() }, 3000L)
             }
@@ -249,9 +272,11 @@ class AssistantEngine(context: Context) {
     private fun executeScreen(plan: ScreenActions.Plan): ScreenOutcome {
         if (!plan.hasAction) return ScreenOutcome.NONE
         if (plan.needsAccessibility && !ScreenControlService.isRunning()) {
+            DebugLog.log(DebugLog.Stage.SCREEN, "blocked: accessibility service is off")
             openAccessibilitySettings()
             return ScreenOutcome.NEEDS_PERMISSION
         }
+        DebugLog.log(DebugLog.Stage.SCREEN, "running ${plan.steps.joinToString(", ")}")
         if (plan.needsAccessibility) {
             // Run the whole ordered sequence (open -> tap -> type -> enter) via the service.
             ScreenControlService.instance?.runSteps(plan.steps)

@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Folder
@@ -62,6 +63,7 @@ import com.jarvis.os.data.TaskItem
 import com.jarvis.os.data.todaysTasks
 import com.jarvis.os.ui.chat.ChatScreen
 import com.jarvis.os.ui.components.HudOrb
+import com.jarvis.os.ui.debug.DiagnosticsScreen
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.ElectricBlue
@@ -91,6 +93,7 @@ private enum class Dest(val label: String, val icon: ImageVector, val blurb: Str
     Automation("Automation", Icons.Filled.Bolt, "Automate taps, typing, and actions."),
     Skills("Skills", Icons.Filled.Extension, "Plugins and extra abilities."),
     Settings("Settings", Icons.Filled.Settings, "Preferences and configuration."),
+    Diagnostics("Diagnostics", Icons.Filled.BugReport, "Self-checks, a typed command box, and the shareable trace."),
 }
 
 private val taskAccents = listOf(Cyan, WarningOrange, SuccessGreen)
@@ -101,7 +104,12 @@ private val taskAccents = listOf(Cyan, WarningOrange, SuccessGreen)
  * placeholders. Back returns to Home.
  */
 @Composable
-fun JarvisApp(state: VoiceUiState, onClearChat: () -> Unit, modifier: Modifier = Modifier) {
+fun JarvisApp(
+    state: VoiceUiState,
+    onClearChat: () -> Unit,
+    onSubmitCommand: (String) -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var current by remember { mutableStateOf(Dest.Home) }
@@ -126,6 +134,7 @@ fun JarvisApp(state: VoiceUiState, onClearChat: () -> Unit, modifier: Modifier =
             when (current) {
                 Dest.Home -> HomeContent(state)
                 Dest.Chat -> ChatScreen(state.messages, onClearChat)
+                Dest.Diagnostics -> DiagnosticsScreen(onSubmitCommand = onSubmitCommand)
                 else -> PlaceholderScreen(current)
             }
 
