@@ -18,6 +18,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.jarvis.os.debug.DebugLog
 
 /**
  * Accessibility service that lets JARVIS act on the screen: it finds a control by
@@ -83,6 +84,14 @@ class ScreenControlService : AccessibilityService() {
         val advance = { pkg: String? ->
             handler.postDelayed({ runStep(steps, index + 1, pkg, onDone) }, STEP_SETTLE_MS)
         }
+        // Per-step tracing, so a shared log shows WHICH step failed rather than
+        // just that the sequence ran.
+        val position = "step ${index + 1}/${steps.size}"
+        val failed = { reason: String ->
+            DebugLog.log(DebugLog.Stage.SCREEN, "$position ${steps[index]} FAILED — $reason")
+            onDone(false)
+        }
+        DebugLog.log(DebugLog.Stage.SCREEN, "$position ${steps[index]}")
         when (val step = steps[index]) {
             is ScreenStep.Open -> {
                 val pkg = AppLauncher.launch(this, step.app)
@@ -91,17 +100,57 @@ class ScreenControlService : AccessibilityService() {
             }
             is ScreenStep.Tap ->
                 awaitApp(expectedPackage, step.label, 0) { ok ->
-                    if (ok) advance(expectedPackage) else onDone(false)
+                    if (ok) advance(expectedPackage) else failed("no control matching \"${step.label}\"")
                 }
             is ScreenStep.Type ->
                 typeWhenReady(step.text, 0) { ok ->
-                    if (ok) advance(expectedPackage) else onDone(false)
+                    if (ok) advance(expectedPackage) else failed("no editable field appeared")
                 }
             is ScreenStep.Enter -> {
+                // Submitting a search changes the whole screen, and a fixed delay
+                // is a guess — results routinely take longer than one. Wait for
+                // the content to actually change before the next step runs,
+                // otherwise a following tap resolves against the OLD screen.
+                val before = contentFingerprint()
                 pressImeAction()
-                advance(expectedPackage)
+                awaitContentChange(before, 0) { advance(expectedPackage) }
             }
         }
+    }
+
+    /**
+     * A cheap signature of the visible text, used to tell "the screen changed"
+     * from "nothing has happened yet". Bounded so it stays cheap on deep trees.
+     */
+    private fun contentFingerprint(): String {
+        val root = rootInActiveWindow ?: return ""
+        val sb = StringBuilder()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var seen = 0
+        while (queue.isNotEmpty() && seen < FINGERPRINT_NODES) {
+            val node = queue.removeFirst()
+            seen++
+            node.text?.let { sb.append(it).append(SEP) }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
+        }
+        return sb.toString()
+    }
+
+    /** Poll until the screen differs from [before], then let it finish rendering. */
+    private fun awaitContentChange(before: String, tries: Int, onChanged: () -> Unit) {
+        val changed = contentFingerprint() != before
+        if (changed || tries >= CONTENT_WAIT_TRIES) {
+            if (!changed) {
+                DebugLog.log(DebugLog.Stage.SCREEN, "screen never changed after enter — continuing anyway")
+            }
+            // A list can be present but still painting; give it a moment.
+            handler.postDelayed(onChanged, CONTENT_SETTLE_MS)
+            return
+        }
+        handler.postDelayed({ awaitContentChange(before, tries + 1, onChanged) }, STEP_MS)
     }
 
     /** Wait for an editable field, then set its text. */
@@ -196,7 +245,12 @@ class ScreenControlService : AccessibilityService() {
         queue.add(root)
         while (queue.isNotEmpty()) {
             val node = queue.removeFirst()
-            val score = matchScore(node, query)
+            // A search box still holds the query text after you search, so it
+            // scores a perfect exact match and beats the actual result — tapping
+            // it just puts the cursor back in the search bar. Heavily demote
+            // editable fields rather than excluding them, so "<<TAP|Search>>"
+            // still works in apps whose search entry really is a text field.
+            val score = matchScore(node, query).let { if (node.isEditable) it / EDITABLE_PENALTY else it }
             if (score > bestScore) {
                 best = clickableSelfOrAncestor(node) ?: node
                 bestScore = score
@@ -391,6 +445,21 @@ class ScreenControlService : AccessibilityService() {
         private const val SCROLL_SETTLE_MS = 550L
         // A match this good is tapped immediately; weaker ones make us scroll first.
         private const val GOOD_SCORE = 70
+
+        /** Separator between node texts in the screen fingerprint. */
+        private const val SEP = '\u0001'
+
+        /** How far the content fingerprint walks the tree before stopping. */
+        private const val FINGERPRINT_NODES = 250
+
+        /** Polls (of STEP_MS each) to wait for the screen to change after enter. */
+        private const val CONTENT_WAIT_TRIES = 12
+
+        /** Extra settle once the screen has changed, so a list finishes painting. */
+        private const val CONTENT_SETTLE_MS = 450L
+
+        /** Divisor demoting editable fields, which hold the query text after a search. */
+        private const val EDITABLE_PENALTY = 4
         private const val OUTLINE_MS = 1100L
     }
 }
