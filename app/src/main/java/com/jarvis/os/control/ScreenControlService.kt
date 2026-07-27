@@ -40,6 +40,11 @@ class ScreenControlService : AccessibilityService() {
     // from each successful read, so JARVIS still knows the state of the app the
     // user is in even while its own UI is the foreground window. Volatile because
     // the engine reads these from a background thread when building context.
+    // Identifies the sequence currently allowed to run. A new command bumps it,
+    // so any callback from an older chain sees a stale token and stops.
+    private var runToken = 0
+    private var sequenceRunning = false
+
     @Volatile private var lastAppPackage: String? = null
     @Volatile private var lastAppScreen: String = ""
     @Volatile private var lastAppSeenAt: Long = 0L
@@ -84,37 +89,62 @@ class ScreenControlService : AccessibilityService() {
         awaitApp(targetPackage, label, 0, onDone)
     }
 
-    /** Run an ordered sequence of steps (open / tap / type / enter), one after another. */
+    /**
+     * Run an ordered sequence of steps (open / tap / type / enter), one after
+     * another. A new sequence SUPERSEDES one still in flight: without that, two
+     * chains interleave and fight over the same screen — seen on a device as one
+     * sequence typing while another was tapping Voice search.
+     */
     fun runSteps(steps: List<ScreenStep>, onDone: (Boolean) -> Unit = {}) {
-        runStep(steps, 0, null, onDone)
+        if (sequenceRunning) {
+            DebugLog.log(DebugLog.Stage.SCREEN, "new command superseded the sequence still running")
+        }
+        handler.removeCallbacksAndMessages(null)
+        sequenceRunning = true
+        runStep(steps, 0, null, ++runToken, onDone)
     }
 
     private fun runStep(
         steps: List<ScreenStep>,
         index: Int,
         expectedPackage: String?,
+        token: Int,
         onDone: (Boolean) -> Unit,
     ) {
+        // A later command has taken over; abandon this chain silently.
+        if (token != runToken) return
         if (index >= steps.size) {
+            sequenceRunning = false
             onDone(true)
             return
         }
         val advance = { pkg: String? ->
-            handler.postDelayed({ runStep(steps, index + 1, pkg, onDone) }, STEP_SETTLE_MS)
+            handler.postDelayed({ runStep(steps, index + 1, pkg, token, onDone) }, STEP_SETTLE_MS)
         }
         // Per-step tracing, so a shared log shows WHICH step failed rather than
         // just that the sequence ran.
         val position = "step ${index + 1}/${steps.size}"
         val failed = { reason: String ->
+            sequenceRunning = false
             DebugLog.log(DebugLog.Stage.SCREEN, "$position ${steps[index]} FAILED — $reason")
             onDone(false)
         }
         DebugLog.log(DebugLog.Stage.SCREEN, "$position ${steps[index]}")
         when (val step = steps[index]) {
             is ScreenStep.Open -> {
-                val pkg = AppLauncher.launch(this, step.app)
-                // Give the app a moment to come to the foreground before the next step.
-                handler.postDelayed({ runStep(steps, index + 1, pkg, onDone) }, APP_OPEN_MS)
+                val target = AppLauncher.resolvePackage(this, step.app)
+                if (target != null && target == rootInActiveWindow?.packageName?.toString()) {
+                    // Already here. Relaunching would reset the app to its home
+                    // screen and throw away the search results the user is
+                    // looking at — which is how "search another song from here"
+                    // ended up back on the YouTube feed.
+                    DebugLog.log(DebugLog.Stage.SCREEN, "$position already in ${step.app} — not relaunching")
+                    handler.postDelayed({ runStep(steps, index + 1, target, token, onDone) }, STEP_MS)
+                } else {
+                    val pkg = AppLauncher.launch(this, step.app)
+                    // Give the app a moment to come to the foreground before the next step.
+                    handler.postDelayed({ runStep(steps, index + 1, pkg, token, onDone) }, APP_OPEN_MS)
+                }
             }
             is ScreenStep.Tap ->
                 awaitApp(expectedPackage, step.label, 0) { ok ->
@@ -333,20 +363,16 @@ class ScreenControlService : AccessibilityService() {
         }
         val (node, score) = bestMatch(root, label)
         if (node != null && score >= GOOD_SCORE) {
-            tapNode(node)
-            onDone(true)
+            onDone(tapNode(node))
             return
         }
         if (scrolls < MAX_SCROLLS && scrollForward(root)) {
             handler.postDelayed({ seek(label, scrolls + 1, onDone) }, SCROLL_SETTLE_MS)
             return
         }
-        if (node != null) {
-            tapNode(node)
-            onDone(true)
-        } else {
-            onDone(false)
-        }
+        // Nothing confident left: take the best weak match if there is one, but
+        // report honestly whether tapping it did anything.
+        onDone(node != null && tapNode(node))
     }
 
     /** Best-scoring clickable node for [label] anywhere in the tree, with its score. */
@@ -474,15 +500,27 @@ class ScreenControlService : AccessibilityService() {
         return null
     }
 
-    private fun tapNode(node: AccessibilityNodeInfo) {
+    /**
+     * Returns whether the tap actually happened. This used to return Unit and the
+     * caller always reported success — so a tap that silently did nothing was
+     * announced as "Playing the Thriller video", and repeating the command
+     * repeated the same non-event.
+     */
+    private fun tapNode(node: AccessibilityNodeInfo): Boolean {
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
-        showOutline(bounds)
         // Prefer a real click on the node; fall back to a tap gesture at its centre.
-        if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return
+        if (node.isClickable && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            showOutline(bounds)
+            return true
+        }
+        // A node with no on-screen bounds cannot be tapped by gesture — its centre
+        // is (0,0), which lands somewhere else entirely.
+        if (bounds.isEmpty) return false
+        showOutline(bounds)
         val path = Path().apply { moveTo(bounds.exactCenterX(), bounds.exactCenterY()) }
         val stroke = GestureDescription.StrokeDescription(path, 0L, 60L)
-        dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
     }
 
     private fun showOutline(rect: Rect) {
