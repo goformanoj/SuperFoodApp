@@ -18,6 +18,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import com.jarvis.os.debug.DebugLog
 
 /**
@@ -35,12 +36,29 @@ class ScreenControlService : AccessibilityService() {
     private val windowManager by lazy { getSystemService(Context.WINDOW_SERVICE) as WindowManager }
     private var outline: View? = null
 
+    // What the user was last looking at. Written from accessibility events and
+    // from each successful read, so JARVIS still knows the state of the app the
+    // user is in even while its own UI is the foreground window. Volatile because
+    // the engine reads these from a background thread when building context.
+    @Volatile private var lastAppPackage: String? = null
+    @Volatile private var lastAppScreen: String = ""
+    @Volatile private var lastAppSeenAt: Long = 0L
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* command-driven only */ }
+    /**
+     * Never acts on its own — it only remembers which app is in front. That memory
+     * is what lets JARVIS answer "carry on from here" correctly when its own UI is
+     * the foreground window and it therefore cannot read the user's app directly.
+     */
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString().orEmpty()
+        if (pkg.isNotEmpty() && pkg != packageName) lastAppPackage = pkg
+    }
 
     override fun onInterrupt() { }
 
@@ -151,7 +169,51 @@ class ScreenControlService : AccessibilityService() {
      * device.
      */
     fun describeScreen(): String {
-        val root = rootInActiveWindow ?: return ""
+        val root = userAppRoot()
+        if (root != null) {
+            val text = renderScreen(root)
+            if (text.isNotEmpty()) {
+                lastAppPackage = root.packageName?.toString()
+                lastAppScreen = text
+                lastAppSeenAt = System.currentTimeMillis()
+                return text
+            }
+        }
+        // JARVIS's own window is in front, so the user's app cannot be read right
+        // now. Report what they were actually looking at rather than describing
+        // JARVIS's own UI, which would make the model think it is inside JARVIS.
+        val remembered = lastAppScreen
+        if (remembered.isNotEmpty()) {
+            val secondsAgo = (System.currentTimeMillis() - lastAppSeenAt) / 1000
+            return "JARVIS is in front, so the screen cannot be read live. The user was last in " +
+                "${lastAppPackage.orEmpty()} (${secondsAgo}s ago) and it looked like this — assume " +
+                "it is still there unless the user says otherwise: $remembered"
+        }
+        lastAppPackage?.let {
+            return "JARVIS is in front. The user was last in $it, but its contents cannot be read from here."
+        }
+        return ""
+    }
+
+    /**
+     * The front-most window that belongs to some app other than JARVIS. Falls back
+     * to scanning all interactive windows, so a session running behind JARVIS can
+     * still be described.
+     */
+    private fun userAppRoot(): AccessibilityNodeInfo? {
+        rootInActiveWindow?.let { if (it.packageName?.toString() != packageName) return it }
+        return try {
+            windows
+                .asSequence()
+                .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+                .mapNotNull { it.root }
+                .firstOrNull { it.packageName?.toString() != packageName }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun renderScreen(root: AccessibilityNodeInfo): String {
         val app = root.packageName?.toString().orEmpty()
         val items = mutableListOf<String>()
         val queue = ArrayDeque<AccessibilityNodeInfo>()
@@ -176,7 +238,9 @@ class ScreenControlService : AccessibilityService() {
             }
         }
         if (items.isEmpty()) return ""
-        return "Foreground app: $app. On screen now: ${items.joinToString(" ")}"
+        // Deliberately not "foreground app": this same text is reused later to
+        // describe the app the user was in, when JARVIS itself is in front.
+        return "App: $app. On screen: ${items.joinToString(" ")}"
     }
 
     /**

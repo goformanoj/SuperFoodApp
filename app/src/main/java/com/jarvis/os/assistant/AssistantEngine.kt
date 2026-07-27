@@ -327,7 +327,8 @@ class AssistantEngine(context: Context) {
         // opening the contact's profile).
         val screen = ScreenControlService.instance?.describeScreen().orEmpty()
         val screenContext = if (screen.isBlank()) {
-            "You cannot see the screen right now (screen control is off, or JARVIS is in front)."
+            "You cannot see the screen right now — screen control is switched off, or no app has " +
+                "been opened yet. Do not pretend to know what is on screen."
         } else {
             "$screen\nUse these REAL on-screen labels rather than guessing one. Emit ONLY the " +
                 "steps still needed from here: do not re-open an app that is already the " +
