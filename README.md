@@ -15,9 +15,17 @@ There is no local build required — every build runs on GitHub Actions.
 ### Getting the APK
 
 1. Open the **Actions** tab in GitHub.
-2. Run the **Build JARVIS Debug APK** workflow (manual trigger).
-3. When it finishes, download the **jarvis-debug-apk** artifact and install it.
+2. Every push runs **Build JARVIS Debug APK**; open the latest green run.
+3. Download the **jarvis-debug-apk** artifact, extract the APK, and install it (see the install runbook in [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md)).
+
+## Project docs
+
+- **[`PRODUCT_PLAN.md`](PRODUCT_PLAN.md)** — the full vision, constraints, and feature spec (incl. API-key security).
+- **[`PROGRESS.md`](PROGRESS.md)** — what's done, in flight, and queued.
+- **[`EXECUTION_PLAN.md`](EXECUTION_PLAN.md)** — the ordered build queue and working loop.
+- **[`SESSION_HANDOFF.md`](SESSION_HANDOFF.md)** — how to resume: CI, secrets, architecture, install runbook.
+- **[`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)** — detailed dated dev log.
 
 ## Status
 
-V1 in progress — minimal buildable app. Next: Home screen and navigation.
+Working voice assistant: always-on conversation (Groq), device calendar (read/add/delete/reschedule), and screen control (open apps, tap, scroll, type, multi-step commands). See [`PROGRESS.md`](PROGRESS.md) for details.

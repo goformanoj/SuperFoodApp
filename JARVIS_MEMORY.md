@@ -522,3 +522,15 @@ action, not a rigid CAN/CANNOT cage. Dropped the "single short sentence only"
 constraint (allow fuller answers when asked). Kept the command protocols intact.
 (Per user: Part A is the stopping point for the screen-control feature; awaiting
 further instructions before Part B/C/D.)
+
+### 2026-07-27 — Added four living project docs
+Created repo-root working docs so the vision, status, next steps, and resume-state
+are written down (not just in chat): PRODUCT_PLAN.md (north star + full spec +
+API-key security reality), PROGRESS.md (living status + feature table),
+EXECUTION_PLAN.md (ordered build queue + working loop + pre-handoff checklist),
+SESSION_HANDOFF.md (CI/secrets/architecture/marker-protocol/install runbook/gotchas).
+Refreshed README's stale status line to point at them. These are the files I work
+from going forward; JARVIS_MEMORY.md stays as the detailed chronological log.
+Also answered the user's Groq-key security question: key is never in source but IS
+embedded in the APK (public repo -> extractable) -> keep Groq free-tier/no-billing +
+rotate if abused.
