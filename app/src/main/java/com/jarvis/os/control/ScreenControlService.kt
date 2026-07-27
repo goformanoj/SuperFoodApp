@@ -10,7 +10,6 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -172,71 +171,43 @@ class ScreenControlService : AccessibilityService() {
         return false
     }
 
+    /**
+     * Scroll DOWN by simulating a real finger swipe UP over the scrollable area.
+     * This doesn't depend on the list advertising any scroll action (some don't),
+     * and a vertical swipe can't flip horizontal tabs. Returns false only if there
+     * is nothing scrollable to swipe over.
+     */
     private fun scrollForward(root: AccessibilityNodeInfo): Boolean {
-        // Only ever scroll a node that explicitly supports scrolling DOWN — that is
-        // guaranteed vertical, so we never flip sideways through a tab pager
-        // (Chats / Updates / Calls). This is the reliable path on API 30+.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val down = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN
-            val node = largestSupporting(root, down)
-            if (node != null) return node.performAction(down.id)
-            return false
+        val area = largestScrollableBounds(root) ?: return false
+        if (area.height() < 200) return false
+        val x = area.exactCenterX()
+        val startY = area.top + area.height() * 0.75f
+        val endY = area.top + area.height() * 0.30f
+        val path = Path().apply {
+            moveTo(x, startY)
+            lineTo(x, endY)
         }
-        // Older devices: pick the tallest list-shaped scrollable and scroll forward.
-        val fallback = tallestListScrollable(root) ?: return false
-        return fallback.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0L, 250L))
+            .build()
+        return dispatchGesture(gesture, null, null)
     }
 
-    /** Largest scrollable node whose action list contains [action]. */
-    private fun largestSupporting(
-        root: AccessibilityNodeInfo,
-        action: AccessibilityNodeInfo.AccessibilityAction,
-    ): AccessibilityNodeInfo? {
-        var best: AccessibilityNodeInfo? = null
-        var bestArea = -1
-        val queue = ArrayDeque<AccessibilityNodeInfo>()
-        queue.add(root)
-        while (queue.isNotEmpty()) {
-            val node = queue.removeFirst()
-            if (node.isScrollable && node.actionList.contains(action)) {
-                val r = Rect()
-                node.getBoundsInScreen(r)
-                val area = r.width() * r.height()
-                if (area > bestArea) {
-                    best = node
-                    bestArea = area
-                }
-            }
-            for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { queue.add(it) }
-            }
-        }
-        return best
-    }
-
-    /** Fallback for older APIs: the largest scrollable shaped like a vertical list. */
-    private fun tallestListScrollable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        var best: AccessibilityNodeInfo? = null
+    /** On-screen bounds of the largest scrollable region (the list/content area). */
+    private fun largestScrollableBounds(root: AccessibilityNodeInfo): Rect? {
+        var best: Rect? = null
         var bestArea = -1
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
         while (queue.isNotEmpty()) {
             val node = queue.removeFirst()
             if (node.isScrollable) {
-                val ci = node.collectionInfo
                 val r = Rect()
                 node.getBoundsInScreen(r)
-                val vertical = when {
-                    ci != null && ci.columnCount > 1 -> false
-                    ci != null && ci.rowCount > 1 -> true
-                    else -> r.height() > r.width()
-                }
-                if (vertical) {
-                    val area = r.width() * r.height()
-                    if (area > bestArea) {
-                        best = node
-                        bestArea = area
-                    }
+                val area = r.width() * r.height()
+                if (area > bestArea) {
+                    best = r
+                    bestArea = area
                 }
             }
             for (i in 0 until node.childCount) {

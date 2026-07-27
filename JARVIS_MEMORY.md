@@ -473,3 +473,13 @@ Also: JARVIS kept saying "On it" for every screen command because the model
 emitted only the <<OPEN|..>>/<<TAP|..>> markers and no spoken text (clean was
 blank -> "On it" fallback). Prompt now tells it to ALWAYS include a short, varied,
 natural spoken sentence alongside the markers, so the user hears real replies.
+
+### 2026-07-26 — Scroll via a real swipe gesture (final, reliable approach)
+Build #71 broke scrolling entirely: it only scrolled nodes advertising
+ACTION_SCROLL_DOWN, but WhatsApp's chat list on the user's device doesn't expose
+that action, so nothing scrolled — it opened WhatsApp and sat there. Root lesson:
+stop depending on what a list *claims* it can do. Now `scrollForward` dispatches
+a real finger SWIPE UP (dispatchGesture) over the largest scrollable area's
+bounds — a vertical swipe scrolls vertical content and cannot flip horizontal
+tabs, and it works regardless of advertised scroll actions. Removed the
+action-based helpers and the unused Build import.
