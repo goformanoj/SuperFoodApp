@@ -10,6 +10,8 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
+import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -61,6 +63,82 @@ class ScreenControlService : AccessibilityService() {
      */
     fun tapWhenReady(targetPackage: String?, label: String, onDone: (Boolean) -> Unit = {}) {
         awaitApp(targetPackage, label, 0, onDone)
+    }
+
+    /** Run an ordered sequence of steps (open / tap / type / enter), one after another. */
+    fun runSteps(steps: List<ScreenStep>, onDone: (Boolean) -> Unit = {}) {
+        runStep(steps, 0, null, onDone)
+    }
+
+    private fun runStep(
+        steps: List<ScreenStep>,
+        index: Int,
+        expectedPackage: String?,
+        onDone: (Boolean) -> Unit,
+    ) {
+        if (index >= steps.size) {
+            onDone(true)
+            return
+        }
+        val advance = { pkg: String? ->
+            handler.postDelayed({ runStep(steps, index + 1, pkg, onDone) }, STEP_SETTLE_MS)
+        }
+        when (val step = steps[index]) {
+            is ScreenStep.Open -> {
+                val pkg = AppLauncher.launch(this, step.app)
+                // Give the app a moment to come to the foreground before the next step.
+                handler.postDelayed({ runStep(steps, index + 1, pkg, onDone) }, APP_OPEN_MS)
+            }
+            is ScreenStep.Tap ->
+                awaitApp(expectedPackage, step.label, 0) { ok ->
+                    if (ok) advance(expectedPackage) else onDone(false)
+                }
+            is ScreenStep.Type ->
+                typeWhenReady(step.text, 0) { ok ->
+                    if (ok) advance(expectedPackage) else onDone(false)
+                }
+            is ScreenStep.Enter -> {
+                pressImeAction()
+                advance(expectedPackage)
+            }
+        }
+    }
+
+    /** Wait for an editable field, then set its text. */
+    private fun typeWhenReady(text: String, tries: Int, onDone: (Boolean) -> Unit) {
+        val field = rootInActiveWindow?.let { findEditable(it) }
+        if (field != null) {
+            val args = Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            }
+            onDone(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
+        } else if (tries < FIELD_WAIT_TRIES) {
+            handler.postDelayed({ typeWhenReady(text, tries + 1, onDone) }, STEP_MS)
+        } else {
+            onDone(false)
+        }
+    }
+
+    /** Press the IME action (search / go / enter) on the focused field. */
+    private fun pressImeAction(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        val field = rootInActiveWindow?.let { findEditable(it) } ?: return false
+        return field.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+    }
+
+    /** The focused input field, or the first editable field on screen. */
+    private fun findEditable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { if (it.isEditable) return it }
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        while (queue.isNotEmpty()) {
+            val node = queue.removeFirst()
+            if (node.isEditable) return node
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
+        }
+        return null
     }
 
     private fun awaitApp(targetPackage: String?, label: String, tries: Int, onDone: (Boolean) -> Unit) {
@@ -303,6 +381,11 @@ class ScreenControlService : AccessibilityService() {
         // How long to wait for the launched app to reach the foreground.
         private const val APP_WAIT_TRIES = 20
         private const val STEP_MS = 300L
+        // Sequence pacing: settle between steps, wait after launching an app, and
+        // how long to wait for a text field to appear before typing.
+        private const val STEP_SETTLE_MS = 700L
+        private const val APP_OPEN_MS = 1200L
+        private const val FIELD_WAIT_TRIES = 15
         // Scrolling to hunt for an off-screen target.
         private const val MAX_SCROLLS = 8
         private const val SCROLL_SETTLE_MS = 550L

@@ -1,28 +1,43 @@
 package com.jarvis.os.control
 
+/** One step in a screen-control sequence. */
+sealed interface ScreenStep {
+    data class Open(val app: String) : ScreenStep      // launch an app by name
+    data class Tap(val label: String) : ScreenStep     // tap a control by its visible label
+    data class Type(val text: String) : ScreenStep     // type into the focused field
+    data object Enter : ScreenStep                      // submit / press the search or enter key
+}
+
 /**
- * Parses screen-control command markers out of an AI reply. The model emits,
- * only when the user clearly asks, lines like:
- *   <<OPEN|Instagram>>        open an app by name
- *   <<TAP|Like>>              tap a currently-visible control by its label
- * To open an app and tap something inside it, the model emits both. For v1 we
- * take at most one of each. Returns the reply with the markers stripped, plus
- * the parsed plan.
+ * Parses screen-control command markers out of an AI reply, IN ORDER, so a single
+ * instruction can be a sequence:
+ *   <<OPEN|YouTube>> <<TAP|Search>> <<TYPE|standup comedy>> <<ENTER>>
+ * The markers are stripped from the spoken text.
  */
 object ScreenActions {
 
-    private val OPEN = Regex("""<<OPEN\|([^>]*)>>""")
-    private val TAP = Regex("""<<TAP\|([^>]*)>>""")
+    private val MARKER = Regex("""<<(OPEN|TAP|TYPE|ENTER)(?:\|([^>]*))?>>""", RegexOption.IGNORE_CASE)
 
-    data class Plan(val clean: String, val openApp: String?, val tapLabel: String?) {
-        val hasAction: Boolean get() = openApp != null || tapLabel != null
+    data class Plan(val clean: String, val steps: List<ScreenStep>) {
+        val hasAction: Boolean get() = steps.isNotEmpty()
+
+        /** Tapping, typing and entering need the accessibility service; opening an app does not. */
+        val needsAccessibility: Boolean get() = steps.any { it !is ScreenStep.Open }
     }
 
     fun parse(reply: String): Plan {
-        var clean = reply
-        val openApp = OPEN.find(reply)?.groupValues?.get(1)?.trim()?.ifBlank { null }
-        val tapLabel = TAP.find(reply)?.groupValues?.get(1)?.trim()?.ifBlank { null }
-        clean = clean.replace(OPEN, "").replace(TAP, "").trim()
-        return Plan(clean, openApp, tapLabel)
+        val steps = mutableListOf<ScreenStep>()
+        for (match in MARKER.findAll(reply)) {
+            val kind = match.groupValues[1].uppercase()
+            val arg = match.groupValues.getOrNull(2)?.trim().orEmpty()
+            when (kind) {
+                "OPEN" -> if (arg.isNotEmpty()) steps.add(ScreenStep.Open(arg))
+                "TAP" -> if (arg.isNotEmpty()) steps.add(ScreenStep.Tap(arg))
+                "TYPE" -> if (arg.isNotEmpty()) steps.add(ScreenStep.Type(arg))
+                "ENTER" -> steps.add(ScreenStep.Enter)
+            }
+        }
+        val clean = reply.replace(MARKER, "").trim()
+        return Plan(clean, steps)
     }
 }

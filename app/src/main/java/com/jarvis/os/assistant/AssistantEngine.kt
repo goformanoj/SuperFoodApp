@@ -15,6 +15,7 @@ import com.jarvis.os.calendar.CalendarWriter
 import com.jarvis.os.control.AppLauncher
 import com.jarvis.os.control.ScreenActions
 import com.jarvis.os.control.ScreenControlService
+import com.jarvis.os.control.ScreenStep
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.ConversationStore
 import com.jarvis.os.voice.OrbState
@@ -173,7 +174,7 @@ class AssistantEngine(context: Context) {
                 }
                 // Decide what to SAY now, but defer any app switch until after we
                 // finish speaking (run in onSpokenDone) so the reply isn't cut off.
-                val needsPerm = plan.tapLabel != null && !ScreenControlService.isRunning()
+                val needsPerm = plan.needsAccessibility && !ScreenControlService.isRunning()
                 val spoken = when {
                     needsPerm ->
                         "To control the screen, open Accessibility settings, go to Downloaded apps, and switch on JARVIS Screen Control, then ask me again."
@@ -247,16 +248,18 @@ class AssistantEngine(context: Context) {
      */
     private fun executeScreen(plan: ScreenActions.Plan): ScreenOutcome {
         if (!plan.hasAction) return ScreenOutcome.NONE
-        if (plan.tapLabel != null && !ScreenControlService.isRunning()) {
+        if (plan.needsAccessibility && !ScreenControlService.isRunning()) {
             openAccessibilitySettings()
             return ScreenOutcome.NEEDS_PERMISSION
         }
-        var launchedPackage: String? = null
-        if (plan.openApp != null) {
-            launchedPackage = AppLauncher.launch(appContext, plan.openApp)
-        }
-        if (plan.tapLabel != null) {
-            ScreenControlService.instance?.tapWhenReady(launchedPackage, plan.tapLabel)
+        if (plan.needsAccessibility) {
+            // Run the whole ordered sequence (open -> tap -> type -> enter) via the service.
+            ScreenControlService.instance?.runSteps(plan.steps)
+        } else {
+            // Opens only — no accessibility needed.
+            for (step in plan.steps) {
+                if (step is ScreenStep.Open) AppLauncher.launch(appContext, step.app)
+            }
         }
         return ScreenOutcome.DISPATCHED
     }

@@ -483,3 +483,31 @@ a real finger SWIPE UP (dispatchGesture) over the largest scrollable area's
 bounds — a vertical swipe scrolls vertical content and cannot flip horizontal
 tabs, and it works regardless of advertised scroll actions. Removed the
 action-based helpers and the unused Build import.
+
+### 2026-07-27 — Part A: multi-step commands + typing (foundation for compound instructions)
+User wants: typing, compound "understand straight up" commands ("show me a
+standup comedy video" -> open YouTube, search, wait), a continuous background
+"work session" that starts only after opening an app + giving a command and
+stops on "thank you Jarvis", and a plan for tap accuracy.
+Built Part A now:
+- `ScreenActions` now parses an ORDERED sequence of steps (sealed `ScreenStep`:
+  Open / Tap / Type / Enter) from the reply, not just one open+tap.
+- `ScreenControlService.runSteps` executes them in order with settle delays:
+  Open (launch + wait for foreground), Tap (await app + scroll-find + tap),
+  Type (wait for an editable field, ACTION_SET_TEXT), Enter (ACTION_IME_ENTER
+  = search/go, API 30+).
+- Engine runs the whole sequence via the service when it needs accessibility;
+  open-only sequences go straight through AppLauncher (no a11y needed).
+- Prompts: added <<TYPE|..>> and <<ENTER>>, taught chaining with examples
+  (YouTube search, WhatsApp chat). Removed "can't type" from CANNOT.
+
+## Roadmap for the rest of this request (NOT yet built)
+- **Part B — continuous "work session":** foreground service that listens for
+  follow-up commands ONLY after JARVIS opened an app from a command; keeps
+  hearing while the user is in the other app; stops on "thank you Jarvis". Must
+  keep exactly one mic owner at a time (in-app engine when JARVIS is foreground,
+  service when it's backgrounded) to avoid the old mic conflict.
+- **Part C — accuracy:** feed the AI the on-screen text (accessibility tree) so
+  it taps what's really there; verify a tap changed the screen and retry; ask to
+  disambiguate ties; per-app hints for common flows.
+- **Part D — polish:** tap-to-talk toggle, clear idle text, onboarding.
