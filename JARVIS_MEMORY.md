@@ -613,3 +613,65 @@ Housekeeping: two commits this session carried a Co-Authored-By trailer naming
 the model, which PRODUCT_PLAN forbids in any pushed artifact. With the user's
 go-ahead, rewrote both messages (trees verified identical) and force-pushed
 main and the branch. Do not add that trailer here.
+
+### 2026-07-27 — Part B shipped: continuous work session (build #89)
+After a command opens an app, JARVIS keeps listening for follow-ups and stops on
+"thank you Jarvis"; opening/closing JARVIS without a command never starts a
+session. The old background-wake failure was solved structurally rather than
+carefully: `WorkSession.owner` is a single computed value (NONE/ENGINE/SESSION),
+so "two mic owners" is not a representable state, and the foreground service
+never opens the mic at all — the engine keeps the process's only VoiceController
+and the service only holds the app in the foreground state (type=microphone) and
+shows a notification with Stop. Removed the engine's own `visible` flag so there
+is one source of truth. The service starts when the session begins, while still
+on screen: Android 12+ throws ForegroundServiceStartNotAllowedException for an
+FGS started from the background.
+
+### 2026-07-27 — Part C: making it actually see the screen (builds #91-#96)
+Every fix below came from a trace the user shared out of the Diagnostics screen.
+The traces repeatedly contradicted the obvious guess — in most cases the model's
+plan was reasonable and the EXECUTOR was wrong.
+
+- **#91 marker robustness.** A screenshot showed `<<TAP|Thriller by Michael
+  Jackson>` printed on screen and spoken. The model closed the marker with one
+  `>`; the rigid parser neither ran the tap nor stripped the text. Both parsers
+  now accept one or two brackets, and a catch-all strips anything still shaped
+  like a marker before speaking.
+- **#91 executor.** After ENTER the code waited a blind 700ms, so a following tap
+  resolved against the pre-search screen; and a search field still holding the
+  query text scored a perfect 100 exact match, so "tap Believe" tapped the search
+  box. ENTER now waits for the visible text to actually change (bounded), and
+  editable nodes are demoted rather than excluded.
+- **#93 screen awareness.** The real disease: the model replanned from zero every
+  turn, so "send the message" re-ran OPEN/TAP/TYPE/ENTER and re-tapping "Mom"
+  inside the Mom chat opened her PROFILE. `describeScreen()` now renders the live
+  tree into context with an instruction to emit only the steps still needed.
+  Passwords and OTP-shaped digits are redacted; scan bounded (400 nodes/45 items).
+- **#94 state memory.** Bug in #93: `rootInActiveWindow` returns JARVIS's own UI
+  when JARVIS is in front, so it described "[Good evening] [J.A.R.V.I.S.]" and
+  concluded it was inside itself — worse than blindness. Now it reads the
+  front-most non-JARVIS window (falling back to scanning interactive windows) and
+  otherwise reports what the user was last in, and how long ago.
+- **#95 type vs send.** "only type hello in the chat" still sent, because every
+  TYPE example in the prompt ended in `<<ENTER>>` — the model learned typing and
+  submitting as one move. Fixed in the prompt AND with `SendGuard`, which drops a
+  trailing submit/Send when the user clearly asked to compose and clearly did not
+  authorise sending. Sending is irreversible, so it does not rely on the prompt
+  alone. Deliberately narrow: any mention of send/post or search/find/play leaves
+  the plan alone, and a submit mid-sequence survives.
+- **#96 concurrency + honest failure.** Timestamps proved two sequences running at
+  once and fighting over the screen (one typing while the other tapped Voice
+  search). runSteps now supersedes: bump a token, clear pending callbacks.
+  `<<OPEN|X>>` no longer relaunches an app already in front (that reset YouTube to
+  the home feed, losing the user's results). And `tapNode` now returns whether the
+  tap happened: `seek` used to always call `onDone(true)`, so a dead tap was
+  announced as "Playing the Thriller video" four times in a row with no error.
+
+**Still open:** the album-row tap does nothing (now reported honestly, cause
+unknown — the outline overlay was ruled out, FLAG_NOT_TOUCHABLE is set), and the
+FIRST command of a chain still plans blind because the target app is not open yet.
+That is what `<<PICK>>` (mid-sequence re-planning) is for, and it is next.
+
+**Process note:** docs went 8 commits stale during this run while chasing bug
+reports. EXECUTION_PLAN says to update PROGRESS and JARVIS_MEMORY every time —
+that means after each merge, not at the end of a debugging session.

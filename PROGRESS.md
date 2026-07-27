@@ -1,7 +1,7 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `e6d89e5` · last green build **#85** · updated 2026-07-27
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `c0ee9d3` · last green build **#95** · updated 2026-07-27
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
@@ -30,8 +30,21 @@
 - **Shareable trace** 🔬 — every turn records heard → raw reply → markers parsed → actions run → spoken. One **Share** button exports it as text. API keys are redacted before anything can leave.
 - **Typed command box** 🔬 — runs the full pipeline without the microphone, so brain/marker/tap failures can be reproduced by typing.
 
-## 🔨 In progress
-- **Part B** — continuous "work session" (background-listen after a command; stop on "thank you Jarvis"), built Play-compliant from the start.
+## ✅ Part B — continuous work session (build #89, merged)
+Background-listens for follow-ups after a command opens an app; stops on "thank you Jarvis"; never listens if you only open/close JARVIS. One mic owner **by construction** — `WorkSession.owner` is a single computed value, and the foreground service never opens the mic (the engine keeps the only `VoiceController`). Play-shaped from day one: `foregroundServiceType=microphone` + persistent notification with Stop.
+
+## 🔨 Part C — accuracy (in progress; driven by real device traces)
+Shipped so far:
+- **Screen awareness** (#93) — `describeScreen()` renders the live accessibility tree into the model's context (clickables in `[brackets]`, fields as `field:"…"`), so it names labels that exist instead of inventing them. Passwords and OTP-shaped digits redacted; scan bounded to 400 nodes / 45 items.
+- **State memory** (#94) — when JARVIS's own UI is in front it reads the app *behind* it, and otherwise reports what the user was last in and how long ago. Previously it described its own UI and concluded it was inside JARVIS.
+- **Send guard** (#95) — "type it" and "send it" are different instructions; a trailing submit/Send is dropped when the user only asked to compose. Sending is irreversible, so this is enforced in code, not only in the prompt.
+- **Marker robustness** (#91) — a single `>` no longer breaks parsing, and unparseable marker text can never reach the spoken reply.
+- **Executor fixes** (#91, #96) — wait for the screen to actually change after Enter; demote editable fields so the search box stops winning; don't relaunch an app that is already in front; sequences supersede each other instead of interleaving; taps report real success instead of always claiming it.
+
+Still open in Part C:
+- **Mid-sequence re-planning (`<<PICK>>`)** — the first command of a chain still plans blind, because the target app isn't open yet and there is nothing to read.
+- **The Thriller-album tap** — reported false success for four attempts; now reports honestly, but the underlying cause is not yet identified.
+- Tap verification + retry; disambiguation when matches tie.
 
 ## ⏸️ Queued (not started) — see [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md)
 - **Part C** — accuracy (feed AI the on-screen text; verify + retry taps; disambiguate) — with password/OTP redaction before anything leaves the device.
@@ -60,11 +73,15 @@
 | Multi-step chained commands | 🔬 | #76 | "standup comedy video" |
 | Conversational-first replies | 🔬 | #76 | |
 | Fixed signing (clean updates) | ✅ | #52 | |
-| Unit tests gating CI | ✅ | #85 | parsers + DebugLog |
-| Diagnostics + shareable trace | 🔬 | #85 | drawer → Diagnostics |
+| Unit tests gating CI | ✅ | #85 | parsers, DebugLog, WorkSession, SendGuard |
+| Diagnostics + shareable trace | ✅ | #85 | drawer → Diagnostics; traces now drive the fixes |
 | Typed command box (no mic) | 🔬 | #85 | full pipeline test |
-| Continuous work session | 🔨 | — | Part B, in progress |
-| Accuracy (on-screen text to AI) | ⏸️ | — | Part C |
+| Continuous work session | ✅ | #89 | one mic owner by construction |
+| Screen awareness (AI reads the screen) | 🔬 | #93 | needs on-device confirmation |
+| State memory (app behind JARVIS) | 🔬 | #94 | |
+| Type vs send kept separate | 🔬 | #95 | guard + prompt |
+| Sequences supersede, honest taps | 🔬 | #96 | |
+| Mid-sequence re-planning (`<<PICK>>`) | ⏸️ | — | first command of a chain still plans blind |
 | Polish (toggle/onboarding) | ⏸️ | — | Part D |
 | Key out of the APK (proxy + BYOK) | ⏸️ | — | Part E1 |
 | Play compliance + release AAB | ⏸️ | — | Part E2–E3 |

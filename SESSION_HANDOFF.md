@@ -4,8 +4,12 @@
 > Companion: [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md) · [`PROGRESS.md`](PROGRESS.md) · [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) · [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) · [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)
 
 ## Current position + immediate next
-- **Shipped:** Part A (multi-step commands + typing) and the conversational-first prompt — build **#76 green**, merged to `main`. Then the project docs, and now [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) (key-security matrix + Play Store path).
-- **Next:** **Part B — continuous work session** (user gave the go; features before the commercial foundation). Follow [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md).
+- **Shipped:** Part A, the testing rig (unit tests gating CI + Diagnostics screen + shareable trace + typed command box), **Part B** (continuous work session, build #89), and most of **Part C** — screen awareness, state memory, the send guard, and a run of executor fixes. `main` @ **`c0ee9d3`**, last green build **#95**.
+- **Next:** finish Part C — **mid-sequence re-planning (`<<PICK>>`)**, so the first command of a chain stops planning blind, plus tap verification/retry. Then Part D, then Part E.
+- **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly (#96); root cause still unknown — the outline overlay was ruled out (`FLAG_NOT_TOUCHABLE` is set).
+
+## How the debugging loop actually works now
+The user shares a trace from **Diagnostics → Share**; it shows heard → raw reply → markers parsed → per-step screen outcomes → spoken. Every fix in Part C came from one. **Read the trace before theorising** — it has repeatedly contradicted the obvious guess (e.g. the model's plan was fine and the executor was wrong).
 
 ## Definition of done (a change is NOT finished until all of this is true)
 1. Committed on the **session branch** and pushed with `-u origin <branch>`.
@@ -74,3 +78,8 @@ Steps run **in order**, so one instruction can chain: `<<OPEN\|YouTube>> <<TAP\|
 - **Speak-then-switch** — run screen actions in `onSpokenDone`, after TTS, or the reply gets cut off.
 - **Committed fixed debug keystore** — so updates install over each other (else "App not installed").
 - **CI status lag** — trust the artifact, not the reported job status.
+- **One sequence at a time** — a new command must supersede the one still running, or two chains interleave and undo each other (seen as aimless scrolling and stray taps). `runSteps` bumps a token and clears pending callbacks.
+- **Never relaunch an app that is already in front** — it resets the app to its home screen and throws away the results the user is looking at.
+- **Never report a tap as successful unless it was** — `seek` used to always call `onDone(true)`, so a dead tap was announced as done and repeating the command repeated the same non-event. A false success is far worse than a reported failure: it hides the bug from both the user and the model.
+- **The prompt teaches by example** — every `TYPE` example ended in `<<ENTER>>`, so the model treated typing and sending as one move and sent messages the user only asked to type. Irreversible actions need a code-level guard, not just prompt wording.
+- **Don't describe JARVIS's own UI as "the screen"** — `rootInActiveWindow` returns JARVIS when it is in front; read the window behind it instead.
