@@ -139,6 +139,56 @@ class ScreenControlService : AccessibilityService() {
         return sb.toString()
     }
 
+    /**
+     * A compact description of what is actually on screen right now, for the AI's
+     * context. This is what stops it guessing: instead of inventing a label and
+     * hoping, it can name something that is really there — and it can tell that
+     * the app is already open and it is already in the right place, so it stops
+     * replaying steps it has already done.
+     *
+     * Clickable things are shown in [brackets], text fields as field:"contents".
+     * Password fields and anything OTP-shaped are redacted before this leaves the
+     * device.
+     */
+    fun describeScreen(): String {
+        val root = rootInActiveWindow ?: return ""
+        val app = root.packageName?.toString().orEmpty()
+        val items = mutableListOf<String>()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var scanned = 0
+        while (queue.isNotEmpty() && scanned < SCREEN_SCAN_NODES && items.size < SCREEN_MAX_ITEMS) {
+            val node = queue.removeFirst()
+            scanned++
+            val raw = (node.text ?: node.contentDescription)?.toString()?.trim().orEmpty()
+            if (raw.isNotEmpty() && raw.length <= SCREEN_LABEL_MAX && node.isVisibleToUser) {
+                val label = redactSensitive(raw, node.isPassword)
+                items.add(
+                    when {
+                        node.isEditable -> "field:\"$label\""
+                        node.isClickable || clickableSelfOrAncestor(node) != null -> "[$label]"
+                        else -> label
+                    },
+                )
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
+        }
+        if (items.isEmpty()) return ""
+        return "Foreground app: $app. On screen now: ${items.joinToString(" ")}"
+    }
+
+    /**
+     * Screen text goes to a third-party model, so credentials must never travel
+     * with it. Password fields are replaced wholesale, and bare 4-8 digit runs
+     * (one-time codes) are masked wherever they appear.
+     */
+    private fun redactSensitive(text: String, isPassword: Boolean): String {
+        if (isPassword) return "***"
+        return text.replace(OTP_LIKE, "***")
+    }
+
     /** Poll until the screen differs from [before], then let it finish rendering. */
     private fun awaitContentChange(before: String, tries: Int, onChanged: () -> Unit) {
         val changed = contentFingerprint() != before
@@ -460,6 +510,14 @@ class ScreenControlService : AccessibilityService() {
 
         /** Divisor demoting editable fields, which hold the query text after a search. */
         private const val EDITABLE_PENALTY = 4
+
+        /** Bounds on the screen description sent to the AI (tokens cost money and latency). */
+        private const val SCREEN_SCAN_NODES = 400
+        private const val SCREEN_MAX_ITEMS = 45
+        private const val SCREEN_LABEL_MAX = 60
+
+        /** Bare 4-8 digit runs — one-time codes — are masked before leaving the device. */
+        private val OTP_LIKE = Regex("""\b\d{4,8}\b""")
         private const val OUTLINE_MS = 1100L
     }
 }

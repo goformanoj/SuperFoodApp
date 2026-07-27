@@ -321,9 +321,24 @@ class AssistantEngine(context: Context) {
             else ->
                 "Upcoming calendar events: ${events.joinToString("; ")}."
         }
+        // What is actually on screen right now. Without this the model replans from
+        // zero every turn — re-opening apps that are already open and re-tapping
+        // things it already tapped (which is how "send the message" ended up
+        // opening the contact's profile).
+        val screen = ScreenControlService.instance?.describeScreen().orEmpty()
+        val screenContext = if (screen.isBlank()) {
+            "You cannot see the screen right now (screen control is off, or JARVIS is in front)."
+        } else {
+            "$screen\nUse these REAL on-screen labels rather than guessing one. Emit ONLY the " +
+                "steps still needed from here: do not re-open an app that is already the " +
+                "foreground app, and do not tap a name you are already inside — in a chat, the " +
+                "name at the top opens that person's profile. If the text is already typed, just " +
+                "send it."
+        }
+
         "Current date/time: $now. $schedule When asked about the schedule, use ONLY this " +
             "real calendar data and do not invent events. When rescheduling or deleting, " +
-            "identify the exact event from this list."
+            "identify the exact event from this list.\n\n$screenContext"
     }
 
     private enum class ScreenOutcome { NONE, DISPATCHED, NEEDS_PERMISSION }
