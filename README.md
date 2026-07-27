@@ -23,6 +23,7 @@ There is no local build required — every build runs on GitHub Actions.
 - **[`PRODUCT_PLAN.md`](PRODUCT_PLAN.md)** — the full vision, constraints, and feature spec (incl. API-key security).
 - **[`PROGRESS.md`](PROGRESS.md)** — what's done, in flight, and queued.
 - **[`EXECUTION_PLAN.md`](EXECUTION_PLAN.md)** — the ordered build queue and working loop.
+- **[`COMMERCIALIZATION.md`](COMMERCIALIZATION.md)** — API-key security options and the Play Store launch path.
 - **[`SESSION_HANDOFF.md`](SESSION_HANDOFF.md)** — how to resume: CI, secrets, architecture, install runbook.
 - **[`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)** — detailed dated dev log.
 

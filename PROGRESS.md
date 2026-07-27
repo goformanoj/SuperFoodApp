@@ -1,7 +1,7 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: branch `claude/jarvis-minimal-build-4jwvo1` · `main` @ `93fd65b` · last green build **#76** · updated 2026-07-27
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `4029979` · last green build **#76** · updated 2026-07-27
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
@@ -24,10 +24,13 @@
 - Conversational-first prompt (build #76) — JARVIS talks like a real assistant, tools when you want an action.
 - Swipe-scroll for the buried-chat case (WhatsApp "open the Mom chat below the fold").
 
+## 🔨 In progress
+- **Part B** — continuous "work session" (background-listen after a command; stop on "thank you Jarvis"), built Play-compliant from the start.
+
 ## ⏸️ Queued (not started) — see [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md)
-- **Part B** — continuous "work session" (background-listen after a command; stop on "thank you Jarvis").
-- **Part C** — accuracy (feed AI the on-screen text; verify + retry taps; disambiguate).
+- **Part C** — accuracy (feed AI the on-screen text; verify + retry taps; disambiguate) — with password/OTP redaction before anything leaves the device.
 - **Part D** — polish (tap-to-talk toggle; clear idle text; permission onboarding).
+- **Part E** — commercialization: key security (proxy + BYOK), Play compliance cleanups, release AAB pipeline, name/`applicationId` gate, billing, launch. See [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md).
 - Later — proper wake word (Porcupine/openWakeWord); streaming replies; device skills (alarms/timers, SMS/calls, toggles, media); vision.
 
 ## Known limitations / caveats
@@ -51,6 +54,9 @@
 | Multi-step chained commands | 🔬 | #76 | "standup comedy video" |
 | Conversational-first replies | 🔬 | #76 | |
 | Fixed signing (clean updates) | ✅ | #52 | |
-| Continuous work session | ⏸️ | — | Part B |
+| Continuous work session | 🔨 | — | Part B, in progress |
 | Accuracy (on-screen text to AI) | ⏸️ | — | Part C |
 | Polish (toggle/onboarding) | ⏸️ | — | Part D |
+| Key out of the APK (proxy + BYOK) | ⏸️ | — | Part E1 |
+| Play compliance + release AAB | ⏸️ | — | Part E2–E3 |
+| Subscription billing | ⏸️ | — | Part E5 |

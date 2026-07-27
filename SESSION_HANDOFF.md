@@ -1,15 +1,21 @@
 # JARVIS OS — Session Handoff
 
 > Everything a fresh session (or future me) needs to resume instantly. Update the "Current position" line as work ships.
-> Companion: [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md) · [`PROGRESS.md`](PROGRESS.md) · [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) · [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)
+> Companion: [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md) · [`PROGRESS.md`](PROGRESS.md) · [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) · [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) · [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)
 
 ## Current position + immediate next
-- **Shipped:** Part A (multi-step commands + typing) and the conversational-first prompt — build **#76 green**, merged to `main` (`93fd65b`).
-- **Next:** **paused before Part B** (continuous work session) awaiting the user's go. When told to continue, follow [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md).
+- **Shipped:** Part A (multi-step commands + typing) and the conversational-first prompt — build **#76 green**, merged to `main`. Then the project docs, and now [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) (key-security matrix + Play Store path).
+- **Next:** **Part B — continuous work session** (user gave the go; features before the commercial foundation). Follow [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md).
+
+## Definition of done (a change is NOT finished until all of this is true)
+1. Committed on the **session branch** and pushed with `-u origin <branch>`.
+2. The **`jarvis-debug-apk` artifact appears** for that commit (this is the green signal — the job-status API lags 2–5h).
+3. **`main` fast-forwarded to that commit and pushed.** Never push straight to `main`; never leave a green commit unmerged.
+4. [`PROGRESS.md`](PROGRESS.md) updated and [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md) appended.
 
 ## Repo & branch
-- Develop on **`claude/jarvis-minimal-build-4jwvo1`**; fast-forward `main` after a build goes green.
-- `main` currently at **`93fd65b`**; last build **#76**.
+- The development branch is **per-session** (Claude is assigned one, e.g. `claude/root-file-context-ko322w`). The rule is constant: develop on the session branch, fast-forward `main` once the build is green.
+- `main` currently at **`4029979`**; last build **#76**.
 
 ## CI process
 - `.github/workflows/build.yml` runs on **every push**: checkout → JDK 17 → Android SDK (platforms;android-36, build-tools;36.0.0) → `./gradlew assembleDebug` (keys injected from secrets) → upload artifact **`jarvis-debug-apk`**.
@@ -18,7 +24,7 @@
 
 ## Secrets / keys
 - `GROQ_API_KEY` (+ `GEMINI_API_KEY`) are **GitHub Actions secrets** → injected at build into `BuildConfig`. **Never committed.**
-- **Exposure note:** the key is compiled into the APK; public repo → artifact downloadable → key extractable with a decompiler. Mitigation: keep Groq on **free tier / no billing** + **rotate** if abused. Full explanation in [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md#api-key-security-reality-read-this).
+- **Exposure note:** the key is compiled into the APK; public repo → artifact downloadable → key extractable with a decompiler. Mitigation today: keep Groq on **free tier / no billing** + **rotate** if abused. Target architecture is a **backend proxy + BYOK** — full option matrix in [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md#1-api-key-security--every-option).
 - **Groq is egress-blocked (403) in the build environment**, so Claude cannot call the live LLM to test replies here.
 
 ## Commit identity

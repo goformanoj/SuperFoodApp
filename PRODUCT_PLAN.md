@@ -1,10 +1,17 @@
 # JARVIS OS — Product Plan (north star)
 
 > The durable vision and spec. Changes only when the vision changes.
-> Companion docs: [`PROGRESS.md`](PROGRESS.md) · [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) · [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) · detailed log in [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)
+> Companion docs: [`PROGRESS.md`](PROGRESS.md) · [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) · [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) · [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) · detailed log in [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)
 
 ## Vision
 A native Android AI voice assistant — **JARVIS OS** — built **entirely from a phone, with no PC**. Claude writes the code; **GitHub Actions compiles it**; the user downloads the resulting `jarvis-debug-apk` and installs it. It should talk naturally, remember context, manage the real device calendar, and control the phone screen on command.
+
+**It is also going to be a product.** The end goal is a published Play Store app on a **freemium subscription** — free tier with a capped daily allowance (or unlimited via the user's own API key), paid tier unlimited. That changes three things about how we build:
+- The API key must move **out of the APK** — target architecture is a **backend proxy + BYOK** (full option matrix in [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md)).
+- Every new feature is built **Play-compliant from day one** (foreground-service types, disclosures, consent) rather than retrofitted.
+- The public name and `applicationId` are a **hard gate before the first upload** — `applicationId` can never change afterwards, and "JARVIS" is a Marvel/Disney trademark, so the store name will differ from the internal codename.
+
+Order of work: **features first** (Parts B/C/D), then the commercial foundation (Part E).
 
 ## Non-negotiable constraints
 - **API keys are injected at build time via a GitHub Actions secret — NEVER committed** to the repo.
@@ -14,6 +21,7 @@ A native Android AI voice assistant — **JARVIS OS** — built **entirely from 
 - Build in **small steps, one green CI build at a time**; give complete file contents when needed.
 
 ## API-key security reality (read this)
+> Summary below; the **full option matrix and the chosen target architecture** live in [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md#1-api-key-security--every-option).
 - The key **never enters the source code** — browsing the public repo or the build logs will not reveal it. ✅
 - **But** the key is compiled into `BuildConfig.GROQ_API_KEY` and therefore **embedded inside the APK**. Because the repo is **public**, the APK artifact is downloadable, and anyone can extract the key from it with a free decompiler (jadx/apktool). **Treat the key as effectively public.**
 - It only unlocks Groq (an LLM API) — nothing else (no phone/files/calendar/GitHub access). Worst case: someone abuses your Groq quota, or runs up a bill **only if a payment method is attached**.
@@ -21,7 +29,7 @@ A native Android AI voice assistant — **JARVIS OS** — built **entirely from 
   1. Keep the Groq account on **free tier with NO payment method** → removes all financial risk (worst case is quota abuse). ← recommended
   2. **Rotate** the key if abused: regenerate in Groq → update the GitHub secret → next build re-embeds the new one; the old key dies.
   3. Optionally make the **repo private** (free GitHub accounts get ~2,000 Actions min/month) → artifacts are no longer publicly downloadable.
-  4. Proper long-term fix (out of scope for a personal app): a backend proxy holds the key; the app calls your server, not Groq directly.
+  4. **The real fix, and the chosen target:** a **backend proxy** holds the key (the app calls our server, not Groq directly) plus **BYOK** for users who bring their own key. Scheduled as Part E1.
 
 ## Locked tech stack
 - Kotlin · Jetpack Compose · Material 3

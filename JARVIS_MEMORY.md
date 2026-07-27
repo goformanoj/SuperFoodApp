@@ -534,3 +534,40 @@ from going forward; JARVIS_MEMORY.md stays as the detailed chronological log.
 Also answered the user's Groq-key security question: key is never in source but IS
 embedded in the APK (public repo -> extractable) -> keep Groq free-tier/no-billing +
 rotate if abused.
+
+### 2026-07-27 — Commercialization plan + key-security architecture (new COMMERCIALIZATION.md)
+User asked three things: (1) "don't you merge to main?", (2) all options for keeping the API
+key secret, (3) how to put JARVIS on the Play Store and commercialise it.
+
+On (1): main WAS up to date (4029979 = the docs commit, branch level with it). The real gap was
+that SESSION_HANDOFF/EXECUTION_PLAN still named the OLD session branch
+(claude/jarvis-minimal-build-4jwvo1) while this session develops on claude/root-file-context-ko322w.
+Fixed: the branch is now described as per-session, and SESSION_HANDOFF gained an explicit
+"Definition of done" (push -> artifact appears -> fast-forward main -> update docs). A green
+commit is never left unmerged.
+
+On (2) and (3): created COMMERCIALIZATION.md with the full 7-option key matrix (status quo,
+private repo, obfuscation, BYOK, backend proxy, Firebase AI Logic, on-device model), the chosen
+architecture, and the Play Store path in phases A-F.
+
+User decisions this session:
+- **Backend proxy is the product path; BYOK is a later bonus.** Corrected an impression I gave
+  that they were equal halves — the app must work end-to-end from the Play Store with no key
+  prompt, like every other AI app. What stops the current build scaling is not Play policy but
+  arithmetic: all installs share one Groq key and Groq's limits are per-account.
+- **Freemium subscription.** Real numbers checked: Groq 70B is $0.59/M in, $0.79/M out => ~$0.001
+  per voice turn; typical user ~$0.45/mo; Google takes ~15% => ~75% margin at ~$2.30/mo. Free
+  tier must run on the cheap 8B model or 1,000 free users cost ~$600/mo.
+- **Firebase Auth** (anonymous free tier, Google sign-in to subscribe) + **Play Integrity** on
+  every backend call. Server stores only a usage counter; history stays on-device.
+- **Name deferred but gated:** "JARVIS" is a Marvel trademark and applicationId can NEVER change
+  after the first publish — both must be settled before the first upload.
+- **Sequencing: features first** (Parts B/C/D), then commercialization as the new **Part E**.
+
+Play compliance blockers written down while they're cheap to design around: the
+AccessibilityService declaration + prominent disclosure/consent (undeclared use = suspension),
+QUERY_ALL_PACKAGES (replace with a <queries> MAIN/LAUNCHER block), the foreground-service mic
+type that Part B needs anyway, and the Part C constraint that screen text going to a third-party
+LLM needs consent plus password/OTP redaction before it leaves the device.
+
+Next: Part B — continuous work session, built Play-compliant from day one.
