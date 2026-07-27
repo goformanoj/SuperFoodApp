@@ -1,5 +1,7 @@
 # JARVIS OS — Execution Plan (the build queue I follow)
 
+> **Working rules live in [`CLAUDE.md`](CLAUDE.md)**, which loads automatically every session — including the non-negotiable rule to update these docs after every merge. A `Stop` hook enforces it.
+>
 > This is the ordered queue Claude works through **without needing new per-step instructions**.
 > **Part B is go** (user's call: finish the features, then do the commercial foundation in Part E).
 > Companion: [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md) (why) · [`PROGRESS.md`](PROGRESS.md) (status) · [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) (Play Store + keys) · [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) (how to resume)
