@@ -8,6 +8,13 @@
     <!-- Lets JARVIS resolve and open other apps by name on Android 11+. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+    <!-- Work session: keeps JARVIS able to hear follow-up commands while you are
+         in another app. The microphone type is required from Android 14, and the
+         notification permission from Android 13 so the ongoing notice is visible. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Needed on Android 11+ to reach the on-device speech recognition service. -->
     <queries>
         <intent>
@@ -32,6 +39,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Work session: runs only while JARVIS is backgrounded mid-session. -->
+        <service
+            android:name=".control.WorkSessionService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 
         <!-- Screen control: user must enable this under Settings > Accessibility. -->
         <service

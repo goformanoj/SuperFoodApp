@@ -16,6 +16,7 @@ import com.jarvis.os.control.AppLauncher
 import com.jarvis.os.control.ScreenActions
 import com.jarvis.os.control.ScreenControlService
 import com.jarvis.os.control.ScreenStep
+import com.jarvis.os.control.WorkSessionService
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.ConversationStore
 import com.jarvis.os.debug.DebugLog
@@ -42,6 +43,11 @@ import java.util.Locale
  * keeps a persisted conversation for context and can act on the calendar and the
  * screen. Owns the single [VoiceUiState] the UI observes; driven from the
  * Activity lifecycle (onMicPermission / resume / pause / destroy).
+ *
+ * It also owns the process's only [VoiceController]. Listening starts and stops
+ * in exactly one place, [applyMicOwner], which obeys [WorkSession] — that is how
+ * "one microphone owner, always" is kept true once work sessions let JARVIS
+ * carry on listening from the background.
  */
 class AssistantEngine(context: Context) {
 
@@ -58,8 +64,11 @@ class AssistantEngine(context: Context) {
     private val voice = VoiceController(appContext)
     private val speaker = Speaker(appContext)
 
+    // Decides who may hold the microphone. Every listen/stop decision below goes
+    // through this one object, so a second listener cannot come into existence.
+    private val session = WorkSession()
+
     private var micGranted = false
-    private var visible = false
     private var busy = false // thinking or speaking — do not listen
     // A screen action (open app / tap) to run AFTER JARVIS finishes speaking, so
     // the spoken reply isn't cut off when the screen switches away.
@@ -75,37 +84,82 @@ class AssistantEngine(context: Context) {
         voice.onFatal = { msg -> set { it.copy(orb = OrbState.Error, status = msg, amplitude = 0f) } }
         voice.onFinal = { text -> ask(text) }
         speaker.onDone = { onSpokenDone() }
+        // The notification's Stop action ends the session from outside the app.
+        WorkSessionService.onStopRequested = {
+            main.post {
+                session.end()
+                DebugLog.log(DebugLog.Stage.SESSION, "ended by notification Stop")
+                applyMicOwner()
+            }
+        }
     }
 
     fun onMicPermission(granted: Boolean) {
         micGranted = granted
+        session.onMicPermission(granted)
         if (granted) {
-            if (visible && !busy) listen()
+            applyMicOwner()
         } else {
             set { it.copy(orb = OrbState.Error, status = "Microphone permission needed", amplitude = 0f) }
         }
     }
 
     fun resume() {
-        visible = true
+        session.onVisibilityChanged(true)
         // Coming back to the foreground (e.g. after being sent to Settings) — any
         // interrupted think/speak is abandoned, so clear busy and start listening
         // again. Without this the "busy" flag could stay stuck and it never
         // resumes hearing you.
         busy = false
-        if (micGranted) listen()
+        applyMicOwner()
     }
 
     fun pause() {
-        visible = false
+        session.onVisibilityChanged(false)
         main.removeCallbacksAndMessages(null)
-        voice.stopListening()
-        speaker.stop()
+        // Outside a session, leaving the screen silences JARVIS as before. Inside
+        // one, it keeps talking and listening from the background.
+        if (!session.isActive) speaker.stop()
+        applyMicOwner()
         set { it.copy(amplitude = 0f) }
+    }
+
+    /**
+     * The single place that starts or stops listening. It asks [session] who owns
+     * the microphone and obeys — there is no other path to `voice.startListening`
+     * during normal operation, which is what keeps "exactly one owner" true.
+     */
+    private fun applyMicOwner() {
+        // Track the service regardless of [busy], so the process is already
+        // foreground-legal by the time we want to listen again.
+        if (session.needsForegroundService) {
+            WorkSessionService.start(appContext)
+        } else {
+            WorkSessionService.stop(appContext)
+        }
+
+        if (busy) return // mid think/speak — onSpokenDone re-applies this
+
+        when (session.owner) {
+            MicOwner.NONE -> {
+                voice.stopListening()
+                set {
+                    it.copy(
+                        orb = if (micGranted) OrbState.Idle else OrbState.Error,
+                        status = if (micGranted) "Paused" else "Microphone permission needed",
+                        amplitude = 0f,
+                    )
+                }
+            }
+            MicOwner.ENGINE, MicOwner.SESSION -> listen()
+        }
     }
 
     fun destroy() {
         main.removeCallbacksAndMessages(null)
+        session.end()
+        WorkSessionService.onStopRequested = null
+        WorkSessionService.stop(appContext)
         voice.destroy()
         speaker.shutdown()
         scope.cancel()
@@ -139,8 +193,8 @@ class AssistantEngine(context: Context) {
     }
 
     private fun restartSoon() {
-        if (!visible || busy || !micGranted) return
-        main.postDelayed({ if (visible && !busy && micGranted) voice.startListening() }, RESTART_MS)
+        if (busy || session.owner == MicOwner.NONE) return
+        main.postDelayed({ if (!busy && session.owner != MicOwner.NONE) voice.startListening() }, RESTART_MS)
     }
 
     private fun ask(userText: String, source: String = "voice") {
@@ -150,6 +204,20 @@ class AssistantEngine(context: Context) {
         main.removeCallbacksAndMessages(null)
 
         DebugLog.log(DebugLog.Stage.HEARD, "($source) $userText")
+
+        // "Thank you Jarvis" ends the work session. Handled here, before the model
+        // is called, so it always works even if the network is down.
+        if (session.endIfStopPhrase(userText)) {
+            DebugLog.log(DebugLog.Stage.SESSION, "ended by stop phrase")
+            val farewell = "Anytime."
+            addTurn(ChatTurn(ChatTurn.USER, userText))
+            addTurn(ChatTurn(ChatTurn.ASSISTANT, farewell))
+            DebugLog.log(DebugLog.Stage.SPOKE, farewell)
+            set { it.copy(orb = OrbState.Speaking, status = "Speaking…", transcript = userText, reply = farewell) }
+            speaker.speak(farewell)
+            return
+        }
+
         addTurn(ChatTurn(ChatTurn.USER, userText))
         set {
             it.copy(orb = OrbState.Thinking, status = "Thinking…", transcript = userText, reply = "", amplitude = 0f)
@@ -231,11 +299,7 @@ class AssistantEngine(context: Context) {
         if (plan != null) {
             scope.launch { withContext(Dispatchers.IO) { executeScreen(plan) } }
         }
-        if (visible && micGranted) {
-            listen()
-        } else {
-            set { it.copy(orb = OrbState.Idle, status = "Paused", amplitude = 0f) }
-        }
+        applyMicOwner()
     }
 
     private fun addTurn(turn: ChatTurn) {
@@ -277,6 +341,18 @@ class AssistantEngine(context: Context) {
             return ScreenOutcome.NEEDS_PERMISSION
         }
         DebugLog.log(DebugLog.Stage.SCREEN, "running ${plan.steps.joinToString(", ")}")
+        // A command that opens an app starts a work session: JARVIS keeps hearing
+        // follow-ups while the user is in that app. Merely opening or closing
+        // JARVIS itself never gets here, so it never starts one.
+        if (plan.steps.any { it is ScreenStep.Open }) {
+            session.onAppOpenedByCommand()
+            DebugLog.log(DebugLog.Stage.SESSION, "started — listening for follow-ups")
+            // Start the service synchronously, here, before the launch below
+            // backgrounds us — posting it to the main thread would race the app
+            // switch, and starting it from the background is not allowed.
+            if (session.needsForegroundService) WorkSessionService.start(appContext)
+            main.post { applyMicOwner() }
+        }
         if (plan.needsAccessibility) {
             // Run the whole ordered sequence (open -> tap -> type -> enter) via the service.
             ScreenControlService.instance?.runSteps(plan.steps)
