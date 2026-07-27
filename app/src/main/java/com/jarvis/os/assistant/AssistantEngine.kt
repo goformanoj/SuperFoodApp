@@ -239,7 +239,20 @@ class AssistantEngine(context: Context) {
                 val reply = raw.replace("<<END>>", "", ignoreCase = true)
                 // Pull out and run the two command families (calendar + screen).
                 val (afterCal, actions) = CalendarActions.parse(reply)
-                val plan = ScreenActions.parse(afterCal)
+                val parsed = ScreenActions.parse(afterCal)
+                // "Type it" and "send it" are different instructions and only one
+                // is reversible. The model's search examples all end in a submit,
+                // so it tends to append one — drop it when the user asked only to
+                // compose.
+                val guarded = SendGuard.apply(userText, parsed.steps)
+                if (guarded.size != parsed.steps.size) {
+                    DebugLog.log(
+                        DebugLog.Stage.MARKERS,
+                        "send suppressed: user asked to compose, not send — dropped " +
+                            "${parsed.steps.drop(guarded.size).joinToString(", ")}",
+                    )
+                }
+                val plan = parsed.copy(steps = guarded)
                 val clean = plan.clean
                 DebugLog.log(
                     DebugLog.Stage.MARKERS,
