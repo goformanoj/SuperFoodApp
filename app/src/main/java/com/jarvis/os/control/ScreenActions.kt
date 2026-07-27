@@ -16,7 +16,16 @@ sealed interface ScreenStep {
  */
 object ScreenActions {
 
-    private val MARKER = Regex("""<<(OPEN|TAP|TYPE|ENTER)(?:\|([^>]*))?>>""", RegexOption.IGNORE_CASE)
+    // Tolerant of a single closing '>' on purpose. The model does emit
+    // "<<TAP|Thriller by Michael Jackson>" occasionally, and a rigid parser both
+    // skips the action AND leaks the raw marker into the spoken reply.
+    private val MARKER =
+        Regex("""<<(OPEN|TAP|TYPE|ENTER)(?:\|([^>\n]*))?>{1,2}""", RegexOption.IGNORE_CASE)
+
+    // Safety net: anything else that still looks like a marker is stripped from
+    // the spoken text even when it could not be understood as a command. Protocol
+    // text must never reach the user, whatever the model produced.
+    private val MARKER_RESIDUE = Regex("""<<[^<>\n]*>{0,2}""")
 
     data class Plan(val clean: String, val steps: List<ScreenStep>) {
         val hasAction: Boolean get() = steps.isNotEmpty()
@@ -37,7 +46,11 @@ object ScreenActions {
                 "ENTER" -> steps.add(ScreenStep.Enter)
             }
         }
-        val clean = reply.replace(MARKER, "").trim()
+        val clean = reply
+            .replace(MARKER, "")
+            .replace(MARKER_RESIDUE, "")
+            .replace(Regex(" {2,}"), " ")
+            .trim()
         return Plan(clean, steps)
     }
 }

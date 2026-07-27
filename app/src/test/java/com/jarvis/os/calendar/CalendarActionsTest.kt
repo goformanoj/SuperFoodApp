@@ -93,6 +93,14 @@ class CalendarActionsTest {
     }
 
     @Test
+    fun `a calendar marker closed with a single angle bracket still works`() {
+        val (clean, actions) = CalendarActions.parse("Added. <<CAL|ADD|Dentist|2026-08-01|14:30|45>")
+
+        assertEquals("Added.", clean)
+        assertEquals("Dentist", (actions.single() as CalAction.Add).title)
+    }
+
+    @Test
     fun `parseStart rejects nonsense`() {
         assertNull(CalendarActions.parseStart("not-a-date", "14:30"))
     }

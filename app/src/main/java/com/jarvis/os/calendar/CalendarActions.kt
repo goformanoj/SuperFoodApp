@@ -19,7 +19,10 @@ sealed interface CalAction {
  */
 object CalendarActions {
 
-    private val REGEX = Regex("""<<CAL\|([^>]*)>>""")
+    // A single closing '>' is tolerated: the model does occasionally emit one,
+    // and a rigid parser would silently skip the calendar change while leaking
+    // the raw marker into the spoken reply.
+    private val REGEX = Regex("""<<CAL\|([^>\n]*)>{1,2}""", RegexOption.IGNORE_CASE)
 
     fun parse(reply: String): Pair<String, List<CalAction>> {
         val actions = mutableListOf<CalAction>()

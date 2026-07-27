@@ -91,6 +91,37 @@ class ScreenActionsTest {
     }
 
     @Test
+    fun `a marker closed with a single angle bracket still works`() {
+        // Seen on a real device: the model emitted "<<TAP|Thriller by Michael
+        // Jackson>". The rigid parser both skipped the tap and leaked the raw
+        // marker into the spoken reply.
+        val plan = ScreenActions.parse(
+            "Sure, playing Thriller. <<OPEN|YouTube> <<TAP|Thriller by Michael Jackson>",
+        )
+
+        assertEquals(
+            listOf(ScreenStep.Open("YouTube"), ScreenStep.Tap("Thriller by Michael Jackson")),
+            plan.steps,
+        )
+        assertEquals("Sure, playing Thriller.", plan.clean)
+    }
+
+    @Test
+    fun `marker-looking text never reaches the spoken reply, even when unparseable`() {
+        val plan = ScreenActions.parse("Playing it now. <<PLAY|something we do not support>>")
+
+        assertFalse("protocol text must never be spoken", plan.clean.contains("<<"))
+        assertEquals("Playing it now.", plan.clean)
+    }
+
+    @Test
+    fun `an unrecognised marker leaves no double spaces behind`() {
+        val plan = ScreenActions.parse("Opening it <<WAT|x>> for you.")
+
+        assertEquals("Opening it for you.", plan.clean)
+    }
+
+    @Test
     fun `an unknown marker is not treated as a step`() {
         val plan = ScreenActions.parse("<<SWIPE|up>> <<OPEN|YouTube>>")
 
