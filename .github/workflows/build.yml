@@ -30,6 +30,20 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      # Gates the build: if the parsers or the session state machine regress, no
+      # APK is produced. "Artifact present" therefore now means compiles AND the
+      # logic is still correct — not just compiles.
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+
       - name: Build debug APK
         env:
           # Injected from repository secrets; empty if a secret is unset.

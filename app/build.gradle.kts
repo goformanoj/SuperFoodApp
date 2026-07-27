@@ -88,4 +88,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    // Plain JVM unit tests for the pure-Kotlin logic (marker parsers, session
+    // state machine). No device or emulator needed — these run in CI on every push.
+    testImplementation("junit:junit:4.13.2")
 }
