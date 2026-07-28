@@ -2,6 +2,7 @@ package com.jarvis.os.assistant
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -68,7 +69,10 @@ class AssistantEngine(context: Context) {
     // through this one object, so a second listener cannot come into existence.
     private val session = WorkSession()
 
+    private val audio = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
     private var micGranted = false
+    private var mediaPlaying = false
     private var busy = false // thinking or speaking — do not listen
     // A screen action (open app / tap) to run AFTER JARVIS finishes speaking, so
     // the spoken reply isn't cut off when the screen switches away.
@@ -96,6 +100,14 @@ class AssistantEngine(context: Context) {
                     null
                 }
                 reply(choice)
+            }
+        }
+        // Tapping Talk while audio plays claims the mic for one turn.
+        WorkSessionService.onTalkRequested = {
+            main.post {
+                session.requestTalk()
+                DebugLog.log(DebugLog.Stage.SESSION, "Talk tapped — listening for one turn")
+                applyMicOwner()
             }
         }
         // The notification's Stop action ends the session from outside the app.
@@ -147,10 +159,14 @@ class AssistantEngine(context: Context) {
         // Track the service regardless of [busy], so the process is already
         // foreground-legal by the time we want to listen again.
         if (session.needsForegroundService) {
-            WorkSessionService.start(appContext)
+            WorkSessionService.start(appContext, listening = !session.yieldedToMedia)
         } else {
             WorkSessionService.stop(appContext)
         }
+
+        // While a session is up, keep watching whether audio is playing, so
+        // listening resumes on its own when the song ends.
+        if (session.isActive) scheduleMediaCheck()
 
         if (busy) return // mid think/speak — onSpokenDone re-applies this
 
@@ -160,7 +176,11 @@ class AssistantEngine(context: Context) {
                 set {
                     it.copy(
                         orb = if (micGranted) OrbState.Idle else OrbState.Error,
-                        status = if (micGranted) "Paused" else "Microphone permission needed",
+                        status = when {
+                            !micGranted -> "Microphone permission needed"
+                            session.yieldedToMedia -> "Paused so your audio can play"
+                            else -> "Paused"
+                        },
                         amplitude = 0f,
                     )
                 }
@@ -169,11 +189,45 @@ class AssistantEngine(context: Context) {
         }
     }
 
+    /**
+     * Watches whether something is playing through the speaker.
+     *
+     * Holding the microphone takes audio focus, which pauses playback exactly
+     * like an incoming call — so after JARVIS starts a song, continuing to listen
+     * would undo the very thing it was asked to do. It steps back while audio
+     * plays and picks up again by itself once it stops.
+     */
+    private fun scheduleMediaCheck() {
+        main.removeCallbacks(mediaCheck)
+        main.postDelayed(mediaCheck, MEDIA_POLL_MS)
+    }
+
+    private val mediaCheck = object : Runnable {
+        override fun run() {
+            if (!session.isActive) return
+            // Our own speech comes out of the music stream, so ignore it — the
+            // check would otherwise see JARVIS talking and stand down forever.
+            val playing = !busy && audio.isMusicActive
+            if (playing != mediaPlaying) {
+                mediaPlaying = playing
+                session.onMediaPlaying(playing)
+                DebugLog.log(
+                    DebugLog.Stage.SESSION,
+                    if (playing) "audio started — pausing listening so it can play" else "audio stopped — listening again",
+                )
+                applyMicOwner()
+            }
+            main.postDelayed(this, MEDIA_POLL_MS)
+        }
+    }
+
     fun destroy() {
         main.removeCallbacksAndMessages(null)
         session.end()
         ScreenControlService.onPick = null
+        main.removeCallbacks(mediaCheck)
         WorkSessionService.onStopRequested = null
+        WorkSessionService.onTalkRequested = null
         WorkSessionService.stop(appContext)
         voice.destroy()
         speaker.shutdown()
@@ -435,5 +489,6 @@ class AssistantEngine(context: Context) {
         const val RESTART_MS = 400L // gap before restarting the recogniser after no input
         const val MAX_CONTEXT_TURNS = 20 // turns sent to the AI as context
         const val MAX_STORED_TURNS = 200 // turns kept on disk
+        const val MEDIA_POLL_MS = 2000L // how often to check whether audio is playing
     }
 }

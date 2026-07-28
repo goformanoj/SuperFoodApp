@@ -29,18 +29,25 @@ class WorkSessionService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            onStopRequested?.invoke()
-            stop(this)
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                onStopRequested?.invoke()
+                stop(this)
+                return START_NOT_STICKY
+            }
+            ACTION_TALK -> {
+                onTalkRequested?.invoke()
+                startForegroundCompat(listening = true)
+                return START_STICKY
+            }
         }
-        startForegroundCompat()
+        startForegroundCompat(listening = intent?.getBooleanExtra(EXTRA_LISTENING, true) ?: true)
         return START_STICKY
     }
 
-    private fun startForegroundCompat() {
+    private fun startForegroundCompat(listening: Boolean) {
         createChannel()
-        val notification = buildNotification()
+        val notification = buildNotification(listening)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else {
@@ -61,7 +68,7 @@ class WorkSessionService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification {
+    private fun buildNotification(listening: Boolean): Notification {
         val open = PendingIntent.getActivity(
             this,
             0,
@@ -74,26 +81,47 @@ class WorkSessionService : Service() {
             Intent(this, WorkSessionService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("JARVIS is listening")
-            .setContentText("Say \"thank you Jarvis\" to stop")
+        val talk = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, WorkSessionService::class.java).setAction(ACTION_TALK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val builder = Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle(if (listening) "JARVIS is listening" else "JARVIS is paused so your audio can play")
+            .setContentText(
+                if (listening) {
+                    "Say \"thank you Jarvis\" to stop"
+                } else {
+                    // Holding the mic would pause the playback, so it waits to be asked.
+                    "Tap Talk when you want to say something"
+                },
+            )
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(open)
             .setOngoing(true)
-            .addAction(Notification.Action.Builder(null, "Stop", stop).build())
-            .build()
+        if (!listening) {
+            builder.addAction(Notification.Action.Builder(null, "Talk", talk).build())
+        }
+        return builder.addAction(Notification.Action.Builder(null, "Stop", stop).build()).build()
     }
 
     companion object {
         private const val CHANNEL_ID = "jarvis_work_session"
         private const val NOTIFICATION_ID = 42
         private const val ACTION_STOP = "com.jarvis.os.STOP_WORK_SESSION"
+        private const val ACTION_TALK = "com.jarvis.os.TALK_NOW"
+        private const val EXTRA_LISTENING = "listening"
 
         /** Set by the engine so the notification's Stop action can end the session. */
         var onStopRequested: (() -> Unit)? = null
 
-        fun start(context: Context) {
+        /** Set by the engine so the notification's Talk action can claim the mic. */
+        var onTalkRequested: (() -> Unit)? = null
+
+        fun start(context: Context, listening: Boolean = true) {
             val intent = Intent(context, WorkSessionService::class.java)
+                .putExtra(EXTRA_LISTENING, listening)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {

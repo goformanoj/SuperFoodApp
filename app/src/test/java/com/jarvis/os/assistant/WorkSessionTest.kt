@@ -92,6 +92,76 @@ class WorkSessionTest {
         assertFalse(s.needsForegroundService)
     }
 
+    // --- yielding the mic to playback ---------------------------------------
+
+    @Test
+    fun `music playing stops JARVIS holding the mic, so it does not pause the song`() {
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        assertEquals(MicOwner.SESSION, s.owner)
+
+        s.onMediaPlaying(true)
+
+        assertEquals(MicOwner.NONE, s.owner)
+        assertTrue("the session is still alive, just quiet", s.isActive)
+        assertTrue(s.yieldedToMedia)
+    }
+
+    @Test
+    fun `listening resumes by itself once the audio stops`() {
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        s.onMediaPlaying(true)
+
+        s.onMediaPlaying(false)
+
+        assertEquals(MicOwner.SESSION, s.owner)
+        assertFalse(s.yieldedToMedia)
+    }
+
+    @Test
+    fun `tapping Talk beats playback for one turn`() {
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        s.onMediaPlaying(true)
+        assertEquals(MicOwner.NONE, s.owner)
+
+        s.requestTalk()
+        assertEquals(MicOwner.SESSION, s.owner)
+        assertFalse("not 'yielded' while actively listening", s.yieldedToMedia)
+
+        s.clearTalkRequest()
+        assertEquals("and it does not latch on", MicOwner.NONE, s.owner)
+    }
+
+    @Test
+    fun `on JARVIS's own screen it still listens while media plays`() {
+        // The user is deliberately looking at JARVIS — being heard is the point.
+        val s = session(visible = true)
+        s.onMediaPlaying(true)
+
+        assertEquals(MicOwner.ENGINE, s.owner)
+    }
+
+    @Test
+    fun `media never revives a session that was never started`() {
+        val s = session(visible = false)
+        s.onMediaPlaying(true)
+        s.requestTalk()
+
+        assertEquals(MicOwner.NONE, s.owner)
+        assertFalse(s.yieldedToMedia)
+    }
+
+    @Test
+    fun `the service keeps running while yielding, so Talk stays reachable`() {
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        s.onMediaPlaying(true)
+
+        assertTrue(s.needsForegroundService)
+    }
+
     // --- when a session starts ---------------------------------------------
 
     @Test

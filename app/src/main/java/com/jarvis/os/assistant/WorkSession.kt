@@ -31,6 +31,8 @@ class WorkSession {
     private var micGranted = false
     private var jarvisVisible = false
     private var sessionActive = false
+    private var mediaPlaying = false
+    private var talkRequested = false
 
     /** True once an app-opening command has started a session and it hasn't been ended. */
     val isActive: Boolean get() = sessionActive
@@ -43,10 +45,43 @@ class WorkSession {
     val owner: MicOwner
         get() = when {
             !micGranted -> MicOwner.NONE
+            // On JARVIS's own screen the user is deliberately talking to it, so
+            // listening wins even if something is playing.
             jarvisVisible -> MicOwner.ENGINE
+            // An explicit "Talk" from the notification beats media: the user has
+            // just said they want to be heard right now.
+            talkRequested && sessionActive -> MicOwner.SESSION
+            // Holding the mic open takes audio focus, which pauses whatever is
+            // playing — exactly like an incoming call. If the user asked for
+            // music, letting it play IS carrying out the instruction, so JARVIS
+            // gets out of the way until they tap Talk or the audio stops.
+            mediaPlaying -> MicOwner.NONE
             sessionActive -> MicOwner.SESSION
             else -> MicOwner.NONE
         }
+
+    /** True while a session is up but yielding the microphone to playback. */
+    val yieldedToMedia: Boolean
+        get() = sessionActive && micGranted && mediaPlaying && !jarvisVisible && !talkRequested
+
+    /**
+     * Something is playing through the speaker. JARVIS stops listening so it does
+     * not pause it — the session stays alive, and the notification offers Talk.
+     */
+    fun onMediaPlaying(playing: Boolean) {
+        mediaPlaying = playing
+        if (!playing) talkRequested = false
+    }
+
+    /** The user tapped Talk: listen for one turn even though media is playing. */
+    fun requestTalk() {
+        talkRequested = true
+    }
+
+    /** Called once a turn has been handled, so Talk does not latch on forever. */
+    fun clearTalkRequest() {
+        talkRequested = false
+    }
 
     /**
      * The service runs for the whole session, not just the backgrounded part of
