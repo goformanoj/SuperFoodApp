@@ -849,3 +849,39 @@ Also added <queries> entries for SET_ALARM/SET_TIMER so this keeps working once
 QUERY_ALL_PACKAGES is dropped in Part E2 — one less thing to rediscover later.
 
 14 unit tests; the parser is pure Kotlin so all of it is covered without a device.
+
+### 2026-07-28 — The voice, properly; and the Home screen stops lying (0501320)
+User pushed back on two things, both fair.
+
+**"You still didn't change the voice."** The earlier fix ranked the voices already
+installed and I told the user to download better speech data in Android's
+accessibility settings. That is not a product — nobody installing this app will
+do that. Drawer → Speech now lists every usable voice in plain language
+("British male, high quality" rather than en-gb-x-gbb#male_1-local), auditions
+one on tap, remembers the choice in SharedPreferences, and — when the phone only
+has basic speech data — says so and fires ACTION_INSTALL_TTS_DATA itself, once,
+recording that it has offered so it never nags.
+
+Bug caught while building it: previews needed their own utterance id. Sharing the
+assistant's id meant auditioning a voice fired onDone and advanced the
+conversation loop, so JARVIS would have started listening every time the user
+tried a voice. Side-channel speech must not look like a reply.
+
+**"The schedule box is just useless lying below the orb."** It was three
+hardcoded TaskItems — "Team sync 10:00" — shown regardless of the real calendar,
+so the home screen contradicted what JARVIS itself would answer from the same
+user's calendar. Added CalendarReader.agenda() returning structured events and
+wired the card to it. It now distinguishes null (no permission) from empty
+(nothing scheduled), which the fake list could express as neither, caps at four
+rows with a "+N more" line, and the fake data file is deleted so it cannot drift
+back.
+
+Lessons: a setting the user must change in Android's own settings is not a
+feature; placeholder data outlives its welcome and eventually contradicts the
+real thing next to it.
+
+**Still honest about what is unfinished:** Memory, Files, Calendar, Vision,
+Automation, Skills and Settings are still "coming soon" placeholders. Proposed to
+the user: build Settings + Calendar and REMOVE the four with no plan behind them —
+a menu full of dead ends looks worse than a short menu that works, and it matters
+before a Play Store listing.

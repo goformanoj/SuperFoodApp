@@ -46,8 +46,13 @@ Shipped so far:
 - **Open-app regression + Back/Home** (`d801260`) — screen awareness had made the model conclude it could *only* act on what was visible, so it began refusing to open apps ("I can only interact with the current app"). Opening never needed the screen. Also added `<<BACK>>`/`<<HOME>>` via `performGlobalAction`, replacing the previous hunt for a control labelled "Back".
 - **Typing opens its own field** (`48d7847`) — `Type` failed if and only if the app was *not* relaunched. Not relaunching was right (relaunching threw away the user's screen) but it removed a side effect the plan leaned on: relaunching reset YouTube to its home screen, where "Search" is a real button. `Type` no longer assumes an earlier step opened a field — it taps candidates in turn until one appears, inside the existing poll budget so it still fails honestly.
 - **Yields the mic to playback** (`2c062ac`) — holding the mic takes audio focus, so listening paused the very song JARVIS had just been asked to play. It now steps back while audio plays (notification offers **Talk** for one turn) and resumes on its own when the audio stops. On JARVIS's own screen it keeps listening, since the user is deliberately talking to it.
+- **Voice picker inside the app** (`0501320`) — Drawer → Speech lists every usable voice in plain language ("British male, high quality"), auditions on tap, remembers the choice, and offers the speech-data download when the phone only has basic voices. Ranking alone was not enough: it only helps if good voices happen to be installed, and telling users to go into Android settings is not a product.
+- **Home shows the real calendar** (`0501320`) — the schedule card was three hardcoded fake events that contradicted what JARVIS itself would say. It now reads the same device calendar, and tells "no permission" apart from "nothing scheduled". Fake data source deleted.
 - **Alarms and timers** (`70bd645`) — via the device's own `AlarmClock` intents, so the alarm lives in the real clock app and rings whether or not JARVIS is running. JARVIS asks for the specifics first (time, morning/evening when ambiguous, whether it repeats) and reads them back. The parser refuses anything that would set the *wrong* alarm rather than approximating it.
 - **A proper voice** (`aa74c4d`) — ranks every installed TTS voice instead of taking the bland default (English only, en-GB > en-US, male, higher quality, local over network) and lowers pitch to 0.92 / rate to 0.98.
+
+Still open in the UI (Part D):
+- **Menu placeholders** — Memory, Files, Calendar, Vision, Automation, Skills and Settings still say "coming soon". Decision pending: build Settings + Calendar, and remove the four with no plan behind them, rather than shipping a menu of dead ends.
 
 Still open in Part C:
 - **The Thriller-album tap** — reported false success for four attempts; now reports honestly, but the underlying cause is not yet identified.
@@ -94,6 +99,8 @@ Still open in Part C:
 | Typing opens its own text field | 🔬 | pending | no longer depends on <<TAP\|Search>> having worked |
 | Yields the mic while audio plays | 🔬 | pending | song no longer stops; notification offers Talk |
 | Alarms and timers | 🔬 | pending | device clock app; asks for specifics first |
+| In-app voice picker | 🔬 | pending | no trip to Android settings |
+| Home reads the real calendar | 🔬 | pending | replaced hardcoded fake events |
 | Polish (toggle/onboarding) | ⏸️ | — | Part D |
 | Key out of the APK (proxy + BYOK) | ⏸️ | — | Part E1 |
 | Play compliance + release AAB | ⏸️ | — | Part E2–E3 |
