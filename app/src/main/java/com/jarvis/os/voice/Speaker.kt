@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import com.jarvis.os.debug.DebugLog
 import java.util.Locale
 
 /**
@@ -27,10 +28,13 @@ class Speaker(context: Context) {
         tts = TextToSpeech(context.applicationContext) { status ->
             val engine = tts
             if (status == TextToSpeech.SUCCESS && engine != null) {
-                val res = engine.setLanguage(Locale.getDefault())
+                val res = engine.setLanguage(Locale.UK)
                 if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
                     engine.setLanguage(Locale.US)
                 }
+                selectBestVoice(engine)
+                engine.setPitch(VoicePreference.PITCH)
+                engine.setSpeechRate(VoicePreference.SPEECH_RATE)
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
                     override fun onDone(utteranceId: String?) {
@@ -55,6 +59,41 @@ class Speaker(context: Context) {
                 }
             }
         }
+    }
+
+    /**
+     * The engine's default voice is usually the blandest one installed. Rank the
+     * available voices and take the best — this is most of the difference between
+     * "robot" and "assistant", at no cost and no added latency.
+     */
+    private fun selectBestVoice(engine: TextToSpeech) {
+        val best = try {
+            engine.voices
+                ?.filter { it.name != null && it.locale != null }
+                ?.maxByOrNull {
+                    VoicePreference.score(
+                        language = it.locale?.language.orEmpty(),
+                        country = it.locale?.country.orEmpty(),
+                        name = it.name.orEmpty(),
+                        quality = it.quality,
+                        networkRequired = it.isNetworkConnectionRequired,
+                    )
+                }
+        } catch (e: Exception) {
+            // Some engines throw when queried too early; the default voice is fine.
+            null
+        } ?: return
+
+        val score = VoicePreference.score(
+            language = best.locale?.language.orEmpty(),
+            country = best.locale?.country.orEmpty(),
+            name = best.name.orEmpty(),
+            quality = best.quality,
+            networkRequired = best.isNetworkConnectionRequired,
+        )
+        if (score == VoicePreference.REJECT) return
+        engine.voice = best
+        DebugLog.log(DebugLog.Stage.SPOKE, "voice: ${best.name} (${best.locale}), quality ${best.quality}")
     }
 
     fun speak(text: String) {
