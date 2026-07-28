@@ -4,9 +4,10 @@
 > Companion: [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md) · [`PROGRESS.md`](PROGRESS.md) · [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) · [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) · [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)
 
 ## Current position + immediate next
-- **Shipped:** Part A, the testing rig (unit tests gating CI + Diagnostics screen + shareable trace + typed command box), **Part B** (continuous work session, build #89), and most of **Part C** — screen awareness, state memory, the send guard, and a run of executor fixes. `main` @ **`c0ee9d3`**, last green build **#95**.
-- **Next:** finish Part C — **mid-sequence re-planning (`<<PICK>>`)**, so the first command of a chain stops planning blind, plus tap verification/retry. Then Part D, then Part E.
-- **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly (#96); root cause still unknown — the outline overlay was ruled out (`FLAG_NOT_TOUCHABLE` is set).
+- **Shipped:** Part A, the testing rig, **Part B** (work session), and **Part C** — screen awareness, state memory, send guard, executor fixes, and now `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, and a better TTS voice.
+- **`main` @ `02a0d04`** (last confirmed green build **#99**). Three commits await CI: `b922b65` (PICK), `d801260` (open-app regression + Back/Home), `aa74c4d` (voice). Merge once build **#103** shows an artifact.
+- **Next:** Part C tail — tap verification/retry and the unexplained album tap — then Part D, then Part E.
+- **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
 
 ## How the debugging loop actually works now
 The user shares a trace from **Diagnostics → Share**; it shows heard → raw reply → markers parsed → per-step screen outcomes → spoken. Every fix in Part C came from one. **Read the trace before theorising** — it has repeatedly contradicted the obvious guess (e.g. the model's plan was fine and the executor was wrong).
@@ -19,7 +20,7 @@ The user shares a trace from **Diagnostics → Share**; it shows heard → raw r
 
 ## Repo & branch
 - The development branch is **per-session** (Claude is assigned one, e.g. `claude/root-file-context-ko322w`). The rule is constant: develop on the session branch, fast-forward `main` once the build is green.
-- `main` currently at **`4029979`**; last build **#76**.
+- `main` position and the latest build are recorded in the "Current position" section above and in [`PROGRESS.md`](PROGRESS.md) — update them there, not here, so there is one source of truth.
 
 ## CI process
 - `.github/workflows/build.yml` runs on **every push**: checkout → JDK 17 → Android SDK (platforms;android-36, build-tools;36.0.0) → `./gradlew assembleDebug` (keys injected from secrets) → upload artifact **`jarvis-debug-apk`**.
@@ -69,7 +70,10 @@ The model puts these on their own lines; the app **strips them before speaking**
 | `<<TAP\|Label>>` | tap a control (scrolls to find it) | `ScreenActions` | `ScreenControlService` |
 | `<<TYPE\|text>>` | type into the focused field | `ScreenActions` | `ScreenControlService` |
 | `<<ENTER>>` | submit / search | `ScreenActions` | `ScreenControlService` |
-Steps run **in order**, so one instruction can chain: `<<OPEN\|YouTube>> <<TAP\|Search>> <<TYPE\|standup comedy>> <<ENTER>>`.
+| `<<PICK\|description>>` | look at the screen and choose what matches | `ScreenActions` | `ScreenControlService` + `Brain.choose` |
+| `<<BACK>>` / `<<HOME>>` | system back / home | `ScreenActions` | `performGlobalAction` |
+Steps run **in order**, so one instruction can chain: `<<OPEN\|YouTube>> <<TAP\|Search>> <<TYPE\|standup comedy>> <<ENTER>> <<PICK\|the first video result>>`.
+Use `<<TAP>>` for a control already visible; use `<<PICK>>` whenever the target will not exist until an earlier step runs — "the first result" is an intent, not a label.
 
 ## Hard-won gotchas
 - **One mic owner at a time** — the earlier background-wake service fighting the in-app recognizer broke everything; keep a single owner.
@@ -82,4 +86,6 @@ Steps run **in order**, so one instruction can chain: `<<OPEN\|YouTube>> <<TAP\|
 - **Never relaunch an app that is already in front** — it resets the app to its home screen and throws away the results the user is looking at.
 - **Never report a tap as successful unless it was** — `seek` used to always call `onDone(true)`, so a dead tap was announced as done and repeating the command repeated the same non-event. A false success is far worse than a reported failure: it hides the bug from both the user and the model.
 - **The prompt teaches by example** — every `TYPE` example ended in `<<ENTER>>`, so the model treated typing and sending as one move and sent messages the user only asked to type. Irreversible actions need a code-level guard, not just prompt wording.
+- **Telling the model what it CAN see implies what it cannot** — after screen awareness landed, "use the real on-screen labels" was over-generalised into "I can only act on what is visible", and it stopped opening apps entirely. State the powers that do not depend on the screen (`OPEN`, `BACK`, `HOME`) explicitly, every time.
+- **"female" contains "male"** — a naive `contains("male")` voice check picks female voices about half the time. Exclude the negative first.
 - **Don't describe JARVIS's own UI as "the screen"** — `rootInActiveWindow` returns JARVIS when it is in front; read the window behind it instead.

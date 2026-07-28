@@ -675,3 +675,70 @@ That is what `<<PICK>>` (mid-sequence re-planning) is for, and it is next.
 **Process note:** docs went 8 commits stale during this run while chasing bug
 reports. EXECUTION_PLAN says to update PROGRESS and JARVIS_MEMORY every time —
 that means after each merge, not at the end of a debugging session.
+
+### 2026-07-28 — <<PICK>>: choosing by looking, not by guessing (b922b65)
+The last blind spot in Part C. Screen awareness fixed follow-up commands, but the
+FIRST command of a chain still planned against a screen that did not exist yet —
+when "open YouTube and play Thriller" is written, YouTube is not open and there
+are no results. So the model had to invent a label, and the traces showed the
+cost: tapping the search box (it still held the query text) or scrolling for the
+literal words "first video" until it gave up.
+
+"The first video result" is an intent, not a label. It cannot be matched as text,
+only chosen once the results exist. <<PICK|..>> defers the decision to execution:
+the executor lists what is genuinely tappable (deduped, capped at 25, same
+redaction as the screen description) and asks the model which one, via a separate
+tiny call carrying none of the assistant prompt — cheap, fast, one job. An index
+outside range, or 0, is an honest failure rather than an arbitrary tap.
+
+Two details that matter: the chosen option is re-found BY LABEL at tap time
+rather than holding the node (the round trip is ~1s and node handles go stale),
+and the run token is re-checked in the callback so a pick answered after a newer
+command started is discarded instead of acting on a screen that has moved on.
+Groq only — a Gemini-only build reports the step failed rather than guessing.
+
+### 2026-07-28 — Regression: it stopped opening apps (d801260)
+From a trace: "open Amazon music for me" -> "I'm not able to open other apps
+directly", then "I can only interact with the current app, which is WhatsApp".
+
+Caused by my own screen-awareness prompt. Telling the model to use the real
+on-screen labels and not to pretend it can see things was over-generalised into
+"I may only act on what is visible", and it stopped launching apps entirely.
+Opening never depended on the screen. The lesson is general: **stating what the
+model CAN see implies a limit on everything else**, so the powers that do not
+depend on the screen (OPEN, BACK, HOME) must be restated explicitly, including in
+the blank-screen branch where the wrong inference is most tempting.
+
+Also added <<BACK>> and <<HOME>> via performGlobalAction. "Go back" had produced
+no marker at all once, and then <<TAP|Back>> — hunting for a control labelled
+"Back" that many screens do not have, and some have several of. A global action
+is deterministic and cannot mis-target.
+
+Working correctly in the same trace, worth recording: "already in WhatsApp — not
+relaunching" fired as designed, and the screen description handed the model the
+real chat preview text to tap.
+
+### 2026-07-28 — A proper voice (aa74c4d)
+Speaker took the engine's default voice at default pitch and rate — the blandest
+option installed. Now it ranks every installed voice: English only, en-GB ahead
+of en-US ahead of the rest, male ahead of female, higher quality ahead of lower,
+local ahead of network (a network voice adds latency to every reply and fails
+offline, so it only wins when nothing local is close). Pitch 0.92, rate 0.98.
+The chosen voice is written to the trace so a device that sounds wrong can be
+diagnosed from a shared log.
+
+Scoring lives in VoicePreference on plain values rather than Android types, so it
+is unit-tested. The test that earns its keep: **"female" contains "male"**, so a
+naive contains() check picks female voices about half the time — a bug that would
+have shipped and been blamed on the TTS engine.
+
+Costed the premium options rather than assuming: Groq PlayAI TTS is $50/M
+characters ≈ $0.005 per reply, about 5x the LLM cost per turn and ~$4.50/month
+for a heavy user — more than the modelled subscription price. So a cloud voice
+cannot be the default; it belongs in the paid tier (Part E), where it only costs
+money for users already paying.
+
+### 2026-07-28 — The docs hook did its job
+The Stop hook added in 02a0d04 fired on this batch: "The project docs are behind
+the code by 3 commit(s)." That is exactly the failure it was built to catch, and
+it caught it before the turn ended rather than eight commits later.

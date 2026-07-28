@@ -1,7 +1,8 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `c0ee9d3` · last green build **#95** · updated 2026-07-27
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `02a0d04` · last green build **#99** · updated 2026-07-28
+> Awaiting CI: `b922b65` (PICK), `d801260` (open-app regression + Back/Home), `aa74c4d` (voice).
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
@@ -41,13 +42,15 @@ Shipped so far:
 - **Marker robustness** (#91) — a single `>` no longer breaks parsing, and unparseable marker text can never reach the spoken reply.
 - **Executor fixes** (#91, #96) — wait for the screen to actually change after Enter; demote editable fields so the search box stops winning; don't relaunch an app that is already in front; sequences supersede each other instead of interleaving; taps report real success instead of always claiming it.
 
+- **`<<PICK>>` mid-sequence choice** (`b922b65`) — the last blind spot. The first command of a chain planned against a screen that did not exist yet, so the model had to invent a label. `<<PICK|the first video result>>` defers the decision: at that step the executor lists what is genuinely tappable and asks the model which one, via a separate tiny call carrying none of the assistant prompt. The choice is re-found by label at tap time (node handles go stale over a ~1s round trip) and discarded if a newer command has started.
+- **Open-app regression + Back/Home** (`d801260`) — screen awareness had made the model conclude it could *only* act on what was visible, so it began refusing to open apps ("I can only interact with the current app"). Opening never needed the screen. Also added `<<BACK>>`/`<<HOME>>` via `performGlobalAction`, replacing the previous hunt for a control labelled "Back".
+- **A proper voice** (`aa74c4d`) — ranks every installed TTS voice instead of taking the bland default (English only, en-GB > en-US, male, higher quality, local over network) and lowers pitch to 0.92 / rate to 0.98.
+
 Still open in Part C:
-- **Mid-sequence re-planning (`<<PICK>>`)** — the first command of a chain still plans blind, because the target app isn't open yet and there is nothing to read.
 - **The Thriller-album tap** — reported false success for four attempts; now reports honestly, but the underlying cause is not yet identified.
 - Tap verification + retry; disambiguation when matches tie.
 
 ## ⏸️ Queued (not started) — see [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md)
-- **Part C** — accuracy (feed AI the on-screen text; verify + retry taps; disambiguate) — with password/OTP redaction before anything leaves the device.
 - **Part D** — polish (tap-to-talk toggle; clear idle text; permission onboarding).
 - **Part E** — commercialization: key security (proxy + BYOK), Play compliance cleanups, release AAB pipeline, name/`applicationId` gate, billing, launch. See [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md).
 - Later — proper wake word (Porcupine/openWakeWord); streaming replies; device skills (alarms/timers, SMS/calls, toggles, media); vision.
@@ -81,7 +84,10 @@ Still open in Part C:
 | State memory (app behind JARVIS) | 🔬 | #94 | |
 | Type vs send kept separate | 🔬 | #95 | guard + prompt |
 | Sequences supersede, honest taps | 🔬 | #96 | |
-| Mid-sequence re-planning (`<<PICK>>`) | ⏸️ | — | first command of a chain still plans blind |
+| Mid-sequence choice (`<<PICK>>`) | 🔬 | pending | chooses from what is really on screen |
+| Back / Home via global actions | 🔬 | pending | replaces hunting for a "Back" label |
+| Open-app refusal regression | 🔬 | pending | it had stopped opening apps entirely |
+| Better TTS voice | 🔬 | pending | ranks installed voices; premium voice is a Part E perk |
 | Polish (toggle/onboarding) | ⏸️ | — | Part D |
 | Key out of the APK (proxy + BYOK) | ⏸️ | — | Part E1 |
 | Play compliance + release AAB | ⏸️ | — | Part E2–E3 |
