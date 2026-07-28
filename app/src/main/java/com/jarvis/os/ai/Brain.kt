@@ -17,9 +17,13 @@ object Brain {
         else -> "none"
     }
 
-    suspend fun generate(messages: List<ChatTurn>, context: String): String =
+    suspend fun generate(
+        messages: List<ChatTurn>,
+        context: String,
+        tier: Tier = Tier.SMART,
+    ): String =
         if (GroqClient.hasKey()) {
-            GroqClient.generate(messages, context)
+            GroqClient.generate(messages, context, tier = tier)
         } else {
             GeminiClient.generate(messages, context)
         }
@@ -37,6 +41,7 @@ object Brain {
                 messages = listOf(ChatTurn(ChatTurn.USER, "Reply with just: OK")),
                 context = "",
                 systemOverride = "Reply with exactly: OK",
+                tier = Tier.FAST,
             )
         } else {
             GeminiClient.generate(listOf(ChatTurn(ChatTurn.USER, "Reply with just: OK")), "")

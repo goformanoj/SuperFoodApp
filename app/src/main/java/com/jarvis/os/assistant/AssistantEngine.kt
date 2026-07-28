@@ -9,6 +9,8 @@ import android.provider.Settings
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import com.jarvis.os.ai.Brain
+import com.jarvis.os.ai.ModelRouter
+import com.jarvis.os.ai.Tier
 import com.jarvis.os.alarm.AlarmActions
 import com.jarvis.os.alarm.AlarmSetter
 import com.jarvis.os.calendar.CalAction
@@ -370,8 +372,28 @@ class AssistantEngine(context: Context) {
         val history = conversation.takeLast(MAX_CONTEXT_TURNS)
         scope.launch {
             try {
-                val raw = Brain.generate(history, buildContext())
-                DebugLog.log(DebugLog.Stage.REPLY, "${Brain.providerName()}: $raw")
+                // Commands go to the small model; anything that needs thinking
+                // goes to the big one. Groq's quotas are per model, so this keeps
+                // the 70b allowance for the turns that actually need it.
+                val tier = ModelRouter.tierFor(userText)
+                val prompt = buildContext()
+                var raw = Brain.generate(history, prompt, tier)
+                DebugLog.log(DebugLog.Stage.REPLY, "${Brain.providerName()}/${tier.name}: $raw")
+
+                // The marker protocol is fiddly and a smaller model can fumble it.
+                // If a command produced no command at all, that is worth one retry
+                // on the smart model rather than a shrug.
+                if (tier == Tier.FAST &&
+                    ModelRouter.expectsAction(userText) &&
+                    !ScreenActions.parse(raw).hasAction &&
+                    MemoryActions.parse(raw).second.isEmpty() &&
+                    AlarmActions.parse(raw).second.isEmpty() &&
+                    CalendarActions.parse(raw).second.isEmpty()
+                ) {
+                    DebugLog.log(DebugLog.Stage.THINK, "fast model returned no action — retrying on the smart model")
+                    raw = Brain.generate(history, prompt, Tier.SMART)
+                    DebugLog.log(DebugLog.Stage.REPLY, "${Brain.providerName()}/SMART: $raw")
+                }
                 // Strip any leftover end-marker the model may add; we simply keep listening.
                 val reply = raw.replace("<<END>>", "", ignoreCase = true)
                 // Pull out and run the two command families (calendar + screen).

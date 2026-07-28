@@ -28,11 +28,25 @@ object GroqClient {
      */
     private val blockedUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
-    private val MODELS = listOf(
+    /**
+     * Preference order per tier. Quotas are per model, so putting the small model
+     * first for commands preserves the big model's daily allowance for the turns
+     * that actually need it — and each list still ends with the others, so a
+     * model out of quota is never a dead end.
+     */
+    private val SMART_MODELS = listOf(
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
         "gemma2-9b-it",
     )
+
+    private val FAST_MODELS = listOf(
+        "llama-3.1-8b-instant",
+        "gemma2-9b-it",
+        "llama-3.3-70b-versatile",
+    )
+
+    private fun modelsFor(tier: Tier) = if (tier == Tier.FAST) FAST_MODELS else SMART_MODELS
 
     private const val ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -79,6 +93,7 @@ object GroqClient {
         messages: List<ChatTurn>,
         context: String,
         systemOverride: String? = null,
+        tier: Tier = Tier.SMART,
     ): String =
         withContext(Dispatchers.IO) {
             val key = BuildConfig.GROQ_API_KEY
@@ -86,7 +101,7 @@ object GroqClient {
 
             var lastReason = "No response"
             var anyTried = false
-            for (model in MODELS) {
+            for (model in modelsFor(tier)) {
                 // Skip a model we already know is rate limited: every call during
                 // its cooldown is another rejected request against the same quota,
                 // and on a daily cap it can never succeed.
@@ -121,6 +136,7 @@ object GroqClient {
             messages = listOf(ChatTurn(ChatTurn.USER, question)),
             context = "",
             systemOverride = CHOOSER_PROMPT,
+            tier = Tier.FAST,
         )
         val number = Regex("""\d+""").find(raw)?.value?.toIntOrNull() ?: return null
         return number.takeIf { it in 1..options.size }
