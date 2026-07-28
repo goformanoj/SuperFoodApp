@@ -742,3 +742,43 @@ money for users already paying.
 The Stop hook added in 02a0d04 fired on this batch: "The project docs are behind
 the code by 3 commit(s)." That is exactly the failure it was built to catch, and
 it caught it before the turn ended rather than eight commits later.
+
+### 2026-07-28 — Typing opens its own field; a regression traced to my own fix (48d7847)
+Device trace, perfectly correlated:
+
+  15:46:53  relaunched      Tap(Search) -> Type OK
+  15:48:09  relaunched      Tap(Search) -> Type OK
+  15:47:38  already in app  Tap(Search) -> Type FAILED
+  15:48:48  already in app  Tap(Search) -> Type FAILED
+
+Type failed if and only if the app was NOT relaunched. Cause: my own #96 change.
+Skipping the relaunch of an app already in front was right on its own terms — it
+was throwing away the results the user was looking at — but relaunching had a
+side effect the rest of the plan silently depended on: it reset YouTube to its
+HOME screen, where "Search" is a real button. On the results page there is no
+such button, the query sits in a non-editable bar, <<TAP|Search>> lands on
+nothing useful, and no editable ever appears.
+
+Fix: remove the dependency rather than patch it. Type no longer assumes an
+earlier step opened a field; when nothing typeable appears it taps a likely way
+into text entry itself and keeps waiting. Attempts are SPACED and work through
+candidates in turn, because one retry would be useless here — the earlier tap
+already "succeeded" on the wrong node, so re-tapping it changes nothing. The
+schedule (tries 5, 8, 11, 14) fits inside the existing 15-poll budget, so a real
+failure is still reported instead of hanging.
+
+Two lessons worth more than the fix:
+- **Deleting a behaviour deletes its side effects.** Ask what was leaning on it.
+- **A step must not rely on an earlier step having guessed right.** If a step
+  needs a precondition, it should establish it.
+
+On testing, honestly: unit tests cannot catch this class of bug at all — no test
+here knows what YouTube's search bar looks like, and the app cannot be run in
+this environment (no KVM, no SDK, Gradle cannot fetch through the proxy). What
+COULD have caught it is reasoning: the change looked isolated and was not. The
+shared trace is the mechanism that finds these; read it for correlations, not
+just for the failing line.
+
+**Device-confirmed working in the same trace:** <<PICK>> chose "Beat It Michael
+Jackson" from 15 real on-screen options, and supersede fired when a new command
+arrived mid-sequence.

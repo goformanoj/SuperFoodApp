@@ -5,7 +5,8 @@
 
 ## Current position + immediate next
 - **Shipped:** Part A, the testing rig, **Part B** (work session), and **Part C** — screen awareness, state memory, send guard, executor fixes, and now `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, and a better TTS voice.
-- **`main` @ `02a0d04`** (last confirmed green build **#99**). Three commits await CI: `b922b65` (PICK), `d801260` (open-app regression + Back/Home), `aa74c4d` (voice). Merge once build **#103** shows an artifact.
+- **`main` @ `02a0d04`** (last confirmed green build **#99**). Four commits await CI: `b922b65` (PICK), `d801260` (open-app regression + Back/Home), `aa74c4d` (voice), `48d7847` (type recovery). Merge once the newest build shows an artifact.
+- **Device-confirmed:** `<<PICK>>` works — it chose "Beat It Michael Jackson" from 15 real on-screen options, and supersede fired correctly on a mid-sequence interruption.
 - **Next:** Part C tail — tap verification/retry and the unexplained album tap — then Part D, then Part E.
 - **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
 
@@ -86,6 +87,8 @@ Use `<<TAP>>` for a control already visible; use `<<PICK>>` whenever the target 
 - **Never relaunch an app that is already in front** — it resets the app to its home screen and throws away the results the user is looking at.
 - **Never report a tap as successful unless it was** — `seek` used to always call `onDone(true)`, so a dead tap was announced as done and repeating the command repeated the same non-event. A false success is far worse than a reported failure: it hides the bug from both the user and the model.
 - **The prompt teaches by example** — every `TYPE` example ended in `<<ENTER>>`, so the model treated typing and sending as one move and sent messages the user only asked to type. Irreversible actions need a code-level guard, not just prompt wording.
+- **Removing a behaviour removes its side effects too** — not relaunching an app already in front was correct on its own terms, but relaunching had been resetting the app to its home screen, which is where the search button lives. Typing then failed *only* when the app was not relaunched. Before deleting a behaviour, ask what else was quietly leaning on it; the trace shows the correlation if you look for it instead of at the symptom.
+- **Steps must not depend on an earlier step having guessed right** — `Type` assumed `<<TAP|Search>>` had opened a field, and that tap can "succeed" on the wrong node. A step that needs a precondition should establish it itself.
 - **Telling the model what it CAN see implies what it cannot** — after screen awareness landed, "use the real on-screen labels" was over-generalised into "I can only act on what is visible", and it stopped opening apps entirely. State the powers that do not depend on the screen (`OPEN`, `BACK`, `HOME`) explicitly, every time.
 - **"female" contains "male"** — a naive `contains("male")` voice check picks female voices about half the time. Exclude the negative first.
 - **Don't describe JARVIS's own UI as "the screen"** — `rootInActiveWindow` returns JARVIS when it is in front; read the window behind it instead.
