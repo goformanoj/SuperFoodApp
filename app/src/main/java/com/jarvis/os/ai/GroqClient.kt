@@ -20,6 +20,9 @@ class GroqException(message: String) : Exception(message)
  */
 object GroqClient {
 
+    /** Wall-clock time until which Groq has told us not to ask again. */
+    @Volatile private var blockedUntil = 0L
+
     private val MODELS = listOf(
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
@@ -75,6 +78,14 @@ object GroqClient {
         withContext(Dispatchers.IO) {
             val key = BuildConfig.GROQ_API_KEY
             if (key.isBlank()) throw GroqException("No Groq API key set")
+
+            // Refuse locally while rate limited. Every extra call during a cooldown
+            // is another rejected request against the same quota, and on a daily
+            // cap it can never succeed — 25 of them appeared in one device trace.
+            val waitMs = blockedUntil - System.currentTimeMillis()
+            if (waitMs > 0) {
+                throw GroqException("Rate limited by Groq — try again in ${waitMs / 1000 + 1}s")
+            }
 
             var lastReason = "No response"
             for (model in MODELS) {
@@ -150,7 +161,13 @@ object GroqClient {
                 else Outcome(text, null, false)
             } else {
                 val reason = if (code == 429) {
-                    "Rate limit (429). Wait a moment and try once."
+                    // Groq states which limit was hit and when it clears. Throwing
+                    // that away made a hard daily quota look like a brief burst
+                    // limit, so retrying immediately seemed sensible when it could
+                    // not possibly work.
+                    val wait = RateLimit.retrySeconds(conn.getHeaderField("Retry-After"), body)
+                    blockedUntil = System.currentTimeMillis() + wait * 1000
+                    RateLimit.describe(body, wait)
                 } else {
                     "HTTP $code: ${extractError(body)}"
                 }
