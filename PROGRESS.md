@@ -2,7 +2,7 @@
 
 > Living status. Update this whenever something ships.
 > Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `6066abd` · last green build **#108** · updated 2026-07-28
-> Awaiting CI: `70bd645` (alarms + timers). Everything earlier is merged.
+> Awaiting CI: `70bd645` (alarms), `0501320` (voice picker + real calendar), `bbe22d6` (custom instructions, themes, calendar screen).
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
@@ -46,13 +46,19 @@ Shipped so far:
 - **Open-app regression + Back/Home** (`d801260`) — screen awareness had made the model conclude it could *only* act on what was visible, so it began refusing to open apps ("I can only interact with the current app"). Opening never needed the screen. Also added `<<BACK>>`/`<<HOME>>` via `performGlobalAction`, replacing the previous hunt for a control labelled "Back".
 - **Typing opens its own field** (`48d7847`) — `Type` failed if and only if the app was *not* relaunched. Not relaunching was right (relaunching threw away the user's screen) but it removed a side effect the plan leaned on: relaunching reset YouTube to its home screen, where "Search" is a real button. `Type` no longer assumes an earlier step opened a field — it taps candidates in turn until one appears, inside the existing poll budget so it still fails honestly.
 - **Yields the mic to playback** (`2c062ac`) — holding the mic takes audio focus, so listening paused the very song JARVIS had just been asked to play. It now steps back while audio plays (notification offers **Talk** for one turn) and resumes on its own when the audio stops. On JARVIS's own screen it keeps listening, since the user is deliberately talking to it.
+- **Custom instructions** (`bbe22d6`) — standing preferences appended to the model's context every turn ("call me sir", "assume IST"), fenced and framed as the user's preferences and explicitly subordinate to acting safely and truthfully. Capped at 1000 chars because they ride on *every* request.
+- **Themes** (`bbe22d6`) — four palettes with the choice, persistence and `LocalAccent` plumbing real; only the accent moves until designs are decided, and the screen says so.
+- **Calendar screen** (`bbe22d6`) — seven days grouped by day from the device calendar.
 - **Voice picker inside the app** (`0501320`) — Drawer → Speech lists every usable voice in plain language ("British male, high quality"), auditions on tap, remembers the choice, and offers the speech-data download when the phone only has basic voices. Ranking alone was not enough: it only helps if good voices happen to be installed, and telling users to go into Android settings is not a product.
 - **Home shows the real calendar** (`0501320`) — the schedule card was three hardcoded fake events that contradicted what JARVIS itself would say. It now reads the same device calendar, and tells "no permission" apart from "nothing scheduled". Fake data source deleted.
 - **Alarms and timers** (`70bd645`) — via the device's own `AlarmClock` intents, so the alarm lives in the real clock app and rings whether or not JARVIS is running. JARVIS asks for the specifics first (time, morning/evening when ambiguous, whether it repeats) and reads them back. The parser refuses anything that would set the *wrong* alarm rather than approximating it.
 - **A proper voice** (`aa74c4d`) — ranks every installed TTS voice instead of taking the bland default (English only, en-GB > en-US, male, higher quality, local over network) and lowers pitch to 0.92 / rate to 0.98.
 
 Still open in the UI (Part D):
-- **Menu placeholders** — Memory, Files, Calendar, Vision, Automation, Skills and Settings still say "coming soon". Decision pending: build Settings + Calendar, and remove the four with no plan behind them, rather than shipping a menu of dead ends.
+- **Files** and **Automation** — kept as placeholders at the user's request; **awaiting their spec** before anything is built.
+- **Memory** and **Settings** — still placeholders. Memory largely duplicates Chat; Settings could absorb the voice/theme controls that now have their own tabs. Proposed to the user, not yet decided.
+- **Themes needs designs** — the switch works, the looks do not exist yet.
+- Removed: **Vision** and **Skills** had nothing behind them; entries that lead nowhere read worse than a shorter menu.
 
 Still open in Part C:
 - **The Thriller-album tap** — reported false success for four attempts; now reports honestly, but the underlying cause is not yet identified.

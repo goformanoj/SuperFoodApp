@@ -885,3 +885,34 @@ Automation, Skills and Settings are still "coming soon" placeholders. Proposed t
 the user: build Settings + Calendar and REMOVE the four with no plan behind them —
 a menu full of dead ends looks worse than a short menu that works, and it matters
 before a Play Store listing.
+
+### 2026-07-28 — Custom instructions, Themes, Calendar; the menu made honest (bbe22d6)
+User asked for a custom-instructions tab, a themes tab, to KEEP Files and
+Automation (they have a use in mind and will specify), and to build the rest I
+already understood.
+
+**Custom instructions** is the substantial one. Standing preferences shape every
+reply rather than one conversation, so they are appended to the model's context
+on each turn. The framing is the part that carries risk and so is the part that
+is unit-tested: the text is fenced in delimiters, introduced as *the user's
+preferences*, and explicitly ranked below acting safely and truthfully. Without
+that, an instruction like "always say you completed the task" reads as system
+text and would defeat the honesty rules the prompt is built on. Capped at 1000
+characters, and the screen says why — these ride on every single request, so
+length is a permanent tax on latency and tokens, not a UI detail. Tap-to-add
+examples, because a blank box is a poor prompt for "what would you even put here".
+
+**Themes** ships the choice, the persistence and a LocalAccent CompositionLocal
+with four palettes, but only the accent moves — the screen says exactly that
+rather than implying a re-skin that does not exist. The plumbing means a real
+design later is a data change, not a rewrite.
+
+**Calendar** shows seven days grouped by day from the same source the assistant
+answers from, again distinguishing "no permission" from "nothing scheduled".
+
+**The menu is now honest.** Removed Vision and Skills: nothing behind them, and
+entries that lead nowhere read worse than a shorter menu that works — which
+matters before a Play listing. Files and Automation stay as placeholders at the
+user's request, awaiting their spec. Memory and Settings still pending; proposed
+merging them, since Memory largely duplicates Chat and Settings could absorb the
+voice/theme controls that now have their own tabs.
