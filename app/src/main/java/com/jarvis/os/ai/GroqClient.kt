@@ -20,8 +20,13 @@ class GroqException(message: String) : Exception(message)
  */
 object GroqClient {
 
-    /** Wall-clock time until which Groq has told us not to ask again. */
-    @Volatile private var blockedUntil = 0L
+    /**
+     * When each model becomes usable again. Groq's quotas are PER MODEL — a
+     * device screenshot showed llama-3.3-70b out of daily tokens while the
+     * smaller models still had their own untouched allowance — so this is tracked
+     * per model rather than for the account as a whole.
+     */
+    private val blockedUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     private val MODELS = listOf(
         "llama-3.3-70b-versatile",
@@ -79,20 +84,23 @@ object GroqClient {
             val key = BuildConfig.GROQ_API_KEY
             if (key.isBlank()) throw GroqException("No Groq API key set")
 
-            // Refuse locally while rate limited. Every extra call during a cooldown
-            // is another rejected request against the same quota, and on a daily
-            // cap it can never succeed — 25 of them appeared in one device trace.
-            val waitMs = blockedUntil - System.currentTimeMillis()
-            if (waitMs > 0) {
-                throw GroqException("Rate limited by Groq — try again in ${waitMs / 1000 + 1}s")
-            }
-
             var lastReason = "No response"
+            var anyTried = false
             for (model in MODELS) {
+                // Skip a model we already know is rate limited: every call during
+                // its cooldown is another rejected request against the same quota,
+                // and on a daily cap it can never succeed.
+                if (blockedUntil.getOrDefault(model, 0L) > System.currentTimeMillis()) continue
+                anyTried = true
                 val outcome = requestModel(model, messages, context, key, systemOverride)
                 if (outcome.text != null) return@withContext outcome.text
                 lastReason = outcome.reason ?: "Unknown error"
                 if (!outcome.retryable) throw GroqException(lastReason)
+            }
+            if (!anyTried) {
+                val soonest = blockedUntil.values.minOrNull() ?: 0L
+                val secs = ((soonest - System.currentTimeMillis()) / 1000).coerceAtLeast(1)
+                throw GroqException("Every Groq model is rate limited — try again in ${secs}s")
             }
             throw GroqException(lastReason)
         }
@@ -166,12 +174,14 @@ object GroqClient {
                     // limit, so retrying immediately seemed sensible when it could
                     // not possibly work.
                     val wait = RateLimit.retrySeconds(conn.getHeaderField("Retry-After"), body)
-                    blockedUntil = System.currentTimeMillis() + wait * 1000
+                    blockedUntil[model] = System.currentTimeMillis() + wait * 1000
                     RateLimit.describe(body, wait)
                 } else {
                     "HTTP $code: ${extractError(body)}"
                 }
-                Outcome(null, reason, retryable = code == 404)
+                // 429 is per model, so try the next one: the big model running out
+                // of daily tokens says nothing about the smaller models' quotas.
+                Outcome(null, reason, retryable = code == 404 || code == 429)
             }
         } catch (e: Exception) {
             Outcome(null, "Network error: ${e.message ?: e.javaClass.simpleName}", false)

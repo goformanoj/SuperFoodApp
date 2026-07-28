@@ -62,6 +62,20 @@ object RateLimit {
         }
     }
 
+
+    /**
+     * A short sentence for the orb, where the provider's full paragraph does not
+     * fit and reads as noise. The complete message still goes to the trace.
+     */
+    fun shortSummary(body: String, seconds: Long): String {
+        val wait = if (seconds >= 60) "${seconds / 60} minutes" else "$seconds seconds"
+        return if (isDailyQuota(body)) {
+            "Today's AI quota is used up. It resets in about $wait."
+        } else {
+            "Too many requests just now — try again in $wait."
+        }
+    }
+
     /** True when the limit is a daily quota — waiting seconds will not help. */
     fun isDailyQuota(body: String): Boolean =
         body.contains("per day", ignoreCase = true) || body.contains("TPD", ignoreCase = false) ||

@@ -439,7 +439,10 @@ class AssistantEngine(context: Context) {
             } catch (e: Exception) {
                 val detail = e.message ?: e.javaClass.simpleName
                 DebugLog.log(DebugLog.Stage.ERROR, "Brain error: $detail")
-                set { it.copy(orb = OrbState.Error, status = "Brain error", reply = detail) }
+                // The provider's full paragraph belongs in the trace, not on the
+                // orb — on screen it swamps everything and reads as noise.
+                val shown = if (detail.length > 120) detail.take(117) + "…" else detail
+                set { it.copy(orb = OrbState.Error, status = "Brain error", reply = shown) }
                 main.postDelayed({ onSpokenDone() }, 3000L)
             }
         }

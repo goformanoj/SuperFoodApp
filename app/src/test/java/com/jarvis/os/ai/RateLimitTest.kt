@@ -62,4 +62,25 @@ class RateLimitTest {
     fun `a body with no message field still yields something useful`() {
         assertTrue(RateLimit.describe("upstream overloaded", 20).isNotEmpty())
     }
+
+    @Test
+    fun `the short summary says a daily quota is a daily quota`() {
+        val out = RateLimit.shortSummary(perDay, 965)
+
+        assertTrue("must not imply a quick retry", out.contains("quota"))
+        assertTrue(out.contains("16 minutes"))
+    }
+
+    @Test
+    fun `the short summary of a burst limit invites a retry`() {
+        val out = RateLimit.shortSummary(perMinute, 3)
+
+        assertTrue(out.contains("3 seconds"))
+        assertFalse(out.contains("quota"))
+    }
+
+    @Test
+    fun `the short summary stays short enough for the orb`() {
+        assertTrue(RateLimit.shortSummary(perDay, 965).length < 90)
+    }
 }
