@@ -54,12 +54,15 @@ The user shares a trace from **Diagnostics → Share**; it shows heard → raw r
 ## Architecture map (`app/src/main/java/com/jarvis/os/`)
 - **`MainActivity.kt`** — entry Activity; hosts Compose UI; drives `AssistantEngine` from the lifecycle; requests mic + calendar permissions.
 - **`assistant/AssistantEngine.kt`** — core loop (listen → think → speak → listen); owns `VoiceUiState`; runs calendar + screen markers; defers screen actions until after TTS (speak-then-act).
-- **`voice/`** — `VoiceController` (SpeechRecognizer wrapper, mutes earcon, recreates recognizer per turn), `Speaker` (TTS), `VoiceState` (OrbState + VoiceUiState).
-- **`ai/`** — `Brain` (picks Groq else Gemini; holds system prompt), `GroqClient`, `GeminiClient`.
-- **`calendar/`** — `CalendarActions` (parse `<<CAL|…>>`), `CalendarReader` (query Instances), `CalendarWriter` (insert/delete).
-- **`control/`** — `ScreenControlService` (AccessibilityService: scored node search, outline, `runSteps` for Open/Tap/Type/Enter, swipe-scroll), `ScreenActions` (parse ordered `ScreenStep`s), `AppLauncher` (name → package → launch).
-- **`ui/`** — `home/HomeScreen` (`JarvisApp` shell + drawer), `chat/ChatScreen`, `components/HudOrb`, `theme/*`.
-- **`data/`** — `ChatTurn`, `ConversationStore` (SharedPreferences JSON), `Schedule` (sample tasks for the Home widget).
+- **`voice/`** — `VoiceController` (SpeechRecognizer wrapper, mutes earcon, recreates recognizer per turn), `Speaker` (TTS; ranks voices, remembers the user's pick, previews on a separate utterance id), `VoicePreference` (pure scoring + human labels), `VoiceSettings` (persisted choice), `VoiceState` (OrbState + VoiceUiState).
+- **`ai/`** — `Brain` (picks Groq else Gemini; `generate` and `choose`), `GroqClient` (also `chooseIndex` for `<<PICK>>`, via a `systemOverride`), `GeminiClient`. **The system prompt is duplicated in both clients — patch them together or they drift.**
+- **`calendar/`** — `CalendarActions` (parse `<<CAL|…>>`), `CalendarReader` (`upcomingEvents` for the AI, `agenda` for the UI), `CalendarWriter` (insert/delete).
+- **`alarm/`** — `AlarmActions` (parse `<<ALARM|…>>`), `AlarmSetter` (device clock app via `AlarmClock` intents).
+- **`control/`** — `ScreenControlService` (AccessibilityService: scored node search, outline, `runSteps` with a supersede token, `describeScreen` for the AI's context, text-entry recovery), `ScreenActions` (ordered `ScreenStep`s), `AppLauncher`, `WorkSessionService` (foreground service; notification with Talk/Stop — it never opens the mic).
+- **`assistant/`** — `AssistantEngine` (the loop), `WorkSession` (single mic-owner rule), `SendGuard` (type ≠ send).
+- **`debug/`** — `DebugLog` (redacted ring buffer), `Diagnostics` (self-checks + AI round-trip).
+- **`ui/`** — `home/HomeScreen` (`JarvisApp` shell + drawer; schedule card reads the real calendar), `chat/ChatScreen`, `debug/DiagnosticsScreen`, `speech/SpeechScreen` (voice picker), `components/HudOrb`, `theme/*`.
+- **`data/`** — `ChatTurn`, `ConversationStore` (SharedPreferences JSON). *(`Schedule.kt` held fake sample tasks and was deleted.)*
 
 ## Command-marker protocol (what the LLM emits, what the app parses)
 The model puts these on their own lines; the app **strips them before speaking** and executes them.
