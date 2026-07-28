@@ -150,6 +150,23 @@ class ScreenActionsTest {
     }
 
     @Test
+    fun `back and home are parsed and need no argument`() {
+        assertEquals(listOf(ScreenStep.Back), ScreenActions.parse("<<BACK>>").steps)
+        assertEquals(listOf(ScreenStep.Home), ScreenActions.parse("<<HOME>>").steps)
+    }
+
+    @Test
+    fun `back and home chain with other steps`() {
+        val plan = ScreenActions.parse("Sure. <<HOME>> <<OPEN|Amazon Music>> <<TAP|Search>>")
+
+        assertEquals(
+            listOf(ScreenStep.Home, ScreenStep.Open("Amazon Music"), ScreenStep.Tap("Search")),
+            plan.steps,
+        )
+        assertEquals("Sure.", plan.clean)
+    }
+
+    @Test
     fun `an unknown marker is not treated as a step`() {
         val plan = ScreenActions.parse("<<SWIPE|up>> <<OPEN|YouTube>>")
 

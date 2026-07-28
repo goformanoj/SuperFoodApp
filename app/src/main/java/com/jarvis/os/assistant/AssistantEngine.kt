@@ -354,15 +354,23 @@ class AssistantEngine(context: Context) {
         // things it already tapped (which is how "send the message" ended up
         // opening the contact's profile).
         val screen = ScreenControlService.instance?.describeScreen().orEmpty()
+        // Note the last line: without it the model concluded from "use the labels
+        // on screen" that it could ONLY act on what was visible, and started
+        // refusing to open apps at all ("I can only interact with the current
+        // app"). Opening never needed the screen.
+        val alwaysTrue = "You can ALWAYS open any installed app with <<OPEN|Name>>, and use " +
+            "<<BACK>> or <<HOME>>, no matter what is on screen — the screen list limits only what " +
+            "you can TAP, never what you can open. Never tell the user you cannot open an app."
+
         val screenContext = if (screen.isBlank()) {
             "You cannot see the screen right now — screen control is switched off, or no app has " +
-                "been opened yet. Do not pretend to know what is on screen."
+                "been opened yet. Do not pretend to know what is on screen. $alwaysTrue"
         } else {
             "$screen\nUse these REAL on-screen labels rather than guessing one. Emit ONLY the " +
                 "steps still needed from here: do not re-open an app that is already the " +
                 "foreground app, and do not tap a name you are already inside — in a chat, the " +
                 "name at the top opens that person's profile. If the text is already typed, just " +
-                "send it."
+                "send it. $alwaysTrue"
         }
 
         "Current date/time: $now. $schedule When asked about the schedule, use ONLY this " +

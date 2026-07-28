@@ -14,6 +14,12 @@ sealed interface ScreenStep {
      * exist yet when the plan is written.
      */
     data class Pick(val description: String) : ScreenStep
+
+    /** The system Back action — not a hunt for a control labelled "Back". */
+    data object Back : ScreenStep
+
+    /** The system Home action, for getting out of an app entirely. */
+    data object Home : ScreenStep
 }
 
 /**
@@ -28,7 +34,7 @@ object ScreenActions {
     // "<<TAP|Thriller by Michael Jackson>" occasionally, and a rigid parser both
     // skips the action AND leaks the raw marker into the spoken reply.
     private val MARKER =
-        Regex("""<<(OPEN|TAP|TYPE|ENTER|PICK)(?:\|([^>\n]*))?>{1,2}""", RegexOption.IGNORE_CASE)
+        Regex("""<<(OPEN|TAP|TYPE|ENTER|PICK|BACK|HOME)(?:\|([^>\n]*))?>{1,2}""", RegexOption.IGNORE_CASE)
 
     // Safety net: anything else that still looks like a marker is stripped from
     // the spoken text even when it could not be understood as a command. Protocol
@@ -53,6 +59,8 @@ object ScreenActions {
                 "TYPE" -> if (arg.isNotEmpty()) steps.add(ScreenStep.Type(arg))
                 "ENTER" -> steps.add(ScreenStep.Enter)
                 "PICK" -> if (arg.isNotEmpty()) steps.add(ScreenStep.Pick(arg))
+                "BACK" -> steps.add(ScreenStep.Back)
+                "HOME" -> steps.add(ScreenStep.Home)
             }
         }
         val clean = reply

@@ -154,6 +154,21 @@ class ScreenControlService : AccessibilityService() {
                 typeWhenReady(step.text, 0) { ok ->
                     if (ok) advance(expectedPackage) else failed("no editable field appeared")
                 }
+            is ScreenStep.Back ->
+                // The real system Back, not a hunt for a control labelled "Back".
+                // Chat screens often have no such label, or several.
+                if (performGlobalAction(GLOBAL_ACTION_BACK)) {
+                    advance(expectedPackage)
+                } else {
+                    failed("the system refused the back action")
+                }
+            is ScreenStep.Home ->
+                if (performGlobalAction(GLOBAL_ACTION_HOME)) {
+                    // Home leaves the app entirely, so stop expecting the old one.
+                    handler.postDelayed({ runStep(steps, index + 1, null, token, onDone) }, STEP_SETTLE_MS)
+                } else {
+                    failed("the system refused the home action")
+                }
             is ScreenStep.Pick -> {
                 // The one step that looks before it decides. Everything else was
                 // committed to a label when the plan was written, before the
