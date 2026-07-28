@@ -1028,3 +1028,48 @@ Two lessons, both general:
 Wider significance, again: Groq's limits are per ACCOUNT. Behind the shared-key
 proxy of Part E1, every user would contend for the same 12K tokens per minute.
 Token size per request is therefore a scaling parameter, not just a cost one.
+
+### 2026-07-28 — Per-model quotas, and routing commands to the small model (c04c7de, f73b3e3)
+The new build put the real Groq message on screen, and it named what I had
+missed:
+
+  "Rate limit reached FOR MODEL `llama-3.3-70b-versatile` ... on tokens per day
+   (TPD): Limit 100000, Used 98444, Requested 2674. Please try again in 16m5s."
+
+Two things came out of that one screenshot.
+
+**Quotas are per MODEL.** llama-3.3-70b was out of daily tokens while
+llama-3.1-8b-instant and gemma2-9b-it still had their own untouched allowances —
+and the client gave up regardless, because it only fell through to the next model
+on 404, not on 429. One exhausted model was taking the whole assistant down.
+Fixed: 429 falls through like 404, cooldowns are tracked per model, and only an
+all-models-limited state fails (reporting when the soonest returns).
+
+**"Requested 2674" confirmed the token arithmetic** — ~2,700 tokens per request
+against 100,000/day is roughly 37 commands per day on the 70b.
+
+So, at the user's instruction (they chose this over the prompt diet): route
+commands to the small model. ModelRouter decides per turn, conservatively — an
+explicit request to think beats a leading command verb ("show me WHY the sky is
+blue" is conversation), over a dozen words is conversation, unfamiliar input goes
+smart. Each tier's list still ends with the others, so a model out of quota only
+changes what is tried first.
+
+The real risk of that change is a smaller model fumbling the marker protocol,
+which is fiddly enough that even the 70b was emitting malformed `<<TAP|..>`
+earlier this session. Guard: when a command produces NO marker of any kind, the
+turn is retried once on the smart model. Costs nothing on the normal path and
+only spends the big model when the small one actually failed. The trace records
+the tier that answered, so a quality regression is visible rather than guessed.
+
+The <<PICK>> chooser and the Diagnostics ping also moved to the fast tier — one
+picks an index from a list, the other only needs to hear "OK".
+
+Two lessons:
+- Provider quotas are usually per model; a 429 naming one model says nothing
+  about the others.
+- Route work to the cheapest model that can do it, but guard the downgrade and
+  make the tier visible in the trace.
+
+Still owed: the system prompt diet (~2,000 -> ~1,200 tokens). The user explicitly
+deferred it this round.

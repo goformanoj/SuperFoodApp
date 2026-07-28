@@ -87,6 +87,12 @@ At 12,000 TPM that is only **3–4 commands a minute**. The system prompt grew f
 
 Fixed in `2309d22`: `Test AI` no longer sends the whole assistant prompt to hear "OK" (~2,000 → ~20 tokens), and history is halved (20 → 10 turns, ~400 tokens off every request).
 
+Fixed in `c04c7de`: **Groq's quotas are per MODEL.** A device screenshot showed `llama-3.3-70b-versatile` out of daily tokens (`Limit 100000, Used 98444, Requested 2674`) while the smaller models still had their own untouched allowance — and the client gave up anyway, because 429 did not fall through to the next model the way 404 did. Now it does, cooldowns are tracked per model, and only an all-models-limited state fails.
+
+Fixed in `f73b3e3`: **commands are routed to `llama-3.1-8b-instant`**, keeping the 70b allowance for turns that need thinking. Conservative — an explicit request to think wins over a command verb, long utterances are conversation, unknown input goes smart. If a command produces *no* marker at all, the turn is retried once on the smart model, since the marker protocol is fiddly enough for a small model to fumble. The trace records which tier answered.
+
+That screenshot also confirmed the arithmetic: `Requested 2674` against 100,000/day is **~37 commands per day** on the 70b alone.
+
 **Still open — the biggest remaining win:** a careful editing pass on the system prompt itself, ~2,000 → ~1,200 tokens, which would roughly double the commands-per-minute headroom. Left undone deliberately: trimming prompt text carelessly is how the behaviours fixed this session regress.
 
 ## ⚠️ Groq rate limits (hit on-device, 2026-07-28)
