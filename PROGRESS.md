@@ -70,6 +70,11 @@ Still open in Part C:
 - **Part E** — commercialization: key security (proxy + BYOK), Play compliance cleanups, release AAB pipeline, name/`applicationId` gate, billing, launch. See [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md).
 - Later — proper wake word (Porcupine/openWakeWord); streaming replies; device skills (alarms/timers, SMS/calls, toggles, media); vision.
 
+## ⚠️ Groq rate limits (hit on-device, 2026-07-28)
+A Diagnostics trace showed one good round-trip then **25 rate-limit failures in ~30s**. Two fixes shipped in `604d07f`: the client now surfaces Groq's own message (which limit — requests/minute vs tokens/day — and when it clears) instead of a generic "wait a moment", and it **refuses locally until the limit clears** rather than spending more rejected requests against the same quota.
+
+Worth knowing: **Groq's limits are per account, not per user.** This is the single-user preview of the scaling problem in [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) — with a shared key behind a proxy, every user hits it simultaneously. Part E1 is the fix.
+
 ## Known limitations / caveats
 - **No reliable always-on wake word** — stock `SpeechRecognizer` can't do it; needs a dedicated hotword engine.
 - **Screen control is best-effort** — it reads the accessibility tree, which varies per app; occasional misses are expected (no real API for other apps).

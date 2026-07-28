@@ -951,3 +951,38 @@ six, all of which do something. Files and Automation remain the only
 placeholders, awaiting the user's spec.
 
 25 tests across the parser and the context framing — all pure Kotlin.
+
+### 2026-07-28 — Groq rate limits: say which one, and stop hammering (604d07f)
+Diagnostics trace from the device: one successful round-trip (340ms), then 25
+rate-limit failures over ~30 seconds, several inside the same second, each
+rejected in 50-88ms. That fast-reject pattern is a quota block, not a slow
+network.
+
+Two problems, both mine.
+
+**The message threw away the diagnosis.** Groq's 429 body states exactly which
+limit was reached — requests per minute vs tokens per day — how much was used,
+and how long until it clears. The code replaced all of it with "Rate limit (429).
+Wait a moment and try once." A hard daily cap was therefore indistinguishable
+from a 2-second burst limit, which is precisely why retrying immediately looked
+reasonable when it could not possibly succeed. Now the provider's own wording is
+surfaced, plus whether this is a daily quota.
+
+**Nothing stopped the retries.** Every call during a rate limit is another
+rejected request against the same quota. GroqClient now records when the limit
+clears and refuses locally until then. Waits come from Retry-After when present,
+else parsed from the message, rounded UP (returning at 2.5s when told 2.5s just
+earns another 429) and capped at 15 minutes so a stated 20-hour daily reset does
+not wedge the app.
+
+Two lessons, both general:
+- Never replace a provider's error with your own summary. Add context, do not
+  discard it — the upstream message is usually the diagnosis.
+- A failing call must get HARDER to repeat, not easier.
+
+Wider significance: Groq's limits are per ACCOUNT, not per user. This is the
+single-user preview of the scaling problem already written up in
+COMMERCIALIZATION.md — behind a shared-key proxy, every user would hit this at
+the same moment. It is the strongest practical argument yet for Part E1.
+
+9 tests against real Groq 429 bodies.
