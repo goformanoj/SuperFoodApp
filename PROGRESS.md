@@ -70,6 +70,25 @@ Still open in Part C:
 - **Part E** — commercialization: key security (proxy + BYOK), Play compliance cleanups, release AAB pipeline, name/`applicationId` gate, billing, launch. See [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md).
 - Later — proper wake word (Porcupine/openWakeWord); streaming replies; device skills (alarms/timers, SMS/calls, toggles, media); vision.
 
+## ⚠️ Groq rate limits — it is TOKENS per minute (measured 2026-07-28)
+The Groq dashboard settled it: requests peaked at **19 against a limit of 30**, but total tokens peaked at **~11.5K against ~12K**. The cap being hit is **tokens per minute**, so the fix is smaller requests, not fewer.
+
+Measured cost per request before the fix:
+
+| Part | Tokens |
+|---|---|
+| System prompt | ~2,000 |
+| Screen description | ~300 |
+| Date + calendar | ~120 |
+| 20 turns of history | ~800 |
+| **Total, every request** | **~3,200** |
+
+At 12,000 TPM that is only **3–4 commands a minute**. The system prompt grew from ~1,100 to 2,001 tokens across one session, a paragraph at a time, and nothing ever measured the total.
+
+Fixed in `2309d22`: `Test AI` no longer sends the whole assistant prompt to hear "OK" (~2,000 → ~20 tokens), and history is halved (20 → 10 turns, ~400 tokens off every request).
+
+**Still open — the biggest remaining win:** a careful editing pass on the system prompt itself, ~2,000 → ~1,200 tokens, which would roughly double the commands-per-minute headroom. Left undone deliberately: trimming prompt text carelessly is how the behaviours fixed this session regress.
+
 ## ⚠️ Groq rate limits (hit on-device, 2026-07-28)
 A Diagnostics trace showed one good round-trip then **25 rate-limit failures in ~30s**. Two fixes shipped in `604d07f`: the client now surfaces Groq's own message (which limit — requests/minute vs tokens/day — and when it clears) instead of a generic "wait a moment", and it **refuses locally until the limit clears** rather than spending more rejected requests against the same quota.
 

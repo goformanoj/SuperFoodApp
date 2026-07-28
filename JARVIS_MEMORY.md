@@ -986,3 +986,45 @@ COMMERCIALIZATION.md — behind a shared-key proxy, every user would hit this at
 the same moment. It is the strongest practical argument yet for Part E1.
 
 9 tests against real Groq 429 bodies.
+
+### 2026-07-28 — The 429s were the TOKEN limit, and the prompt was the cause (2309d22)
+User shared three Groq dashboard screenshots, which settled a question I had
+guessed at. Requests peaked at **19 against a limit of 30** — never the request
+limit. Total tokens peaked at **~11.5K against ~12K** — the tokens-per-MINUTE
+cap. So the fix was smaller requests, not fewer.
+
+Measured what was actually being sent every turn:
+
+  system prompt      ~2,000 tokens
+  screen description   ~300
+  date + calendar      ~120
+  20 turns of history  ~800
+  TOTAL              ~3,200 tokens, EVERY request
+
+At 12,000 TPM that permits three or four commands a minute. The system prompt
+had grown from ~1,100 to 2,001 tokens across this single session — screen
+awareness, PICK, Back/Home, type-vs-send, alarms, memory. Every addition was
+individually justified. Nothing ever measured the total. That is the actual
+failure.
+
+Fixed two things:
+- **Diagnostics stopped sending the whole prompt.** "Test AI" only needs to hear
+  "OK" but went through Brain.generate and paid ~2,000 tokens, so the health
+  check cost as much as a real turn — and pressing it repeatedly while rate
+  limited made the situation worse. Brain.ping uses a ten-token override.
+- **History halved**, 20 turns to 10, still several minutes of conversation,
+  ~400 tokens off every request.
+
+Left deliberately undone: a proper editing pass on the system prompt (~2,000 ->
+~1,200 would roughly double the headroom). Trimming prompt text carelessly is
+precisely how the behaviours fixed this session regress, so it wants doing
+carefully rather than in the same commit as an incident fix.
+
+Two lessons, both general:
+- **Price what rides on every request.** Incremental additions to a system prompt
+  are individually reasonable and collectively fatal.
+- **A diagnostic must never consume the resource it diagnoses.**
+
+Wider significance, again: Groq's limits are per ACCOUNT. Behind the shared-key
+proxy of Part E1, every user would contend for the same 12K tokens per minute.
+Token size per request is therefore a scaling parameter, not just a cost one.
