@@ -36,15 +36,15 @@ class ScreenControlService : AccessibilityService() {
     private val windowManager by lazy { getSystemService(Context.WINDOW_SERVICE) as WindowManager }
     private var outline: View? = null
 
-    // What the user was last looking at. Written from accessibility events and
-    // from each successful read, so JARVIS still knows the state of the app the
-    // user is in even while its own UI is the foreground window. Volatile because
-    // the engine reads these from a background thread when building context.
     // Identifies the sequence currently allowed to run. A new command bumps it,
     // so any callback from an older chain sees a stale token and stops.
     private var runToken = 0
     private var sequenceRunning = false
 
+    // What the user was last looking at. Written from accessibility events and
+    // from each successful read, so JARVIS still knows the state of the app the
+    // user is in even while its own UI is the foreground window. Volatile because
+    // the engine reads these from a background thread when building context.
     @Volatile private var lastAppPackage: String? = null
     @Volatile private var lastAppScreen: String = ""
     @Volatile private var lastAppSeenAt: Long = 0L
@@ -370,7 +370,18 @@ class ScreenControlService : AccessibilityService() {
         handler.postDelayed({ awaitContentChange(before, tries + 1, onChanged) }, STEP_MS)
     }
 
-    /** Wait for an editable field, then set its text. */
+    /**
+     * Wait for an editable field, then set its text — and if none appears, open
+     * one instead of failing.
+     *
+     * Typing used to assume an earlier step had already opened a text field. That
+     * assumption held only by luck: relaunching an app reset it to its home
+     * screen, where a "Search" button exists. Once we stopped relaunching an app
+     * already in front (correctly — it threw away the user's screen), the search
+     * button was no longer there, `<<TAP|Search>>` hit nothing, and every type
+     * failed with "no editable field appeared". A step should not depend on a
+     * side effect of an unrelated one, so this now recovers on its own.
+     */
     private fun typeWhenReady(text: String, tries: Int, onDone: (Boolean) -> Unit) {
         val field = rootInActiveWindow?.let { findEditable(it) }
         if (field != null) {
@@ -378,11 +389,38 @@ class ScreenControlService : AccessibilityService() {
                 putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
             }
             onDone(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
-        } else if (tries < FIELD_WAIT_TRIES) {
+            return
+        }
+        // Recovery attempts are spaced out and work through the candidates in
+        // turn. One attempt is not enough: the earlier <<TAP|Search>> often
+        // "succeeded" on the wrong node, so re-tapping the same one changes
+        // nothing — the next candidate has to get a turn.
+        val sinceRecovery = tries - FIELD_RECOVERY_AT
+        if (sinceRecovery >= 0 && sinceRecovery % RECOVERY_EVERY == 0) {
+            val hint = sinceRecovery / RECOVERY_EVERY
+            if (hint < TEXT_ENTRY_HINTS.size && openTextEntry(TEXT_ENTRY_HINTS[hint])) {
+                handler.postDelayed({ typeWhenReady(text, tries + 1, onDone) }, STEP_SETTLE_MS)
+                return
+            }
+        }
+        if (tries < FIELD_WAIT_TRIES) {
             handler.postDelayed({ typeWhenReady(text, tries + 1, onDone) }, STEP_MS)
         } else {
             onDone(false)
         }
+    }
+
+    /**
+     * Nothing is typeable, so try to make something typeable: tap whatever most
+     * looks like a way into text entry. Apps past their home screen usually still
+     * show the query bar or a search affordance somewhere.
+     */
+    private fun openTextEntry(candidate: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val (node, score) = bestMatch(root, candidate)
+        if (node == null || score <= 0) return false
+        DebugLog.log(DebugLog.Stage.SCREEN, "no text field yet — tapping \"$candidate\" to open one")
+        return tapNode(node)
     }
 
     /** Press the IME action (search / go / enter) on the focused field. */
@@ -696,6 +734,19 @@ class ScreenControlService : AccessibilityService() {
 
         /** How many on-screen options a <<PICK>> may choose between. */
         private const val PICK_MAX_OPTIONS = 25
+
+        /**
+         * After this many fruitless polls, stop waiting and try to open a text
+         * field. Early enough to save the step, late enough that a field which is
+         * merely slow to appear is not interrupted.
+         */
+        private const val FIELD_RECOVERY_AT = 5
+
+        /** Polls between recovery attempts, so each candidate gets time to work. */
+        private const val RECOVERY_EVERY = 3
+
+        /** Tried in order when nothing on screen is typeable. */
+        private val TEXT_ENTRY_HINTS = listOf("Search", "Search YouTube", "Message", "Type a message")
 
         /**
          * Asks the model which of the on-screen options matches a description,
