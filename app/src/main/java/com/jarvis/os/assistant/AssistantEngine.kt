@@ -9,6 +9,8 @@ import android.provider.Settings
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import com.jarvis.os.ai.Brain
+import com.jarvis.os.alarm.AlarmActions
+import com.jarvis.os.alarm.AlarmSetter
 import com.jarvis.os.calendar.CalAction
 import com.jarvis.os.calendar.CalendarActions
 import com.jarvis.os.calendar.CalendarReader
@@ -308,7 +310,8 @@ class AssistantEngine(context: Context) {
                 val reply = raw.replace("<<END>>", "", ignoreCase = true)
                 // Pull out and run the two command families (calendar + screen).
                 val (afterCal, actions) = CalendarActions.parse(reply)
-                val parsed = ScreenActions.parse(afterCal)
+                val (afterAlarm, alarms) = AlarmActions.parse(afterCal)
+                val parsed = ScreenActions.parse(afterAlarm)
                 // "Type it" and "send it" are different instructions and only one
                 // is reversible. The model's search examples all end in a submit,
                 // so it tends to append one — drop it when the user asked only to
@@ -343,6 +346,9 @@ class AssistantEngine(context: Context) {
                 if (actions.isNotEmpty()) {
                     DebugLog.log(DebugLog.Stage.CALENDAR, "added=$added deleted=$deleted")
                 }
+                val alarmsSet = withContext(Dispatchers.IO) {
+                    alarms.count { AlarmSetter.set(appContext, it) }
+                }
                 // Decide what to SAY now, but defer any app switch until after we
                 // finish speaking (run in onSpokenDone) so the reply isn't cut off.
                 val needsPerm = plan.needsAccessibility && !ScreenControlService.isRunning()
@@ -350,6 +356,7 @@ class AssistantEngine(context: Context) {
                     needsPerm ->
                         "To control the screen, open Accessibility settings, go to Downloaded apps, and switch on JARVIS Screen Control, then ask me again."
                     clean.isNotBlank() -> clean
+                    alarmsSet > 0 && clean.isBlank() -> "Done, that's set."
                     added > 0 && deleted > 0 -> "Done, I've rescheduled it."
                     added > 0 -> "Okay, I've added it to your calendar."
                     deleted > 0 -> "Done, I've removed it from your calendar."

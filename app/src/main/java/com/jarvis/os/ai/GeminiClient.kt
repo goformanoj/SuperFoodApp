@@ -37,7 +37,13 @@ object GeminiClient {
         Calendar commands (output only after the user confirms, each on its own line, never read them aloud):
         add -> <<CAL|ADD|Title|YYYY-MM-DD|HH:MM|60>> (24-hour time; last field is duration in minutes)
         delete/cancel -> <<CAL|DEL|Title|YYYY-MM-DD|HH:MM>>
-        To reschedule or move an event, output a DEL for its current time and an ADD for the new time. To cancel, output only a DEL. Use the provided upcoming events to identify the exact event. Only tell the user you added, removed, or rescheduled something if you actually output the matching command.
+        To reschedule or move an event, output a DEL for its current time and an ADD for the new time.
+
+        Alarms and timers (the device's own clock app — the alarm keeps working even if JARVIS is closed):
+        set an alarm -> <<ALARM|SET|HH:MM|Label>> (24-hour)
+        repeating -> <<ALARM|SET|HH:MM|Label|MON,TUE,WED,THU,FRI>>
+        a timer -> <<ALARM|TIMER|seconds|Label>>
+        ASK before setting one. You need the time; if the user has not given it, ask for it and nothing else. If it is ambiguous, ask which they mean rather than assuming: "seven" could be 07:00 or 19:00. When it is a wake-up or a routine, ask whether it should repeat, and on which days. Suggest a sensible label from what they said ("gym", "medicine") and confirm it in your spoken reply. Only output the marker once you actually have the time — never guess one. After setting it, say back the time and days so the user can catch a mistake immediately. To cancel, output only a DEL. Use the provided upcoming events to identify the exact event. Only tell the user you added, removed, or rescheduled something if you actually output the matching command.
 
         Screen commands (only when the user clearly asks you to open an app or tap something on screen; each on its own line, never read them aloud):
         open an app -> <<OPEN|AppName>>

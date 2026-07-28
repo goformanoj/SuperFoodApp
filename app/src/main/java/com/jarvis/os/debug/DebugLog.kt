@@ -27,6 +27,7 @@ object DebugLog {
         SCREEN("SCREEN"),
         SPOKE("SPOKE"),
         SESSION("SESS"),
+        ALARM("ALARM"),
         ERROR("ERROR"),
     }
 
