@@ -61,6 +61,35 @@ object VoicePreference {
         return lower.contains("male") || lower.contains("#m") || lower.contains("_m_")
     }
 
+
+    /** Anything below this is worth offering to upgrade. QUALITY_NORMAL is 300. */
+    const val GOOD_QUALITY = 400
+
+    /**
+     * A human label for the picker — voice ids like `en-gb-x-gbb#male_1-local`
+     * mean nothing to anyone.
+     */
+    fun describe(country: String, name: String, quality: Int): String {
+        val place = when (country.uppercase()) {
+            "GB" -> "British"
+            "US" -> "American"
+            "IN" -> "Indian"
+            "AU" -> "Australian"
+            "CA" -> "Canadian"
+            "IE" -> "Irish"
+            "" -> "English"
+            else -> country.uppercase()
+        }
+        val gender = if (isMale(name)) "male" else "female"
+        val grade = when {
+            quality >= 500 -> "very high quality"
+            quality >= 400 -> "high quality"
+            quality >= 300 -> "standard"
+            else -> "basic"
+        }
+        return "$place $gender, $grade"
+    }
+
     /** Slightly lowered: composed rather than chirpy. 1.0 is the engine default. */
     const val PITCH = 0.92f
 

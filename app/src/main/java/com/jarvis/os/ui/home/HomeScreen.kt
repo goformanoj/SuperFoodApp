@@ -55,15 +55,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.jarvis.os.data.TaskItem
-import com.jarvis.os.data.todaysTasks
+import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.ui.chat.ChatScreen
 import com.jarvis.os.ui.components.HudOrb
 import com.jarvis.os.ui.debug.DiagnosticsScreen
+import com.jarvis.os.ui.speech.SpeechScreen
+import com.jarvis.os.ui.speech.VOICE_SAMPLE
+import com.jarvis.os.voice.Speaker
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.ElectricBlue
@@ -108,6 +112,12 @@ fun JarvisApp(
     state: VoiceUiState,
     onClearChat: () -> Unit,
     onSubmitCommand: (String) -> Unit = {},
+    voiceOptions: () -> List<Speaker.Option> = { emptyList() },
+    currentVoiceId: () -> String? = { null },
+    shouldOfferVoiceDownload: () -> Boolean = { false },
+    onChooseVoice: (String) -> Unit = {},
+    onPreviewVoice: (String) -> Unit = {},
+    onVoiceDownloadOffered: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -135,6 +145,14 @@ fun JarvisApp(
                 Dest.Home -> HomeContent(state)
                 Dest.Chat -> ChatScreen(state.messages, onClearChat)
                 Dest.Diagnostics -> DiagnosticsScreen(onSubmitCommand = onSubmitCommand)
+                Dest.Speech -> SpeechScreen(
+                    voices = voiceOptions(),
+                    currentVoiceId = currentVoiceId(),
+                    shouldOfferDownload = shouldOfferVoiceDownload(),
+                    onSelect = onChooseVoice,
+                    onPreview = { onPreviewVoice(VOICE_SAMPLE) },
+                    onDownloadOffered = onVoiceDownloadOffered,
+                )
                 else -> PlaceholderScreen(current)
             }
 
@@ -302,8 +320,21 @@ private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
     }
 }
 
+/**
+ * The real device calendar, not an invented list.
+ *
+ * This card used to show three hardcoded fake events, which made the whole
+ * screen decorative — it said "Team sync 10:00" on a phone with an empty
+ * calendar. It now reads the same source the assistant answers from, so the
+ * screen and JARVIS can never disagree.
+ */
 @Composable
 private fun TasksCard() {
+    val context = LocalContext.current
+    // Re-read on every entry to Home: events change outside the app, and JARVIS
+    // itself adds and deletes them.
+    val agenda = remember { CalendarReader.agenda(context) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -312,11 +343,25 @@ private fun TasksCard() {
             .border(BorderStroke(1.dp, GlassBorder), RoundedCornerShape(20.dp))
             .padding(18.dp),
     ) {
-        Column {
-            todaysTasks.forEachIndexed { index, task ->
-                TaskRow(task, taskAccents[index % taskAccents.size])
-                if (index != todaysTasks.lastIndex) {
-                    Spacer(Modifier.height(14.dp))
+        when {
+            // Null and empty mean different things, and the old fake list could
+            // express neither.
+            agenda == null -> EmptyNote("Grant calendar access and your real schedule appears here.")
+            agenda.isEmpty() -> EmptyNote("Nothing scheduled in the next couple of days.")
+            else -> Column {
+                agenda.take(MAX_AGENDA_ROWS).forEachIndexed { index, event ->
+                    EventRow(event, taskAccents[index % taskAccents.size])
+                    if (index != agenda.take(MAX_AGENDA_ROWS).lastIndex) {
+                        Spacer(Modifier.height(14.dp))
+                    }
+                }
+                if (agenda.size > MAX_AGENDA_ROWS) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        "+${agenda.size - MAX_AGENDA_ROWS} more",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                    )
                 }
             }
         }
@@ -324,28 +369,34 @@ private fun TasksCard() {
 }
 
 @Composable
-private fun TaskRow(task: TaskItem, accent: Color) {
+private fun EmptyNote(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+}
+
+@Composable
+private fun EventRow(event: CalendarReader.Event, accent: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
+        Spacer(
             Modifier
-                .size(10.dp)
+                .size(8.dp)
                 .clip(CircleShape)
                 .background(accent),
         )
         Spacer(Modifier.size(14.dp))
         Text(
-            text = task.title,
+            event.title,
             style = MaterialTheme.typography.bodyLarge,
             color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Text(
-            text = task.time,
-            style = MaterialTheme.typography.labelMedium,
-            color = TextSecondary,
-        )
+        Spacer(Modifier.size(12.dp))
+        Text(event.timeLabel(), style = MaterialTheme.typography.labelLarge, color = accent)
     }
 }
+
+private const val MAX_AGENDA_ROWS = 4
 
 private fun statusColor(orb: OrbState): Color = when (orb) {
     OrbState.Listening -> Cyan

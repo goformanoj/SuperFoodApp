@@ -40,6 +40,45 @@ object CalendarReader {
         return out
     }
 
+
+    /** One real calendar event, for the UI. */
+    data class Event(val title: String, val startMillis: Long, val allDay: Boolean) {
+        /** "14:30", or "All day". */
+        fun timeLabel(): String =
+            if (allDay) "All day" else SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(startMillis))
+    }
+
+    /**
+     * The real events between now and the end of tomorrow, soonest first.
+     * Returns null when calendar permission has not been granted — which the UI
+     * shows differently from "you have nothing on", because they mean different
+     * things and the old hardcoded list could say neither.
+     */
+    fun agenda(context: Context, days: Int = 2): List<Event>? {
+        if (!hasReadPermission(context)) return null
+        val start = System.currentTimeMillis()
+        val end = start + days * DAY_MS
+        val out = mutableListOf<Event>()
+        queryInstances(
+            context, start, end,
+            arrayOf(
+                CalendarContract.Instances.TITLE,
+                CalendarContract.Instances.BEGIN,
+                CalendarContract.Instances.ALL_DAY,
+            ),
+        ) { c ->
+            val raw = c.getString(0)
+            out.add(
+                Event(
+                    title = if (raw.isNullOrBlank()) "(untitled)" else raw,
+                    startMillis = c.getLong(1),
+                    allDay = c.getInt(2) != 0,
+                ),
+            )
+        }
+        return out.sortedBy { it.startMillis }
+    }
+
     /** Event IDs whose title matches on [date] (optionally near [time]), for deletion. */
     fun findMatchingEventIds(context: Context, title: String, date: String, time: String): List<Long> {
         if (!hasReadPermission(context)) return emptyList()

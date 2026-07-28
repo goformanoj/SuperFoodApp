@@ -43,6 +43,12 @@ class MainActivity : ComponentActivity() {
                         state = state,
                         onClearChat = { engine.clearConversation() },
                         onSubmitCommand = { engine.submitText(it) },
+                        voiceOptions = { engine.voiceOptions() },
+                        currentVoiceId = { engine.currentVoiceId() },
+                        shouldOfferVoiceDownload = { engine.shouldOfferVoiceDownload() },
+                        onChooseVoice = { engine.chooseVoice(it) },
+                        onPreviewVoice = { engine.previewVoice(it) },
+                        onVoiceDownloadOffered = { engine.markVoiceDownloadOffered() },
                     )
                 }
             }

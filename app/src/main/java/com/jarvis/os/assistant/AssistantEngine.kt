@@ -242,6 +242,26 @@ class AssistantEngine(context: Context) {
         set { it.copy(messages = emptyList(), transcript = "", reply = "") }
     }
 
+    // --- voice settings, surfaced to the Speech screen -----------------------
+
+    /** Voices this device can use, best first. */
+    fun voiceOptions(): List<com.jarvis.os.voice.Speaker.Option> = speaker.options()
+
+    fun currentVoiceId(): String? = speaker.currentVoiceId()
+
+    /** True when the installed speech data is poor enough to be worth upgrading. */
+    fun shouldOfferVoiceDownload(): Boolean = speaker.shouldOfferBetterVoices()
+
+    fun markVoiceDownloadOffered() = speaker.markVoiceDownloadOffered()
+
+    fun chooseVoice(id: String) {
+        speaker.useVoice(id)
+        DebugLog.log(DebugLog.Stage.SPOKE, "voice changed to $id")
+    }
+
+    /** Audition the current voice without disturbing the conversation loop. */
+    fun previewVoice(text: String) = speaker.preview(text)
+
     /**
      * Runs a typed command through the exact same pipeline as a spoken one
      * (brain -> markers -> calendar/screen actions), skipping only the
