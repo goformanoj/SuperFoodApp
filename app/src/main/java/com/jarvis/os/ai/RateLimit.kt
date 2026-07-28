@@ -76,6 +76,18 @@ object RateLimit {
         }
     }
 
+
+    /**
+     * True when the provider says this model no longer exists. Groq reports a
+     * retired model as HTTP 400, not 404, so matching on the status alone missed
+     * it and the whole request died instead of trying the next model.
+     */
+    fun isRetiredModel(body: String): Boolean =
+        body.contains("decommissioned", ignoreCase = true) ||
+            body.contains("no longer supported", ignoreCase = true) ||
+            body.contains("does not exist", ignoreCase = true) ||
+            body.contains("has been deprecated", ignoreCase = true)
+
     /** True when the limit is a daily quota — waiting seconds will not help. */
     fun isDailyQuota(body: String): Boolean =
         body.contains("per day", ignoreCase = true) || body.contains("TPD", ignoreCase = false) ||

@@ -83,4 +83,29 @@ class RateLimitTest {
     fun `the short summary stays short enough for the orb`() {
         assertTrue(RateLimit.shortSummary(perDay, 965).length < 90)
     }
+
+    // --- retired models ---------------------------------------------------
+
+    @Test
+    fun `a decommissioned model is recognised`() {
+        // Verbatim from the device: Groq reports this as HTTP 400, not 404.
+        val body = """{"error":{"message":"The model `gemma2-9b-it` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations"}}"""
+
+        assertTrue(RateLimit.isRetiredModel(body))
+    }
+
+    @Test
+    fun `other retirement wordings are recognised too`() {
+        assertTrue(RateLimit.isRetiredModel("""{"error":{"message":"The model does not exist"}}"""))
+        assertTrue(RateLimit.isRetiredModel("""{"error":{"message":"This model has been deprecated"}}"""))
+        assertTrue(RateLimit.isRetiredModel("no longer supported"))
+    }
+
+    @Test
+    fun `an ordinary failure is not mistaken for a retirement`() {
+        assertFalse(RateLimit.isRetiredModel(perMinute))
+        assertFalse(RateLimit.isRetiredModel(perDay))
+        assertFalse(RateLimit.isRetiredModel("""{"error":{"message":"Internal server error"}}"""))
+        assertFalse(RateLimit.isRetiredModel(""))
+    }
 }

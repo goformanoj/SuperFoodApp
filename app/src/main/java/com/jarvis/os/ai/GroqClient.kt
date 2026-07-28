@@ -2,6 +2,7 @@ package com.jarvis.os.ai
 
 import com.jarvis.os.BuildConfig
 import com.jarvis.os.data.ChatTurn
+import com.jarvis.os.debug.DebugLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -29,6 +30,12 @@ object GroqClient {
     private val blockedUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     /**
+     * Models the provider has retired. Unlike a rate limit this never clears, so
+     * they are dropped for the life of the process rather than cooled down.
+     */
+    private val retired = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /**
      * Preference order per tier. Quotas are per model, so putting the small model
      * first for commands preserves the big model's daily allowance for the turns
      * that actually need it — and each list still ends with the others, so a
@@ -36,13 +43,13 @@ object GroqClient {
      */
     private val SMART_MODELS = listOf(
         "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b",
         "llama-3.1-8b-instant",
-        "gemma2-9b-it",
     )
 
     private val FAST_MODELS = listOf(
         "llama-3.1-8b-instant",
-        "gemma2-9b-it",
+        "openai/gpt-oss-20b",
         "llama-3.3-70b-versatile",
     )
 
@@ -105,6 +112,7 @@ object GroqClient {
                 // Skip a model we already know is rate limited: every call during
                 // its cooldown is another rejected request against the same quota,
                 // and on a daily cap it can never succeed.
+                if (model in retired) continue
                 if (blockedUntil.getOrDefault(model, 0L) > System.currentTimeMillis()) continue
                 anyTried = true
                 val outcome = requestModel(model, messages, context, key, systemOverride)
@@ -113,6 +121,9 @@ object GroqClient {
                 if (!outcome.retryable) throw GroqException(lastReason)
             }
             if (!anyTried) {
+                if (retired.size >= modelsFor(tier).size) {
+                    throw GroqException("No Groq model is available — all of them have been retired")
+                }
                 val soonest = blockedUntil.values.minOrNull() ?: 0L
                 val secs = ((soonest - System.currentTimeMillis()) / 1000).coerceAtLeast(1)
                 throw GroqException("Every Groq model is rate limited — try again in ${secs}s")
@@ -195,9 +206,16 @@ object GroqClient {
                 } else {
                     "HTTP $code: ${extractError(body)}"
                 }
-                // 429 is per model, so try the next one: the big model running out
-                // of daily tokens says nothing about the smaller models' quotas.
-                Outcome(null, reason, retryable = code == 404 || code == 429)
+                // Anything wrong with THIS model must fall through to the next
+                // one, never abort the chain. A device screenshot showed
+                // gemma2-9b-it returning 400 "decommissioned" and killing the
+                // whole request, even though a working model was next in line.
+                val gone = code == 404 || (code == 400 && RateLimit.isRetiredModel(body))
+                if (gone) {
+                    retired.add(model)
+                    DebugLog.log(DebugLog.Stage.ERROR, "model $model is retired — dropping it")
+                }
+                Outcome(null, reason, retryable = gone || code == 429)
             }
         } catch (e: Exception) {
             Outcome(null, "Network error: ${e.message ?: e.javaClass.simpleName}", false)
