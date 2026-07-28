@@ -5,7 +5,7 @@
 
 ## Current position + immediate next
 - **Shipped:** Part A, the testing rig, **Part B** (work session), and **Part C** — screen awareness, state memory, send guard, executor fixes, and now `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, and a better TTS voice.
-- **`main` @ `02a0d04`** (last confirmed green build **#99**). Six commits await CI: `b922b65` (PICK), `d801260` (open-app regression + Back/Home), `aa74c4d` (voice), `48d7847` (type recovery), `2c062ac` (yield the mic to playback), `70bd645` (alarms + timers). Merge once the newest build shows an artifact.
+- **`main` @ `6066abd`** (green build **#108**) — PICK, Back/Home, the open-app regression fix, the voice, type recovery and the media yield are all merged. Only `70bd645` (alarms + timers) awaits CI.
 - **Device-confirmed:** `<<PICK>>` works — it chose "Beat It Michael Jackson" from 15 real on-screen options, and supersede fired correctly on a mid-sequence interruption.
 - **Next:** Part C tail — tap verification/retry and the unexplained album tap — then Part D, then Part E.
 - **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
