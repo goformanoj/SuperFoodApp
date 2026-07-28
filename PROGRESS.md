@@ -91,6 +91,8 @@ Fixed in `c04c7de`: **Groq's quotas are per MODEL.** A device screenshot showed 
 
 Fixed in `f73b3e3`: **commands are routed to `llama-3.1-8b-instant`**, keeping the 70b allowance for turns that need thinking. Conservative — an explicit request to think wins over a command verb, long utterances are conversation, unknown input goes smart. If a command produces *no* marker at all, the turn is retried once on the smart model, since the marker protocol is fiddly enough for a small model to fumble. The trace records which tier answered.
 
+Fixed in `ec549cb`: **`gemma2-9b-it` was retired by Groq** and the lists still named it — replaced with the current production models (`openai/gpt-oss-20b` fast, `openai/gpt-oss-120b` smart, alongside the two llamas). Worse, **a retired model aborted the whole request**: Groq reports retirement as HTTP **400**, not 404, and only 404/429 fell through — so with the 8b rate limited and gemma2 dead, the chain stopped at the dead model while a working 70b sat next in line. The fallback chain existed and could not be reached. Retirement is now matched on the message text rather than the status code, and the model is dropped for the life of the process.
+
 That screenshot also confirmed the arithmetic: `Requested 2674` against 100,000/day is **~37 commands per day** on the 70b alone.
 
 **Still open — the biggest remaining win:** a careful editing pass on the system prompt itself, ~2,000 → ~1,200 tokens, which would roughly double the commands-per-minute headroom. Left undone deliberately: trimming prompt text carelessly is how the behaviours fixed this session regress.

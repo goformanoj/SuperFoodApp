@@ -1073,3 +1073,38 @@ Two lessons:
 
 Still owed: the system prompt diet (~2,000 -> ~1,200 tokens). The user explicitly
 deferred it this round.
+
+### 2026-07-28 — A retired model killed the request the fallback was built to survive (ec549cb)
+Device screenshot: "message hey to mom" ->
+
+  HTTP 400: The model `gemma2-9b-it` has been decommissioned and is no longer
+  supported.
+
+Two bugs.
+
+**gemma2-9b-it no longer exists.** Groq retired it and the model lists still named
+it. Replaced with current production models: openai/gpt-oss-20b (fast tier),
+openai/gpt-oss-120b (smart tier), alongside llama-3.1-8b-instant and
+llama-3.3-70b-versatile.
+
+**The worse one: it aborted the whole request.** Groq reports a retired model as
+HTTP 400, not 404, and only 404 and 429 fell through to the next model. So with
+the 8b rate limited and gemma2 dead, the chain stopped AT the dead model even
+though a working 70b was next in line. I had built the per-model fallback the
+same day precisely so one bad model could not take the assistant down — and a
+status code I had not anticipated walked straight past it.
+
+Fix: anything wrong with a specific model falls through. Retirement is matched on
+the MESSAGE TEXT (decommissioned / no longer supported / does not exist / has been
+deprecated) rather than the status code, since the status is exactly what missed
+it, and the model is dropped for the life of the process rather than cooled down —
+a retirement never clears. A genuine error (500, network failure) still stops the
+chain, which is right: that is not a reason to burn through every model.
+
+The lesson worth keeping: I had been fixing this class one status code at a time
+(404, then 429, then 400) and that does not converge. The right question is "is
+this model unusable?", not "is this code in my list?". Related: model IDs rot —
+providers retire them with little warning, so a hardcoded list silently becomes
+wrong and an unusable model must be routine rather than exceptional.
+
+3 tests using the exact body from the device.
