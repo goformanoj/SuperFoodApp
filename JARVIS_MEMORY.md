@@ -782,3 +782,38 @@ just for the failing line.
 **Device-confirmed working in the same trace:** <<PICK>> chose "Beat It Michael
 Jackson" from 15 real on-screen options, and supersede fired when a new command
 arrived mid-sequence.
+
+### 2026-07-28 — Yield the microphone while audio plays (2c062ac)
+User: after JARVIS starts a song, the song stops — "like when you get a call the
+video gets paused" — because JARVIS keeps listening.
+
+Not a bug that can be coded away. Holding the mic open takes audio focus, so the
+media app pauses; that is Android's policy. Listening and playing at full volume
+are mutually exclusive, and even if they were not, the recogniser would just hear
+the song. The assistant was undoing its own instruction, so the fix is to choose
+correctly rather than to try to have both.
+
+Now: while a work session is running and audio is playing, JARVIS yields the mic.
+The session stays alive, the notification becomes "JARVIS is paused so your audio
+can play" with a **Talk** action that claims the mic for ONE turn (it does not
+latch), and listening resumes by itself when the audio stops. On JARVIS's own
+screen it keeps listening regardless — the user is deliberately talking to it
+there.
+
+Two decisions worth recording:
+- **Poll, don't infer.** Playback state is checked every 2s rather than assumed
+  from "I just launched a video": audio can start late, be paused by the user, or
+  end on its own.
+- **Skip our own speech.** TTS goes out through the music stream, so
+  `isMusicActive` is true while JARVIS talks. Without that guard it would hear
+  itself, conclude media was playing, and stand down permanently — a bug that
+  would have looked inexplicable in a trace.
+
+Seven more WorkSession tests cover the ownership rules, including that media
+cannot revive a session that never started, and that the foreground service keeps
+running while yielding so Talk stays reachable.
+
+**Open consequence:** re-engaging hands-free during playback now requires a tap.
+The real answer is a proper wake word (Porcupine / openWakeWord) that coexists
+with playback instead of seizing focus. This is the strongest argument yet for
+moving it ahead of Part D polish — offered to the user, awaiting their call.
