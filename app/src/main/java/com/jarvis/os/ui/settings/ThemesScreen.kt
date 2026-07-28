@@ -40,15 +40,16 @@ fun ThemesScreen(
     current: JarvisPalette,
     onSelect: (JarvisPalette) -> Unit,
     modifier: Modifier = Modifier,
+    embedded: Boolean = true,
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .systemBarsPadding()
+            .then(if (embedded) Modifier else Modifier.systemBarsPadding())
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(56.dp))
+        if (!embedded) Spacer(Modifier.height(56.dp))
         Text("Themes", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
         Text(
             "How JARVIS looks. Your choice is remembered.",

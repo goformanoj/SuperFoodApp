@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.BugReport
@@ -30,9 +29,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
@@ -67,8 +64,7 @@ import com.jarvis.os.ui.components.HudOrb
 import com.jarvis.os.ui.debug.DiagnosticsScreen
 import com.jarvis.os.ui.calendar.CalendarScreen
 import com.jarvis.os.ui.settings.InstructionsScreen
-import com.jarvis.os.ui.settings.ThemesScreen
-import com.jarvis.os.ui.speech.SpeechScreen
+import com.jarvis.os.ui.settings.SettingsScreen
 import com.jarvis.os.ui.speech.VOICE_SAMPLE
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.ui.theme.Background
@@ -92,15 +88,12 @@ import java.util.Calendar
 /** Drawer destinations. Home is the live voice screen; Chat shows history; others are placeholders. */
 private enum class Dest(val label: String, val icon: ImageVector, val blurb: String) {
     Home("Home", Icons.Filled.Home, ""),
-    Speech("Speech", Icons.Filled.Mic, "Voice and speech options."),
-    Chat("Chat", Icons.Filled.Forum, "A terminal-style history of your conversation."),
-    Instructions("Custom instructions", Icons.Filled.EditNote, "Standing preferences JARVIS follows every time."),
+    Chat("Chat & memory", Icons.Filled.Forum, "Your conversation and what JARVIS remembers."),
+    Instructions("Custom instructions", Icons.Filled.EditNote, "What JARVIS always knows about you."),
     Calendar("Calendar", Icons.Filled.CalendarMonth, "Your schedule and events."),
-    Themes("Themes", Icons.Filled.AutoAwesome, "How JARVIS looks."),
-    Memory("Memory", Icons.Filled.Memory, "Reminders, projects, and what JARVIS remembers."),
     Files("Files", Icons.Filled.Folder, "Browse and act on your files."),
     Automation("Automation", Icons.Filled.Bolt, "Automate taps, typing, and actions."),
-    Settings("Settings", Icons.Filled.Settings, "Preferences and configuration."),
+    Settings("Settings", Icons.Filled.Settings, "Voice and appearance."),
     Diagnostics("Diagnostics", Icons.Filled.BugReport, "Self-checks, a typed command box, and the shareable trace."),
 }
 
@@ -123,7 +116,9 @@ fun JarvisApp(
     onPreviewVoice: (String) -> Unit = {},
     onVoiceDownloadOffered: () -> Unit = {},
     customInstructions: () -> String = { "" },
+    learnedFacts: () -> List<String> = { emptyList() },
     onSaveInstructions: (String) -> Unit = {},
+    onForgetFact: (String) -> Unit = {},
     palette: JarvisPalette = JarvisPalette.Default,
     onSelectPalette: (JarvisPalette) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -153,20 +148,23 @@ fun JarvisApp(
                 Dest.Home -> HomeContent(state)
                 Dest.Chat -> ChatScreen(state.messages, onClearChat)
                 Dest.Diagnostics -> DiagnosticsScreen(onSubmitCommand = onSubmitCommand)
-                Dest.Speech -> SpeechScreen(
+                Dest.Settings -> SettingsScreen(
                     voices = voiceOptions(),
                     currentVoiceId = currentVoiceId(),
-                    shouldOfferDownload = shouldOfferVoiceDownload(),
-                    onSelect = onChooseVoice,
-                    onPreview = { onPreviewVoice(VOICE_SAMPLE) },
-                    onDownloadOffered = onVoiceDownloadOffered,
+                    shouldOfferVoiceDownload = shouldOfferVoiceDownload(),
+                    onChooseVoice = onChooseVoice,
+                    onPreviewVoice = { onPreviewVoice(VOICE_SAMPLE) },
+                    onVoiceDownloadOffered = onVoiceDownloadOffered,
+                    palette = palette,
+                    onSelectPalette = onSelectPalette,
                 )
                 Dest.Instructions -> InstructionsScreen(
                     initial = customInstructions(),
+                    learned = learnedFacts(),
                     onSave = onSaveInstructions,
+                    onForget = onForgetFact,
                 )
                 Dest.Calendar -> CalendarScreen()
-                Dest.Themes -> ThemesScreen(current = palette, onSelect = onSelectPalette)
                 else -> PlaceholderScreen(current)
             }
 

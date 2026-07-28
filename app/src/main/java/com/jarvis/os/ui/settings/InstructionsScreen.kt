@@ -54,7 +54,9 @@ private val EXAMPLES = listOf(
 @Composable
 fun InstructionsScreen(
     initial: String,
+    learned: List<String> = emptyList(),
     onSave: (String) -> Unit,
+    onForget: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var text by remember(initial) { mutableStateOf(initial) }
@@ -70,8 +72,9 @@ fun InstructionsScreen(
         Spacer(Modifier.height(56.dp))
         Text("Custom instructions", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
         Text(
-            "Standing preferences JARVIS follows in every conversation — how to address " +
-                "you, how much detail you want, anything it should always or never do.",
+            "What JARVIS always knows about you. Type preferences here, and it will also " +
+                "remember things you tell it — nicknames for apps, what to call you, how you " +
+                "like things done.",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
             modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
@@ -119,6 +122,38 @@ fun InstructionsScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Background),
             ) {
                 Text("Save", style = MaterialTheme.typography.labelLarge)
+            }
+        }
+
+        if (learned.isNotEmpty()) {
+            Spacer(Modifier.height(28.dp))
+            Text("What JARVIS has picked up", style = MaterialTheme.typography.labelLarge, color = Cyan)
+            Text(
+                "Learned from your conversations. Tap to forget one.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                learned.forEach { fact ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(SurfaceGlass)
+                            .border(1.dp, GlassBorder, RoundedCornerShape(10.dp))
+                            .clickable { onForget(fact) }
+                            .padding(12.dp),
+                    ) {
+                        Text(
+                            fact,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextPrimary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text("Forget", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    }
+                }
             }
         }
 

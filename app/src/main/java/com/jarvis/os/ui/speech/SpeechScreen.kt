@@ -62,6 +62,7 @@ fun SpeechScreen(
     onPreview: () -> Unit,
     onDownloadOffered: () -> Unit,
     modifier: Modifier = Modifier,
+    embedded: Boolean = true,
 ) {
     val context = LocalContext.current
     var selected by remember(currentVoiceId) { mutableStateOf(currentVoiceId) }
@@ -71,10 +72,10 @@ fun SpeechScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .systemBarsPadding()
+            .then(if (embedded) Modifier else Modifier.systemBarsPadding())
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(56.dp))
+        if (!embedded) Spacer(Modifier.height(56.dp))
         Text("Voice", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
         Text(
             "How JARVIS sounds when it speaks to you.",

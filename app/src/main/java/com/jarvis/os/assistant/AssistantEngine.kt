@@ -22,8 +22,10 @@ import com.jarvis.os.control.ScreenStep
 import com.jarvis.os.control.WorkSessionService
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.ConversationStore
+import com.jarvis.os.data.MemoryAction
+import com.jarvis.os.data.MemoryActions
 import com.jarvis.os.data.UserPreferences
-import com.jarvis.os.data.formatCustomInstructions
+import com.jarvis.os.data.formatMemory
 import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
@@ -245,6 +247,32 @@ class AssistantEngine(context: Context) {
         set { it.copy(messages = emptyList(), transcript = "", reply = "") }
     }
 
+    /**
+     * Applies what JARVIS decided to remember about the user. Kept separate from
+     * the typed instructions so the screen can show — and delete — exactly what
+     * was learned automatically.
+     */
+    private fun applyMemories(memories: List<MemoryAction>) {
+        memories.forEach { memory ->
+            when (memory) {
+                is MemoryAction.Remember ->
+                    if (userPrefs.remember(memory.fact)) {
+                        DebugLog.log(DebugLog.Stage.THINK, "remembered: ${memory.fact}")
+                    }
+                is MemoryAction.Forget -> {
+                    val gone = userPrefs.forget(memory.about)
+                    if (gone > 0) DebugLog.log(DebugLog.Stage.THINK, "forgot $gone about \"${memory.about}\"")
+                }
+            }
+        }
+    }
+
+    fun learnedFacts(): List<String> = userPrefs.learnedFacts()
+
+    fun forgetFact(fact: String) {
+        userPrefs.forget(fact)
+    }
+
     // --- user preferences, surfaced to the settings screens -------------------
 
     fun customInstructions(): String = userPrefs.customInstructions
@@ -349,7 +377,9 @@ class AssistantEngine(context: Context) {
                 // Pull out and run the two command families (calendar + screen).
                 val (afterCal, actions) = CalendarActions.parse(reply)
                 val (afterAlarm, alarms) = AlarmActions.parse(afterCal)
-                val parsed = ScreenActions.parse(afterAlarm)
+                val (afterMemory, memories) = MemoryActions.parse(afterAlarm)
+                applyMemories(memories)
+                val parsed = ScreenActions.parse(afterMemory)
                 // "Type it" and "send it" are different instructions and only one
                 // is reversible. The model's search examples all end in a submit,
                 // so it tends to append one — drop it when the user asked only to
@@ -474,7 +504,7 @@ class AssistantEngine(context: Context) {
 
         // The user's standing instructions ride on every turn, which is why the
         // length is capped where they are entered.
-        val standing = formatCustomInstructions(userPrefs.customInstructions)
+        val standing = formatMemory(userPrefs.customInstructions, userPrefs.learnedFacts())
 
         listOf(
             "Current date/time: $now. $schedule When asked about the schedule, use ONLY this " +

@@ -59,7 +59,9 @@ class MainActivity : ComponentActivity() {
                         onPreviewVoice = { engine.previewVoice(it) },
                         onVoiceDownloadOffered = { engine.markVoiceDownloadOffered() },
                         customInstructions = { engine.customInstructions() },
+                        learnedFacts = { engine.learnedFacts() },
                         onSaveInstructions = { engine.saveCustomInstructions(it) },
+                        onForgetFact = { engine.forgetFact(it) },
                         palette = palette,
                         onSelectPalette = {
                             palette = it
