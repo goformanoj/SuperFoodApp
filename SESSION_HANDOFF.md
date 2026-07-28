@@ -5,7 +5,7 @@
 
 ## Current position + immediate next
 - **Shipped:** Part A, the testing rig, **Part B** (work session), and **Part C** — screen awareness, state memory, send guard, executor fixes, and now `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, and a better TTS voice.
-- **`main` @ `02a0d04`** (last confirmed green build **#99**). Five commits await CI: `b922b65` (PICK), `d801260` (open-app regression + Back/Home), `aa74c4d` (voice), `48d7847` (type recovery), `2c062ac` (yield the mic to playback). Merge once the newest build shows an artifact.
+- **`main` @ `02a0d04`** (last confirmed green build **#99**). Six commits await CI: `b922b65` (PICK), `d801260` (open-app regression + Back/Home), `aa74c4d` (voice), `48d7847` (type recovery), `2c062ac` (yield the mic to playback), `70bd645` (alarms + timers). Merge once the newest build shows an artifact.
 - **Device-confirmed:** `<<PICK>>` works — it chose "Beat It Michael Jackson" from 15 real on-screen options, and supersede fired correctly on a mid-sequence interruption.
 - **Next:** Part C tail — tap verification/retry and the unexplained album tap — then Part D, then Part E.
 - **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
@@ -73,6 +73,9 @@ The model puts these on their own lines; the app **strips them before speaking**
 | `<<ENTER>>` | submit / search | `ScreenActions` | `ScreenControlService` |
 | `<<PICK\|description>>` | look at the screen and choose what matches | `ScreenActions` | `ScreenControlService` + `Brain.choose` |
 | `<<BACK>>` / `<<HOME>>` | system back / home | `ScreenActions` | `performGlobalAction` |
+| `<<ALARM\|SET\|HH:MM\|Label\|MON,WED>>` | set an alarm (days optional) | `AlarmActions` | `AlarmSetter` → clock app |
+| `<<ALARM\|TIMER\|seconds\|Label>>` | start a timer | `AlarmActions` | `AlarmSetter` → clock app |
+| `<<BACK>>` / `<<HOME>>` | system back / home | `ScreenActions` | `performGlobalAction` |
 Steps run **in order**, so one instruction can chain: `<<OPEN\|YouTube>> <<TAP\|Search>> <<TYPE\|standup comedy>> <<ENTER>> <<PICK\|the first video result>>`.
 Use `<<TAP>>` for a control already visible; use `<<PICK>>` whenever the target will not exist until an earlier step runs — "the first result" is an intent, not a label.
 
@@ -87,6 +90,8 @@ Use `<<TAP>>` for a control already visible; use `<<PICK>>` whenever the target 
 - **Never relaunch an app that is already in front** — it resets the app to its home screen and throws away the results the user is looking at.
 - **Never report a tap as successful unless it was** — `seek` used to always call `onDone(true)`, so a dead tap was announced as done and repeating the command repeated the same non-event. A false success is far worse than a reported failure: it hides the bug from both the user and the model.
 - **The prompt teaches by example** — every `TYPE` example ended in `<<ENTER>>`, so the model treated typing and sending as one move and sent messages the user only asked to type. Irreversible actions need a code-level guard, not just prompt wording.
+- **Prefer the platform's own intent over reimplementing it** — alarms go through `AlarmClock.ACTION_SET_ALARM`, so they live in the user's real clock app and ring even if JARVIS is closed or uninstalled. An alarm that only works while our process is alive is not an alarm.
+- **Refuse rather than approximate on anything with a real-world consequence** — a silently wrong alarm (25:00, "half past seven") is worse than no alarm, because the user only finds out by missing something.
 - **Listening and playing audio are mutually exclusive** — holding the mic takes audio focus, so the media app pauses exactly as it would for a phone call. No code fix avoids this; the only question is which one wins. While a session runs and audio plays, JARVIS yields and offers **Talk**. Hands-free re-engagement during playback needs a real wake word — that is the strongest argument for building one.
 - **TTS comes out of the music stream** — `AudioManager.isMusicActive` is true while JARVIS is speaking, so any media check must skip its own speech or it hears itself and stands down permanently.
 - **Removing a behaviour removes its side effects too** — not relaunching an app already in front was correct on its own terms, but relaunching had been resetting the app to its home screen, which is where the search button lives. Typing then failed *only* when the app was not relaunched. Before deleting a behaviour, ask what else was quietly leaning on it; the trace shows the correlation if you look for it instead of at the symptom.

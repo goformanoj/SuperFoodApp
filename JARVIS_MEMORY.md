@@ -817,3 +817,35 @@ running while yielding so Talk stays reachable.
 The real answer is a proper wake word (Porcupine / openWakeWord) that coexists
 with playback instead of seizing focus. This is the strongest argument yet for
 moving it ahead of Part D polish — offered to the user, awaiting their call.
+
+### 2026-07-28 — Alarms and timers, with the asking as the feature (70bd645)
+User asked for alarms "by asking me the specifications of the alarm" — the
+gathering of details is the point, not an afterthought.
+
+Implementation goes through the device's standard AlarmClock intents rather than
+scheduling anything in-process. That matters: the alarm lands in the user's real
+clock app, survives JARVIS being closed or uninstalled, and rings regardless of
+whether JARVIS is running. An alarm that only works while our process is alive is
+not an alarm. SET_ALARM is a normal permission (granted at install), so there is
+no new runtime prompt, and EXTRA_SKIP_UI sets it outright rather than dropping the
+user into the clock app with a half-filled form.
+
+  <<ALARM|SET|07:30|Gym>>                 one-off
+  <<ALARM|SET|06:15|Run|MON,WED,FRI>>     repeating
+  <<ALARM|TIMER|600|Pasta>>               timer
+
+The prompt is explicit about gathering: get the time before emitting anything and
+never guess it; resolve ambiguity instead of assuming ("seven" is 07:00 or 19:00
+— guessing wrong means oversleeping); ask about repeating for wake-ups; read the
+time and days back so a mistake is caught immediately.
+
+Parsing REFUSES rather than approximates: 25:00, 07:99, "half past seven", a
+missing time, a zero or negative timer all produce no action. A silently wrong
+alarm is worse than none, because the user only discovers it by missing something.
+Day names match on their first three letters (monday/MON/Mon) and duplicates
+collapse.
+
+Also added <queries> entries for SET_ALARM/SET_TIMER so this keeps working once
+QUERY_ALL_PACKAGES is dropped in Part E2 — one less thing to rediscover later.
+
+14 unit tests; the parser is pure Kotlin so all of it is covered without a device.
