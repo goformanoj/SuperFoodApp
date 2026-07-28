@@ -23,4 +23,19 @@ object Brain {
         } else {
             GeminiClient.generate(messages, context)
         }
+
+    /**
+     * Which of the things currently on screen matches [description]? Returns a
+     * 1-based index, or null if nothing does.
+     *
+     * This is what stops the model guessing a label for something that does not
+     * exist yet when a plan is written — "the first video result" cannot be
+     * matched as text, only chosen once the results are on screen.
+     *
+     * Groq only for now: Gemini has no chooser yet, so with only a Gemini key
+     * this returns null and the step reports an honest failure rather than
+     * tapping something arbitrary.
+     */
+    suspend fun choose(description: String, options: List<String>): Int? =
+        if (GroqClient.hasKey()) GroqClient.chooseIndex(description, options) else null
 }

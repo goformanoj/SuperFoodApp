@@ -154,6 +154,38 @@ class ScreenControlService : AccessibilityService() {
                 typeWhenReady(step.text, 0) { ok ->
                     if (ok) advance(expectedPackage) else failed("no editable field appeared")
                 }
+            is ScreenStep.Pick -> {
+                // The one step that looks before it decides. Everything else was
+                // committed to a label when the plan was written, before the
+                // target screen existed.
+                val options = tappableLabels()
+                val resolver = onPick
+                when {
+                    options.isEmpty() -> failed("nothing tappable on screen to choose from")
+                    resolver == null -> failed("no way to ask the model which one")
+                    else -> {
+                        DebugLog.log(
+                            DebugLog.Stage.SCREEN,
+                            "choosing \"${step.description}\" from ${options.size} on-screen options",
+                        )
+                        resolver(step.description, options) { choice ->
+                            if (token != runToken) return@resolver
+                            val label = choice?.let { options.getOrNull(it - 1) }
+                            if (label == null) {
+                                failed("could not match \"${step.description}\" to anything on screen")
+                            } else {
+                                DebugLog.log(DebugLog.Stage.SCREEN, "chose \"$label\"")
+                                // Re-find by label instead of holding the node: the
+                                // model round-trip takes about a second and node
+                                // handles go stale.
+                                seek(label, 0) { ok ->
+                                    if (ok) advance(expectedPackage) else failed("tap on \"$label\" did not register")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             is ScreenStep.Enter -> {
                 // Submitting a search changes the whole screen, and a fixed delay
                 // is a guess — results routinely take longer than one. Wait for
@@ -241,6 +273,32 @@ class ScreenControlService : AccessibilityService() {
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * The labels of everything tappable on screen, in reading order — the menu a
+     * [ScreenStep.Pick] chooses from. Deduplicated, because a list row often
+     * exposes the same text on several nested nodes.
+     */
+    private fun tappableLabels(): List<String> {
+        val root = userAppRoot() ?: return emptyList()
+        val labels = LinkedHashSet<String>()
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var scanned = 0
+        while (queue.isNotEmpty() && scanned < SCREEN_SCAN_NODES && labels.size < PICK_MAX_OPTIONS) {
+            val node = queue.removeFirst()
+            scanned++
+            val raw = (node.text ?: node.contentDescription)?.toString()?.trim().orEmpty()
+            val tappable = node.isClickable || clickableSelfOrAncestor(node) != null
+            if (tappable && raw.isNotEmpty() && raw.length <= SCREEN_LABEL_MAX && node.isVisibleToUser) {
+                labels.add(redactSensitive(raw, node.isPassword))
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { queue.add(it) }
+            }
+        }
+        return labels.toList()
     }
 
     private fun renderScreen(root: AccessibilityNodeInfo): String {
@@ -620,6 +678,16 @@ class ScreenControlService : AccessibilityService() {
 
         /** Bare 4-8 digit runs — one-time codes — are masked before leaving the device. */
         private val OTP_LIKE = Regex("""\b\d{4,8}\b""")
+
+        /** How many on-screen options a <<PICK>> may choose between. */
+        private const val PICK_MAX_OPTIONS = 25
+
+        /**
+         * Asks the model which of the on-screen options matches a description,
+         * calling back with a 1-based index, or null when nothing matches. Set by
+         * the engine, which owns the AI clients.
+         */
+        var onPick: ((String, List<String>, (Int?) -> Unit) -> Unit)? = null
         private const val OUTLINE_MS = 1100L
     }
 }

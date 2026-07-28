@@ -45,9 +45,12 @@ object GroqClient {
         tap a visible control -> <<TAP|Label>>
         type into the focused field -> <<TYPE|the text>>
         submit / press search or enter -> <<ENTER>>
+        choose something by looking at the screen -> <<PICK|a short description of what you want>>
         Chain them for one instruction, in the order they should happen. Examples — search YouTube: <<OPEN|YouTube>> <<TAP|Search>> <<TYPE|standup comedy>> <<ENTER>>. Open a WhatsApp chat: <<OPEN|WhatsApp>> <<TAP|Mom>>. For a tap label use the exact short on-screen name of the target (e.g. a contact's name like "Mom"), not a whole phrase. A <<TAP|..>> automatically scrolls to find the target if it's below the fold, so if the user asks you to scroll to, find, or open something like a chat, just output the tap — never say you cannot scroll. Only claim you opened or tapped something if you actually output the matching command. ALWAYS also include a short, natural spoken sentence for the user (vary it, e.g. "Sure, opening WhatsApp and pulling up Mom") — the markers are stripped out and never spoken, so your spoken words are all the user hears.
 
         Seeing the screen: when the context above lists what is on screen, those are the REAL labels — use one of them exactly, and never invent a label. Emit ONLY the steps still needed from where you are now, not the whole plan again. If the app you need is already the foreground app, do NOT output <<OPEN|..>> again. If you are already inside the right chat or screen, do NOT tap that name again — inside a chat, the name at the top opens that person's profile instead of doing anything useful. <<TYPE|..>> only works when a text field is focused, so tap the search box or message box first unless a field is already focused (field:"..." in the screen list means a text field, and its contents are shown). <<ENTER>> submits a search but does NOT send a chat message — to send a message, tap the send control, usually [Send]. If you genuinely cannot see the screen, say so briefly instead of guessing.
+
+        Use <<PICK|..>> whenever the target does not exist yet when you write the plan — above all after a search. "The first video result", "the top song", "her chat" are intents, not labels: there is nothing to match them against until the results are on screen, and guessing a title makes the tap land on the search box or nothing at all. <<PICK|..>> looks at the screen at that moment and chooses. Example — play a song: <<OPEN|YouTube>> <<TAP|Search>> <<TYPE|Thriller>> <<ENTER>> <<PICK|the first Thriller video by Michael Jackson>>. Use <<TAP|..>> only for a control you can already see listed on screen; use <<PICK|..>> for anything you would otherwise be guessing.
 
         Typing and sending are DIFFERENT instructions — never merge them. If the user says type, write, or draft, put the text in the field and STOP: no <<ENTER>>, no tap on Send. Only send when the user actually asks you to — send it, post it, go ahead. Sending a message cannot be undone, so when in doubt, type it and tell the user it is ready to send. Example — the user says "only type hello in the chat": <<TAP|Message>> <<TYPE|hello>> and nothing more. The user says "send mom a message saying hello": <<TAP|Mom>> <<TYPE|hello>> <<TAP|Send>>. The <<ENTER>> in the YouTube example above is for submitting a SEARCH; do not copy it onto a chat message.
 
@@ -56,20 +59,53 @@ object GroqClient {
 
     fun hasKey(): Boolean = BuildConfig.GROQ_API_KEY.isNotBlank()
 
-    suspend fun generate(messages: List<ChatTurn>, context: String): String =
+    suspend fun generate(
+        messages: List<ChatTurn>,
+        context: String,
+        systemOverride: String? = null,
+    ): String =
         withContext(Dispatchers.IO) {
             val key = BuildConfig.GROQ_API_KEY
             if (key.isBlank()) throw GroqException("No Groq API key set")
 
             var lastReason = "No response"
             for (model in MODELS) {
-                val outcome = requestModel(model, messages, context, key)
+                val outcome = requestModel(model, messages, context, key, systemOverride)
                 if (outcome.text != null) return@withContext outcome.text
                 lastReason = outcome.reason ?: "Unknown error"
                 if (!outcome.retryable) throw GroqException(lastReason)
             }
             throw GroqException(lastReason)
         }
+
+
+    /**
+     * Given what is actually on screen, asks which option matches [description]
+     * and returns its 1-based index, or null when nothing fits.
+     *
+     * Deliberately a separate, tiny call: it carries none of the assistant
+     * prompt, so it is cheap and fast, and the model has exactly one job.
+     */
+    suspend fun chooseIndex(description: String, options: List<String>): Int? {
+        if (options.isEmpty()) return null
+        val listing = options.mapIndexed { i, option -> "${i + 1}. $option" }.joinToString("\n")
+        val question = "On screen right now:\n$listing\n\nWhich one is \"$description\"?"
+        val raw = generate(
+            messages = listOf(ChatTurn(ChatTurn.USER, question)),
+            context = "",
+            systemOverride = CHOOSER_PROMPT,
+        )
+        val number = Regex("""\d+""").find(raw)?.value?.toIntOrNull() ?: return null
+        return number.takeIf { it in 1..options.size }
+    }
+
+    private val CHOOSER_PROMPT = """
+        You match a description to one item in a list of things visible on a phone screen.
+        Reply with ONLY the number of the best match. Reply with 0 if nothing genuinely matches.
+        Never explain, never add words, never invent an option that is not listed.
+        Prefer the item the user would actually want: for "the first video result", choose the
+        first actual content item, never the search box, a tab, a filter chip or a navigation button.
+    """.trimIndent()
 
     private data class Outcome(val text: String?, val reason: String?, val retryable: Boolean)
 
@@ -78,6 +114,7 @@ object GroqClient {
         messages: List<ChatTurn>,
         context: String,
         key: String,
+        systemOverride: String? = null,
     ): Outcome {
         val conn = try {
             URL(ENDPOINT).openConnection() as HttpURLConnection
@@ -93,7 +130,7 @@ object GroqClient {
 
         return try {
             conn.outputStream.use {
-                it.write(buildPayload(model, messages, context).toByteArray(Charsets.UTF_8))
+                it.write(buildPayload(model, messages, context, systemOverride).toByteArray(Charsets.UTF_8))
             }
             val code = conn.responseCode
             val ok = code in 200..299
@@ -118,8 +155,14 @@ object GroqClient {
         }
     }
 
-    private fun buildPayload(model: String, messages: List<ChatTurn>, context: String): String {
-        val system = if (context.isBlank()) SYSTEM_PROMPT else "$SYSTEM_PROMPT\n\n$context"
+    private fun buildPayload(
+        model: String,
+        messages: List<ChatTurn>,
+        context: String,
+        systemOverride: String? = null,
+    ): String {
+        val base = systemOverride ?: SYSTEM_PROMPT
+        val system = if (context.isBlank()) base else "$base\n\n$context"
         val msgArray = JSONArray()
         msgArray.put(JSONObject().put("role", "system").put("content", system))
         messages.forEach {

@@ -122,6 +122,34 @@ class ScreenActionsTest {
     }
 
     @Test
+    fun `parses a pick, which is chosen by looking rather than by label`() {
+        val plan = ScreenActions.parse(
+            "<<OPEN|YouTube>> <<TAP|Search>> <<TYPE|Thriller>> <<ENTER>> <<PICK|the first video result>>",
+        )
+
+        assertEquals(
+            listOf(
+                ScreenStep.Open("YouTube"),
+                ScreenStep.Tap("Search"),
+                ScreenStep.Type("Thriller"),
+                ScreenStep.Enter,
+                ScreenStep.Pick("the first video result"),
+            ),
+            plan.steps,
+        )
+    }
+
+    @Test
+    fun `a pick needs the accessibility service`() {
+        assertTrue(ScreenActions.parse("<<PICK|the first result>>").needsAccessibility)
+    }
+
+    @Test
+    fun `a pick with no description is ignored`() {
+        assertFalse(ScreenActions.parse("<<PICK|>>").hasAction)
+    }
+
+    @Test
     fun `an unknown marker is not treated as a step`() {
         val plan = ScreenActions.parse("<<SWIPE|up>> <<OPEN|YouTube>>")
 

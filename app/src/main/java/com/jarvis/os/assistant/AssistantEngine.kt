@@ -84,6 +84,20 @@ class AssistantEngine(context: Context) {
         voice.onFatal = { msg -> set { it.copy(orb = OrbState.Error, status = msg, amplitude = 0f) } }
         voice.onFinal = { text -> ask(text) }
         speaker.onDone = { onSpokenDone() }
+        // The executor asks the model which on-screen option a <<PICK>> means. It
+        // lives here because the engine owns the AI clients; the service only
+        // knows what is on screen.
+        ScreenControlService.onPick = { description, options, reply ->
+            scope.launch {
+                val choice = try {
+                    Brain.choose(description, options)
+                } catch (e: Exception) {
+                    DebugLog.log(DebugLog.Stage.ERROR, "pick failed: ${e.message ?: e.javaClass.simpleName}")
+                    null
+                }
+                reply(choice)
+            }
+        }
         // The notification's Stop action ends the session from outside the app.
         WorkSessionService.onStopRequested = {
             main.post {
@@ -158,6 +172,7 @@ class AssistantEngine(context: Context) {
     fun destroy() {
         main.removeCallbacksAndMessages(null)
         session.end()
+        ScreenControlService.onPick = null
         WorkSessionService.onStopRequested = null
         WorkSessionService.stop(appContext)
         voice.destroy()

@@ -6,6 +6,14 @@ sealed interface ScreenStep {
     data class Tap(val label: String) : ScreenStep     // tap a control by its visible label
     data class Type(val text: String) : ScreenStep     // type into the focused field
     data object Enter : ScreenStep                      // submit / press the search or enter key
+
+    /**
+     * Look at the screen and choose what matches [description], rather than
+     * guessing a label up front. "The first video result" is an intent, not a
+     * label — no amount of string matching finds it, because the results do not
+     * exist yet when the plan is written.
+     */
+    data class Pick(val description: String) : ScreenStep
 }
 
 /**
@@ -20,7 +28,7 @@ object ScreenActions {
     // "<<TAP|Thriller by Michael Jackson>" occasionally, and a rigid parser both
     // skips the action AND leaks the raw marker into the spoken reply.
     private val MARKER =
-        Regex("""<<(OPEN|TAP|TYPE|ENTER)(?:\|([^>\n]*))?>{1,2}""", RegexOption.IGNORE_CASE)
+        Regex("""<<(OPEN|TAP|TYPE|ENTER|PICK)(?:\|([^>\n]*))?>{1,2}""", RegexOption.IGNORE_CASE)
 
     // Safety net: anything else that still looks like a marker is stripped from
     // the spoken text even when it could not be understood as a command. Protocol
@@ -44,6 +52,7 @@ object ScreenActions {
                 "TAP" -> if (arg.isNotEmpty()) steps.add(ScreenStep.Tap(arg))
                 "TYPE" -> if (arg.isNotEmpty()) steps.add(ScreenStep.Type(arg))
                 "ENTER" -> steps.add(ScreenStep.Enter)
+                "PICK" -> if (arg.isNotEmpty()) steps.add(ScreenStep.Pick(arg))
             }
         }
         val clean = reply
