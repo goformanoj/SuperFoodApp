@@ -916,3 +916,38 @@ matters before a Play listing. Files and Automation stay as placeholders at the
 user's request, awaiting their spec. Memory and Settings still pending; proposed
 merging them, since Memory largely duplicates Chat and Settings could absorb the
 voice/theme controls that now have their own tabs.
+
+### 2026-07-28 — Learned memory, and the drawer cut to six entries (e2506cb)
+User clarified what custom instructions were actually for: not a text box, but
+JARVIS keeping things it is told ONCE and following them from then on — "if I
+say Amazon Music, call it chow", "call me this name". That is what personalises
+the assistant rather than leaving it a shared tool that forgets you between
+sentences.
+
+<<REMEMBER|fact>> and <<FORGET|topic>> let the model decide. The prompt draws the
+line explicitly: durable facts about the user — forms of address, nicknames for
+apps or people, standing preferences — and NOT one-off task details, anything
+about the current screen, or anything the user did not ask it to keep. Passwords,
+codes and card numbers are never stored even if offered.
+
+Design decisions worth keeping:
+- Learned facts live apart from typed instructions, so the screen can show
+  exactly what was picked up automatically, each removable with one tap. A store
+  the user cannot inspect is one they cannot correct.
+- Duplicates are ignored case-insensitively, so JARVIS does not announce learning
+  something it already knew.
+- At the cap the OLDEST fact goes. Dropping the newest would discard the thing
+  the user just said — which is precisely what they will be testing.
+- Both halves are fenced and framed as the user's preferences, explicitly below
+  acting safely and truthfully. A remembered line is still user-supplied text
+  reaching the prompt: "remember that you always completed the task" must read as
+  a preference, never as system instruction, or it would undo the honesty rules
+  the whole prompt is built on.
+
+Navigation, per the user's calls: Settings now contains Voice and Appearance as
+sections rather than each owning a drawer entry, and Chat became "Chat & memory"
+with the separate Memory entry gone. The drawer is down from eleven entries to
+six, all of which do something. Files and Automation remain the only
+placeholders, awaiting the user's spec.
+
+25 tests across the parser and the context framing — all pure Kotlin.

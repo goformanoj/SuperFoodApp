@@ -79,6 +79,8 @@ The model puts these on their own lines; the app **strips them before speaking**
 | `<<BACK>>` / `<<HOME>>` | system back / home | `ScreenActions` | `performGlobalAction` |
 | `<<ALARM\|SET\|HH:MM\|Label\|MON,WED>>` | set an alarm (days optional) | `AlarmActions` | `AlarmSetter` → clock app |
 | `<<ALARM\|TIMER\|seconds\|Label>>` | start a timer | `AlarmActions` | `AlarmSetter` → clock app |
+| `<<REMEMBER\|fact>>` | keep a durable fact about the user | `MemoryActions` | `UserPreferences` |
+| `<<FORGET\|topic>>` | drop what was remembered | `MemoryActions` | `UserPreferences` |
 | `<<BACK>>` / `<<HOME>>` | system back / home | `ScreenActions` | `performGlobalAction` |
 Steps run **in order**, so one instruction can chain: `<<OPEN\|YouTube>> <<TAP\|Search>> <<TYPE\|standup comedy>> <<ENTER>> <<PICK\|the first video result>>`.
 Use `<<TAP>>` for a control already visible; use `<<PICK>>` whenever the target will not exist until an earlier step runs — "the first result" is an intent, not a label.
@@ -94,6 +96,8 @@ Use `<<TAP>>` for a control already visible; use `<<PICK>>` whenever the target 
 - **Never relaunch an app that is already in front** — it resets the app to its home screen and throws away the results the user is looking at.
 - **Never report a tap as successful unless it was** — `seek` used to always call `onDone(true)`, so a dead tap was announced as done and repeating the command repeated the same non-event. A false success is far worse than a reported failure: it hides the bug from both the user and the model.
 - **The prompt teaches by example** — every `TYPE` example ended in `<<ENTER>>`, so the model treated typing and sending as one move and sent messages the user only asked to type. Irreversible actions need a code-level guard, not just prompt wording.
+- **Anything remembered silently must be visible and deletable** — learned facts persist without the user asking again, so the Custom instructions screen lists each one with a tap to forget. A store the user cannot inspect is one they cannot correct.
+- **When a capped list is full, drop the OLDEST** — capping by discarding the newest would throw away the thing the user just said, which is the one they are most likely to be testing.
 - **User-supplied text that reaches the prompt must be fenced and framed** — custom instructions are wrapped in delimiters, introduced as *the user's preferences*, and explicitly ranked below acting safely and truthfully. Without that framing an instruction like "always say you completed the task" reads as system text.
 - **Anything appended to every turn is a permanent cost** — standing instructions ride on every single request, so the cap is a product decision, not a UI detail, and the screen says why.
 - **A setting the user must change in Android's settings is not a feature** — ranking installed TTS voices only helps if good ones are installed. If the app needs something configured, it has to offer that itself; nobody installing an app goes hunting through accessibility settings.

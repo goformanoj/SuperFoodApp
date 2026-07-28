@@ -2,7 +2,7 @@
 
 > Living status. Update this whenever something ships.
 > Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `d27191e` · last green build **#117** · updated 2026-07-28
-> Nothing awaiting CI — everything is merged. **The user is many builds behind on-device; a fresh install is the highest-value next step.**
+> Awaiting CI: `e2506cb` (learned memory + navigation restructure). **The user is many builds behind on-device; a fresh install is the highest-value next step.**
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
@@ -46,6 +46,8 @@ Shipped so far:
 - **Open-app regression + Back/Home** (`d801260`) — screen awareness had made the model conclude it could *only* act on what was visible, so it began refusing to open apps ("I can only interact with the current app"). Opening never needed the screen. Also added `<<BACK>>`/`<<HOME>>` via `performGlobalAction`, replacing the previous hunt for a control labelled "Back".
 - **Typing opens its own field** (`48d7847`) — `Type` failed if and only if the app was *not* relaunched. Not relaunching was right (relaunching threw away the user's screen) but it removed a side effect the plan leaned on: relaunching reset YouTube to its home screen, where "Search" is a real button. `Type` no longer assumes an earlier step opened a field — it taps candidates in turn until one appears, inside the existing poll budget so it still fails honestly.
 - **Yields the mic to playback** (`2c062ac`) — holding the mic takes audio focus, so listening paused the very song JARVIS had just been asked to play. It now steps back while audio plays (notification offers **Talk** for one turn) and resumes on its own when the audio stops. On JARVIS's own screen it keeps listening, since the user is deliberately talking to it.
+- **Learned memory** (`e2506cb`) — `<<REMEMBER|fact>>` / `<<FORGET|topic>>` let JARVIS keep durable facts it is told once ("when I say Amazon Music I mean chow", what to call the user) and follow them thereafter. Learned facts are stored apart from typed instructions so the screen can show and delete exactly what was picked up automatically. Duplicates ignored case-insensitively; at the cap the *oldest* goes, since dropping the newest would discard what the user just said. Never stores passwords, codes or card numbers.
+- **Navigation restructure** (`e2506cb`) — Settings contains Voice + Appearance as sections; Chat absorbs Memory. Drawer down from eleven entries to six, all of which do something.
 - **Custom instructions** (`bbe22d6`) — standing preferences appended to the model's context every turn ("call me sir", "assume IST"), fenced and framed as the user's preferences and explicitly subordinate to acting safely and truthfully. Capped at 1000 chars because they ride on *every* request.
 - **Themes** (`bbe22d6`) — four palettes with the choice, persistence and `LocalAccent` plumbing real; only the accent moves until designs are decided, and the screen says so.
 - **Calendar screen** (`bbe22d6`) — seven days grouped by day from the device calendar.
@@ -55,10 +57,9 @@ Shipped so far:
 - **A proper voice** (`aa74c4d`) — ranks every installed TTS voice instead of taking the bland default (English only, en-GB > en-US, male, higher quality, local over network) and lowers pitch to 0.92 / rate to 0.98.
 
 Still open in the UI (Part D):
-- **Files** and **Automation** — kept as placeholders at the user's request; **awaiting their spec** before anything is built.
-- **Memory** and **Settings** — still placeholders. Memory largely duplicates Chat; Settings could absorb the voice/theme controls that now have their own tabs. Proposed to the user, not yet decided.
-- **Themes needs designs** — the switch works, the looks do not exist yet.
-- Removed: **Vision** and **Skills** had nothing behind them; entries that lead nowhere read worse than a shorter menu.
+- **Files** and **Automation** — the only remaining placeholders; **awaiting the user's spec**.
+- **Themes needs designs** — the switch and persistence work, the looks are still just accent colours.
+- Resolved: Settings now contains Voice + Appearance, Chat absorbed Memory, and Vision/Skills were removed for having nothing behind them.
 
 Still open in Part C:
 - **The Thriller-album tap** — reported false success for four attempts; now reports honestly, but the underlying cause is not yet identified.
