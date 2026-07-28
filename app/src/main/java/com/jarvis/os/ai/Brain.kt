@@ -24,6 +24,24 @@ object Brain {
             GeminiClient.generate(messages, context)
         }
 
+
+    /**
+     * A minimal round-trip for Diagnostics. Deliberately NOT [generate]: that
+     * carries the full assistant prompt (~2,000 tokens), so a health check that
+     * only needs to hear "OK" was costing as much as a real conversation turn and
+     * pushing the account toward its tokens-per-minute limit.
+     */
+    suspend fun ping(): String =
+        if (GroqClient.hasKey()) {
+            GroqClient.generate(
+                messages = listOf(ChatTurn(ChatTurn.USER, "Reply with just: OK")),
+                context = "",
+                systemOverride = "Reply with exactly: OK",
+            )
+        } else {
+            GeminiClient.generate(listOf(ChatTurn(ChatTurn.USER, "Reply with just: OK")), "")
+        }
+
     /**
      * Which of the things currently on screen matches [description]? Returns a
      * 1-based index, or null if nothing does.

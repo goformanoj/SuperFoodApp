@@ -570,7 +570,11 @@ class AssistantEngine(context: Context) {
 
     private companion object {
         const val RESTART_MS = 400L // gap before restarting the recogniser after no input
-        const val MAX_CONTEXT_TURNS = 20 // turns sent to the AI as context
+        // Every turn here is resent on EVERY request. Groq's free tier caps
+        // tokens per MINUTE (~12k), and at ~3.2k tokens per request that allowed
+        // only three or four commands a minute before a 429. Ten turns is still
+        // several minutes of conversation.
+        const val MAX_CONTEXT_TURNS = 10 // turns sent to the AI as context
         const val MAX_STORED_TURNS = 200 // turns kept on disk
         const val MEDIA_POLL_MS = 2000L // how often to check whether audio is playing
     }

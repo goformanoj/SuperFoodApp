@@ -42,7 +42,7 @@ object Diagnostics {
         if (!Brain.hasKey()) return@withContext Check("AI round-trip", false, "No API key compiled in")
         val started = System.currentTimeMillis()
         try {
-            val reply = Brain.generate(listOf(ChatTurn(ChatTurn.USER, "Reply with just: OK")), "")
+            val reply = Brain.ping()
             val ms = System.currentTimeMillis() - started
             Check("AI round-trip", true, "${Brain.providerName()} replied in ${ms}ms: ${reply.take(40)}")
         } catch (e: Exception) {
