@@ -1,8 +1,8 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `6066abd` · last green build **#108** · updated 2026-07-28
-> Awaiting CI: `70bd645` (alarms), `0501320` (voice picker + real calendar), `bbe22d6` (custom instructions, themes, calendar screen).
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `d27191e` · last green build **#117** · updated 2026-07-28
+> Nothing awaiting CI — everything is merged. **The user is many builds behind on-device; a fresh install is the highest-value next step.**
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started

@@ -5,9 +5,10 @@
 
 ## Current position + immediate next
 - **Shipped:** Part A, the testing rig, **Part B** (work session), and **Part C** — screen awareness, state memory, send guard, executor fixes, and now `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, and a better TTS voice.
-- **`main` @ `6066abd`** (green build **#108**) — PICK, Back/Home, the open-app regression fix, the voice, type recovery and the media yield are all merged. Only `70bd645` (alarms + timers) awaits CI.
+- **`main` @ `d27191e`** (green build **#117**) — everything is merged: PICK, Back/Home, the open-app fix, type recovery, the media yield, alarms, the in-app voice picker, the real calendar, custom instructions and themes.
 - **Device-confirmed:** `<<PICK>>` works — it chose "Beat It Michael Jackson" from 15 real on-screen options, and supersede fired correctly on a mid-sequence interruption.
-- **Next:** Part C tail — tap verification/retry and the unexplained album tap — then Part D, then Part E.
+- **Next:** the user owes three answers before more UI work — what **Files** and **Automation** should do, what the **theme designs** look like, and whether **Memory/Settings** merge. Meanwhile: Part C tail (tap verification/retry, the album tap), then Part E.
+- **Highest-value action:** the user is many builds behind on-device. One fresh install now carries a dozen fixes they reported and have not been able to retest.
 - **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
 
 ## How the debugging loop actually works now
