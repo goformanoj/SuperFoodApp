@@ -22,10 +22,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Home
@@ -33,7 +34,6 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -65,6 +65,9 @@ import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.ui.chat.ChatScreen
 import com.jarvis.os.ui.components.HudOrb
 import com.jarvis.os.ui.debug.DiagnosticsScreen
+import com.jarvis.os.ui.calendar.CalendarScreen
+import com.jarvis.os.ui.settings.InstructionsScreen
+import com.jarvis.os.ui.settings.ThemesScreen
 import com.jarvis.os.ui.speech.SpeechScreen
 import com.jarvis.os.ui.speech.VOICE_SAMPLE
 import com.jarvis.os.voice.Speaker
@@ -73,6 +76,7 @@ import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.ElectricBlue
 import com.jarvis.os.ui.theme.ErrorRed
 import com.jarvis.os.ui.theme.GlassBorder
+import com.jarvis.os.ui.theme.JarvisPalette
 import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.SuccessGreen
 import com.jarvis.os.ui.theme.Surface
@@ -90,12 +94,12 @@ private enum class Dest(val label: String, val icon: ImageVector, val blurb: Str
     Home("Home", Icons.Filled.Home, ""),
     Speech("Speech", Icons.Filled.Mic, "Voice and speech options."),
     Chat("Chat", Icons.Filled.Forum, "A terminal-style history of your conversation."),
+    Instructions("Custom instructions", Icons.Filled.EditNote, "Standing preferences JARVIS follows every time."),
+    Calendar("Calendar", Icons.Filled.CalendarMonth, "Your schedule and events."),
+    Themes("Themes", Icons.Filled.AutoAwesome, "How JARVIS looks."),
     Memory("Memory", Icons.Filled.Memory, "Reminders, projects, and what JARVIS remembers."),
     Files("Files", Icons.Filled.Folder, "Browse and act on your files."),
-    Calendar("Calendar", Icons.Filled.CalendarMonth, "Your schedule and events."),
-    Vision("Vision", Icons.Filled.Visibility, "Let JARVIS see and understand your screen."),
     Automation("Automation", Icons.Filled.Bolt, "Automate taps, typing, and actions."),
-    Skills("Skills", Icons.Filled.Extension, "Plugins and extra abilities."),
     Settings("Settings", Icons.Filled.Settings, "Preferences and configuration."),
     Diagnostics("Diagnostics", Icons.Filled.BugReport, "Self-checks, a typed command box, and the shareable trace."),
 }
@@ -118,6 +122,10 @@ fun JarvisApp(
     onChooseVoice: (String) -> Unit = {},
     onPreviewVoice: (String) -> Unit = {},
     onVoiceDownloadOffered: () -> Unit = {},
+    customInstructions: () -> String = { "" },
+    onSaveInstructions: (String) -> Unit = {},
+    palette: JarvisPalette = JarvisPalette.Default,
+    onSelectPalette: (JarvisPalette) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -153,6 +161,12 @@ fun JarvisApp(
                     onPreview = { onPreviewVoice(VOICE_SAMPLE) },
                     onDownloadOffered = onVoiceDownloadOffered,
                 )
+                Dest.Instructions -> InstructionsScreen(
+                    initial = customInstructions(),
+                    onSave = onSaveInstructions,
+                )
+                Dest.Calendar -> CalendarScreen()
+                Dest.Themes -> ThemesScreen(current = palette, onSelect = onSelectPalette)
                 else -> PlaceholderScreen(current)
             }
 

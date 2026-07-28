@@ -11,11 +11,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.CompositionLocalProvider
+import com.jarvis.os.ui.theme.LocalAccent
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.jarvis.os.assistant.AssistantEngine
 import com.jarvis.os.ui.home.JarvisApp
 import com.jarvis.os.ui.theme.Background
+import com.jarvis.os.ui.theme.JarvisPalette
 import com.jarvis.os.ui.theme.JarvisTheme
 
 class MainActivity : ComponentActivity() {
@@ -37,6 +43,9 @@ class MainActivity : ComponentActivity() {
         engine = AssistantEngine(applicationContext)
         setContent {
             JarvisTheme {
+                // Held here so a theme change repaints the whole app immediately.
+                var palette by remember { mutableStateOf(JarvisPalette.fromId(engine.themeId())) }
+                CompositionLocalProvider(LocalAccent provides palette.accent) {
                 Surface(modifier = Modifier.fillMaxSize(), color = Background) {
                     val state by engine.state
                     JarvisApp(
@@ -49,7 +58,15 @@ class MainActivity : ComponentActivity() {
                         onChooseVoice = { engine.chooseVoice(it) },
                         onPreviewVoice = { engine.previewVoice(it) },
                         onVoiceDownloadOffered = { engine.markVoiceDownloadOffered() },
+                        customInstructions = { engine.customInstructions() },
+                        onSaveInstructions = { engine.saveCustomInstructions(it) },
+                        palette = palette,
+                        onSelectPalette = {
+                            palette = it
+                            engine.saveThemeId(it.id)
+                        },
                     )
+                }
                 }
             }
         }

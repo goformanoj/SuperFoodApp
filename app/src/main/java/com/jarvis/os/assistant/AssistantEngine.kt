@@ -22,6 +22,8 @@ import com.jarvis.os.control.ScreenStep
 import com.jarvis.os.control.WorkSessionService
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.ConversationStore
+import com.jarvis.os.data.UserPreferences
+import com.jarvis.os.data.formatCustomInstructions
 import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
@@ -56,6 +58,7 @@ class AssistantEngine(context: Context) {
 
     private val appContext = context.applicationContext
     private val store = ConversationStore(appContext)
+    private val userPrefs = UserPreferences(appContext)
     private val conversation: MutableList<ChatTurn> = store.load()
 
     private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
@@ -240,6 +243,21 @@ class AssistantEngine(context: Context) {
         conversation.clear()
         store.clear()
         set { it.copy(messages = emptyList(), transcript = "", reply = "") }
+    }
+
+    // --- user preferences, surfaced to the settings screens -------------------
+
+    fun customInstructions(): String = userPrefs.customInstructions
+
+    fun saveCustomInstructions(text: String) {
+        userPrefs.customInstructions = text
+        DebugLog.log(DebugLog.Stage.THINK, "custom instructions updated (${text.trim().length} chars)")
+    }
+
+    fun themeId(): String = userPrefs.themeId
+
+    fun saveThemeId(id: String) {
+        userPrefs.themeId = id
     }
 
     // --- voice settings, surfaced to the Speech screen -----------------------
@@ -454,9 +472,17 @@ class AssistantEngine(context: Context) {
                 "send it. $alwaysTrue"
         }
 
-        "Current date/time: $now. $schedule When asked about the schedule, use ONLY this " +
-            "real calendar data and do not invent events. When rescheduling or deleting, " +
-            "identify the exact event from this list.\n\n$screenContext"
+        // The user's standing instructions ride on every turn, which is why the
+        // length is capped where they are entered.
+        val standing = formatCustomInstructions(userPrefs.customInstructions)
+
+        listOf(
+            "Current date/time: $now. $schedule When asked about the schedule, use ONLY this " +
+                "real calendar data and do not invent events. When rescheduling or deleting, " +
+                "identify the exact event from this list.",
+            screenContext,
+            standing,
+        ).filter { it.isNotBlank() }.joinToString("\n\n")
     }
 
     private enum class ScreenOutcome { NONE, DISPATCHED, NEEDS_PERMISSION }
