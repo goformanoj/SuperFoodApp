@@ -4,12 +4,17 @@
 > Companion: [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md) · [`PROGRESS.md`](PROGRESS.md) · [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) · [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) · [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)
 
 ## Current position + immediate next
-- **Shipped:** Part A, the testing rig, **Part B** (work session), and **Part C** — screen awareness, state memory, send guard, executor fixes, and now `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, and a better TTS voice.
-- **`main` @ `d27191e`** (green build **#117**) — everything is merged: PICK, Back/Home, the open-app fix, type recovery, the media yield, alarms, the in-app voice picker, the real calendar, custom instructions and themes.
+- **Shipped:** Part A, the testing rig, **Part B** (work session), **Part C** (screen awareness, state memory, send guard, `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, step recovery), the navigation restructure, learned memory, custom instructions, themes, alarms, the voice picker, and **Part F — Files**.
+- **`main` @ `d27191e`** (green build **#117**). **17 commits sit unmerged on the session branch**, from `e2506cb` through `774b5cf` — merging them once CI is green is the first job of the next session.
 - **Device-confirmed:** `<<PICK>>` works — it chose "Beat It Michael Jackson" from 15 real on-screen options, and supersede fired correctly on a mid-sequence interruption.
-- **Next:** the user owes three answers before more UI work — what **Files** and **Automation** should do, what the **theme designs** look like, and whether **Memory/Settings** merge. Meanwhile: Part C tail (tap verification/retry, the album tap), then Part E.
-- **Highest-value action:** the user is many builds behind on-device. One fresh install now carries a dozen fixes they reported and have not been able to retest.
-- **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
+- **Next:** flow charts for Files (specced, no new provider needed), then **Part G — Automation** (specced, security shape fixed, not started). Still owed by the user: the **theme designs**, and a decision on a paid provider for image generation.
+- **Highest-value action:** the user is many builds behind on-device. One fresh install now carries around twenty fixes they reported and have not been able to retest.
+- **Owed to the user (repeatedly deferred):** the system-prompt diet — ~2,175 tokens, and it rides on every single request. This is the direct cause of the 429 flood.
+- **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly, and step recovery should now replan around it; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
+
+## Two rules that keep being re-learned
+- **A tidier version of the wrong output is still the wrong output.** "Here are the steps: ." was fixed once by repairing the punctuation, and the user saw it again. When something should not be spoken, delete it — don't clean it up.
+- **Ask "is this thing unusable?", not "is this status code in my list?"** The same fallback bug was fixed three times (404, then 429, then 400) before being fixed by condition rather than by code.
 
 ## How the debugging loop actually works now
 The user shares a trace from **Diagnostics → Share**; it shows heard → raw reply → markers parsed → per-step screen outcomes → spoken. Every fix in Part C came from one. **Read the trace before theorising** — it has repeatedly contradicted the obvious guess (e.g. the model's plan was fine and the executor was wrong).

@@ -11,7 +11,8 @@ sessions (the build container is ephemeral).
 - **SDK:** compileSdk/targetSdk 36, minSdk 26 · **applicationId** `com.jarvis.os`
 - **Build:** GitHub Actions `.github/workflows/build.yml` → artifact `jarvis-debug-apk`.
   Builds on every push (repo is public → free CI minutes).
-- **Branches:** develop on `claude/jarvis-minimal-build-4jwvo1`, mirrored to `main`
+- **Branches:** develop on the **session branch** (per-session, currently
+  `claude/root-file-context-ko322w`), fast-forwarded to `main` once green
   (workflow_dispatch needs the workflow on the default branch).
 - **Secrets:** never committed. `GEMINI_API_KEY` is a GitHub Actions secret,
   injected at build time into `BuildConfig.GEMINI_API_KEY`. `.gitignore` blocks
@@ -1144,3 +1145,62 @@ Cost note: the system prompt is now ~2,175 tokens, up from 2,001. Files added to
 it. The prompt diet owed to the user is more overdue, not less.
 
 10 tests on the parser.
+
+### 2026-07-29 — Recover from a failed step; the routing experiment failed (53fc4e0)
+User: "it should be able to sense that something is playing — if something goes
+wrong and it's not playing, it should look for the steps to execute the given
+tasks and figure it out." Then, after a long back-and-forth to get one song
+playing: "eventually it played the song, but I had to talk a lot to achieve this."
+
+That second sentence is the real bug report. Every failure ended the sequence and
+handed the problem back to the user, so the user became the retry loop.
+
+Fix: on a failed step the executor calls back into the engine with the reason it
+failed AND a fresh `describeScreen()` of what is actually in front of it now. The
+model returns a replacement plan and the executor runs it. Capped at two
+recoveries per sequence — a plan that is wrong for a structural reason will stay
+wrong, and looping on it is worse than stopping.
+
+The important part is *what* is fed back. Retrying the same step is useless; the
+step failed because the screen was not what the plan assumed. So the recovery
+prompt carries the live screen, not the original goal alone.
+
+**And the routing experiment was undone.** Two days earlier I split traffic:
+commands to llama-3.1-8b, conversation to the 70b, to preserve the big model's
+per-model quota. Three device traces later the verdict was unambiguous — the small
+model returned NO markers on any command, so every one of them escalated to the
+smart model anyway. That does not halve requests, it doubles them. The small model
+cannot hold the marker protocol, and the protocol is what a command IS.
+
+`tierFor` now returns SMART unconditionally, kept as a function with the evidence
+written at the call site so the decision does not get re-litigated by someone
+reading only the enum. The fast tier survives where it genuinely works: the
+`<<PICK>>` chooser and the Diagnostics ping, both of which send ten tokens and
+expect one value back.
+
+Lesson: an optimisation has to be measured on the traffic it will actually see. I
+reasoned about it correctly in the abstract — short commands don't need 70b — and
+was wrong, because the cost of a command is not its length, it is the protocol it
+has to produce.
+
+### 2026-07-29 — Stop JARVIS speaking its own thought process (774b5cf)
+User, with a screenshot: "why is it telling me the steps?? the reply and speaking
+should be proper, why is it telling it's thought process??"
+
+I had already "fixed" this once. That fix tidied punctuation: "Here are the steps:
+." became "Here are the steps." — grammatical, and still read aloud. Repairing the
+sentence was the wrong goal; the sentence should not exist.
+
+A clause ending in a colon is, in a reply that carried markers, always the model
+announcing what it is about to emit ("Here are the steps:", "To do that I'll need
+to:"). The markers are stripped before speaking, so the announcement is left
+describing nothing. It is now removed outright.
+
+Guarded by `steps.isEmpty()`, so stripping only applies when markers were actually
+present. "There are two options: tea or coffee." is a real answer and keeps its
+colon. Three tests pin the three cases: narration removed, narration removed
+without swallowing the sentences on either side, and ordinary prose untouched.
+
+Lesson, and it is the second time this exact shape has bitten me: when the user
+reports something is spoken that should not be, cleaning up how it reads is not a
+fix. Delete it. A tidier version of the wrong output is still the wrong output.

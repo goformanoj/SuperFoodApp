@@ -1,8 +1,8 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `d27191e` · last green build **#117** · updated 2026-07-28
-> Awaiting CI: `e2506cb` (learned memory + navigation restructure). **The user is many builds behind on-device; a fresh install is the highest-value next step.**
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `d27191e` · last green build **#117** · updated 2026-07-29
+> Awaiting CI: everything from `e2506cb` to `774b5cf` — learned memory, the navigation restructure, the rate-limit and retired-model fixes, Files, step recovery, and the narration fix. **The user is many builds behind on-device; a fresh install is by far the highest-value next step.**
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
@@ -66,6 +66,11 @@ Two choices driven by Part E rather than by this feature:
 Still open in Part F:
 - **Flow charts / diagrams** — specced (model describes nodes and edges, app draws to a `Canvas`), not built. No new provider needed.
 - **Image generation** — blocked on choosing a paid provider.
+
+## 🔨 Part C tail — self-correction and a quieter reply (build pending CI)
+- **Recovers from a failed step** (`53fc4e0`) — when a step fails, the executor no longer gives up on the whole sequence. It hands the model the reason it failed *and* a fresh reading of the live screen, and runs the replacement it comes back with (max two recoveries per sequence, so a wrong plan cannot loop). This is what "sense that something is not playing and figure it out" needed: the plan is rewritten from what is actually on screen, not retried blindly.
+- **Model routing reverted** (`53fc4e0`) — routing commands to the small model was tried and measured over three device traces: it returned **no markers on every single command**, so each fell through to the smart model anyway. That doubles requests rather than halving them. `tierFor` now always returns SMART, with the evidence recorded at the call site. The fast tier stays where it demonstrably works — the `<<PICK>>` chooser and the Diagnostics ping, both ten-token prompts answering with one value.
+- **JARVIS no longer narrates its thought process** (`774b5cf`) — it was speaking "Here are the steps: ." aloud. The first attempt only tidied the punctuation, which is why the user saw it again. A clause ending in a colon is, in practice, always the model announcing the markers it is about to emit; since the markers are stripped, that narration describes nothing, so it is now **removed entirely** — and only when the reply actually carried markers, so "There are two options: tea or coffee." keeps its punctuation.
 
 Still open in the UI (Part D):
 - **Files** and **Automation** — the only remaining placeholders; **awaiting the user's spec**.
@@ -155,3 +160,6 @@ Worth knowing: **Groq's limits are per account, not per user.** This is the sing
 | Key out of the APK (proxy + BYOK) | ⏸️ | — | Part E1 |
 | Play compliance + release AAB | ⏸️ | — | Part E2–E3 |
 | Subscription billing | ⏸️ | — | Part E5 |
+| Files tab (PDFs + notes) | 🔬 | pending | app-private, no new permission |
+| Recovers from a failed step | 🔬 | pending | replans from the live screen, max 2 tries |
+| No spoken thought process | 🔬 | pending | narration clauses stripped, not tidied |
