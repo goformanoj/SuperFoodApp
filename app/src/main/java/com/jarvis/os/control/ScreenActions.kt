@@ -41,6 +41,12 @@ object ScreenActions {
     // text must never reach the user, whatever the model produced.
     private val MARKER_RESIDUE = Regex("""<<[^<>\n]*>{0,2}""")
 
+    // "…the steps: ." -> "…the steps."
+    private val DANGLING_PUNCTUATION = Regex("""[:,]\s*(?=[.!?])""")
+    private val SPACE_BEFORE_PUNCTUATION = Regex("""\s+([.!?,])""")
+    private val DOUBLED_PUNCTUATION = Regex("""([.!?])\s*\1+""")
+    private val TRAILING_COLON = Regex("""[:,]\s*$""")
+
     data class Plan(val clean: String, val steps: List<ScreenStep>) {
         val hasAction: Boolean get() = steps.isNotEmpty()
 
@@ -66,7 +72,14 @@ object ScreenActions {
         val clean = reply
             .replace(MARKER, "")
             .replace(MARKER_RESIDUE, "")
+            // Removing the markers leaves the sentence that introduced them
+            // dangling — "Here are the steps: ." was genuinely spoken aloud on a
+            // device. Tidy the punctuation the markers used to sit behind.
+            .replace(DANGLING_PUNCTUATION, "")
+            .replace(SPACE_BEFORE_PUNCTUATION, "$1")
+            .replace(DOUBLED_PUNCTUATION, "$1")
             .replace(Regex(" {2,}"), " ")
+            .replace(TRAILING_COLON, "")
             .trim()
         return Plan(clean, steps)
     }

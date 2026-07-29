@@ -38,18 +38,21 @@ object ModelRouter {
         "who was", "what is the", "what are the", "help me understand", "teach me",
     )
 
-    fun tierFor(utterance: String): Tier {
-        val text = normalise(utterance)
-        if (text.isEmpty()) return Tier.SMART
-
-        // An explicit request to think always wins, however short.
-        if (CONVERSATION_CUES.any { text.contains(it) }) return Tier.SMART
-
-        val words = text.split(" ").filter { it.isNotEmpty() }
-        if (words.size > MAX_COMMAND_WORDS) return Tier.SMART
-
-        return if (words.first() in COMMAND_VERBS) Tier.FAST else Tier.SMART
-    }
+    /**
+     * Always [Tier.SMART] for the assistant loop, on the evidence.
+     *
+     * Routing commands to the small model was tried and measured: in three device
+     * traces it returned NO markers on every single command, so each one fell
+     * through to the smart model anyway. That does not halve the requests, it
+     * doubles them — the small model cannot hold the marker protocol, and the
+     * protocol is what commands are made of.
+     *
+     * The fast tier is still used where it demonstrably works: the `<<PICK>>`
+     * chooser and the Diagnostics ping, both of which carry a ten-token prompt
+     * and answer with one value. Kept as a function rather than deleted so the
+     * decision, and the reason, stay visible at the call site.
+     */
+    fun tierFor(utterance: String): Tier = Tier.SMART
 
     /**
      * True when the turn should have produced an action. Used to escalate: if the

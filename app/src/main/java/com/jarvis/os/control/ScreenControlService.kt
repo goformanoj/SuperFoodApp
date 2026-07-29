@@ -40,6 +40,7 @@ class ScreenControlService : AccessibilityService() {
     // so any callback from an older chain sees a stale token and stops.
     private var runToken = 0
     private var sequenceRunning = false
+    private var recoveriesLeft = 0
 
     // What the user was last looking at. Written from accessibility events and
     // from each successful read, so JARVIS still knows the state of the app the
@@ -101,6 +102,9 @@ class ScreenControlService : AccessibilityService() {
         }
         handler.removeCallbacksAndMessages(null)
         sequenceRunning = true
+        // Bounded: recovery that can re-plan forever would loop on an app that
+        // simply cannot do what was asked.
+        recoveriesLeft = MAX_RECOVERIES
         runStep(steps, 0, null, ++runToken, onDone)
     }
 
@@ -125,9 +129,30 @@ class ScreenControlService : AccessibilityService() {
         // just that the sequence ran.
         val position = "step ${index + 1}/${steps.size}"
         val failed = { reason: String ->
-            sequenceRunning = false
             DebugLog.log(DebugLog.Stage.SCREEN, "$position ${steps[index]} FAILED — $reason")
-            onDone(false)
+            val recover = onRecover
+            // A failed step used to end the task. Now the screen is handed back
+            // for a fresh plan: the label was guessed before this screen existed,
+            // so the answer is usually visible right now (Amazon Music's search
+            // is simply not labelled "Search").
+            if (recover != null && recoveriesLeft > 0) {
+                recoveriesLeft--
+                DebugLog.log(DebugLog.Stage.SCREEN, "recovering — asking what to do from this screen")
+                recover(steps[index], reason, describeScreen()) { replacement ->
+                    if (token != runToken) return@recover
+                    if (replacement.isEmpty()) {
+                        sequenceRunning = false
+                        DebugLog.log(DebugLog.Stage.SCREEN, "recovery found nothing to try")
+                        onDone(false)
+                    } else {
+                        DebugLog.log(DebugLog.Stage.SCREEN, "recovery plan: ${replacement.joinToString(", ")}")
+                        runStep(replacement, 0, expectedPackage, token, onDone)
+                    }
+                }
+            } else {
+                sequenceRunning = false
+                onDone(false)
+            }
         }
         DebugLog.log(DebugLog.Stage.SCREEN, "$position ${steps[index]}")
         when (val step = steps[index]) {
@@ -754,6 +779,16 @@ class ScreenControlService : AccessibilityService() {
          * the engine, which owns the AI clients.
          */
         var onPick: ((String, List<String>, (Int?) -> Unit) -> Unit)? = null
+
+        /**
+         * Called when a step fails: (failed step, why, what is on screen now) and
+         * a callback taking the replacement steps. The engine answers it by asking
+         * the model to look at the screen and work out another way.
+         */
+        var onRecover: ((ScreenStep, String, String, (List<ScreenStep>) -> Unit) -> Unit)? = null
+
+        /** How many times one command may re-plan before giving up. */
+        private const val MAX_RECOVERIES = 2
         private const val OUTLINE_MS = 1100L
     }
 }

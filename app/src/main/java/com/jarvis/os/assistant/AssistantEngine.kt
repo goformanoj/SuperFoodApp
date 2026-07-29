@@ -91,6 +91,10 @@ class AssistantEngine(context: Context) {
     // the spoken reply isn't cut off when the screen switches away.
     private var pendingScreen: ScreenActions.Plan? = null
 
+    // What the user actually asked for, so a failed step can be re-planned
+    // against the goal rather than against the step that failed.
+    private var currentGoal: String = ""
+
     init {
         voice.onReady = { if (!busy) set { it.copy(orb = OrbState.Listening, status = "Listening…") } }
         voice.onPartial = { text ->
@@ -113,6 +117,35 @@ class AssistantEngine(context: Context) {
                     null
                 }
                 reply(choice)
+            }
+        }
+        // A step failed. Rather than giving up, look at the screen and work out
+        // another way — the original label was guessed before this screen
+        // existed, so what is needed is usually visible right now.
+        ScreenControlService.onRecover = { failedStep, reason, screen, reply ->
+            scope.launch {
+                val steps = try {
+                    val answer = Brain.generate(
+                        messages = listOf(
+                            ChatTurn(
+                                ChatTurn.USER,
+                                "I asked you to: \"$currentGoal\".\n" +
+                                    "The step $failedStep failed because $reason.\n\n" +
+                                    "$screen\n\n" +
+                                    "Give ONLY the markers for what to do from here to finish the " +
+                                    "task, using labels that appear on the screen above. If the task " +
+                                    "cannot be done from this screen, reply with nothing.",
+                            ),
+                        ),
+                        context = "",
+                        tier = Tier.SMART,
+                    )
+                    ScreenActions.parse(answer).steps
+                } catch (e: Exception) {
+                    DebugLog.log(DebugLog.Stage.ERROR, "recovery failed: ${e.message ?: e.javaClass.simpleName}")
+                    emptyList()
+                }
+                reply(steps)
             }
         }
         // Tapping Talk while audio plays claims the mic for one turn.
@@ -238,6 +271,7 @@ class AssistantEngine(context: Context) {
         main.removeCallbacksAndMessages(null)
         session.end()
         ScreenControlService.onPick = null
+        ScreenControlService.onRecover = null
         main.removeCallbacks(mediaCheck)
         WorkSessionService.onStopRequested = null
         WorkSessionService.onTalkRequested = null
@@ -347,6 +381,7 @@ class AssistantEngine(context: Context) {
         main.removeCallbacksAndMessages(null)
 
         DebugLog.log(DebugLog.Stage.HEARD, "($source) $userText")
+        currentGoal = userText
 
         // "Thank you Jarvis" ends the work session. Handled here, before the model
         // is called, so it always works even if the network is down.
@@ -381,23 +416,9 @@ class AssistantEngine(context: Context) {
                 // the 70b allowance for the turns that actually need it.
                 val tier = ModelRouter.tierFor(userText)
                 val prompt = buildContext()
-                var raw = Brain.generate(history, prompt, tier)
+                val raw = Brain.generate(history, prompt, tier)
                 DebugLog.log(DebugLog.Stage.REPLY, "${Brain.providerName()}/${tier.name}: $raw")
 
-                // The marker protocol is fiddly and a smaller model can fumble it.
-                // If a command produced no command at all, that is worth one retry
-                // on the smart model rather than a shrug.
-                if (tier == Tier.FAST &&
-                    ModelRouter.expectsAction(userText) &&
-                    !ScreenActions.parse(raw).hasAction &&
-                    MemoryActions.parse(raw).second.isEmpty() &&
-                    AlarmActions.parse(raw).second.isEmpty() &&
-                    CalendarActions.parse(raw).second.isEmpty()
-                ) {
-                    DebugLog.log(DebugLog.Stage.THINK, "fast model returned no action — retrying on the smart model")
-                    raw = Brain.generate(history, prompt, Tier.SMART)
-                    DebugLog.log(DebugLog.Stage.REPLY, "${Brain.providerName()}/SMART: $raw")
-                }
                 // Strip any leftover end-marker the model may add; we simply keep listening.
                 val reply = raw.replace("<<END>>", "", ignoreCase = true)
                 // Pull out and run the two command families (calendar + screen).

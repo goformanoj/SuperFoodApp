@@ -172,4 +172,30 @@ class ScreenActionsTest {
 
         assertEquals(listOf(ScreenStep.Open("YouTube")), plan.steps)
     }
+
+    // --- spoken text left behind after markers are stripped -----------------
+
+    @Test
+    fun `a sentence introducing the markers does not end up dangling`() {
+        // Genuinely spoken on a device: "Here are the steps: ."
+        val plan = ScreenActions.parse(
+            "To play Beat It, I'll search YouTube. Here are the steps: <<OPEN|YouTube>> <<TAP|Search>>.",
+        )
+
+        assertEquals("To play Beat It, I'll search YouTube. Here are the steps.", plan.clean)
+    }
+
+    @Test
+    fun `a mid-sentence marker leaves no gap or stray punctuation`() {
+        val plan = ScreenActions.parse("I'll pull up the chat. Here are the steps: <<TAP|Mom>>. Sending now!")
+
+        assertEquals("I'll pull up the chat. Here are the steps. Sending now!", plan.clean)
+    }
+
+    @Test
+    fun `ordinary punctuation is left alone`() {
+        val chat = "The capital of France is Paris, which I like."
+
+        assertEquals(chat, ScreenActions.parse(chat).clean)
+    }
 }
