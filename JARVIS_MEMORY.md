@@ -1655,3 +1655,36 @@ Left undone and named: no marker for "open the PDF you just made", <<OPEN>> stil
 failing silently, and the user's real complaint — "look how many tries it took me
 to achieve the final result". Recovery fires but plans badly; one recovery
 produced Open(app=Open), which is not an app.
+
+### 2026-07-29 — A bare dollar broke the build for three commits (992bcd9)
+AlarmGuard.containsWord was written as:
+
+    Regex("(^|\\W)${Regex.escape(word)}(\\W|$)").containsMatchIn(text)
+
+The trailing `$)` is a dollar sign in an ESCAPED string literal that begins no
+template, and it does not compile. Builds #163, #164 and #165 produced no
+artifact; the two after it were docs commits that simply inherited the breakage.
+
+The fix was not to repair the regex. SendGuard does the identical job — word
+matching against normalised text — and has never used a Regex for it:
+
+    text == word || text.startsWith("$word ") || text.endsWith(" $word") ||
+        text.contains(" $word ")
+
+That version is proven against this toolchain, is cheaper (no Regex compiled per
+word per call), and cannot carry the same hazard. AlarmGuard now uses it, and
+the pre-flight was re-run against the new semantics rather than assumed
+equivalent — word boundaries genuinely differ between a regex and a startsWith
+chain, and deciding which utterances count is the guard's whole job.
+
+The lesson is about the pre-flight, and it is a limit worth writing down. The
+Python pre-flight passed. It could never have failed, because it tested the
+guard's ALGORITHM and the fault was in Kotlin's lexer. Python cannot check
+Kotlin syntax, so a green pre-flight says "the logic is right", never "this
+compiles". Two defences actually apply to that gap: CI, which is slow, and
+copying an existing solution from the same codebase, which is free. The second
+one was available here and ignored — SendGuard was the file directly above it in
+the same package, solving the same problem.
+
+Related and already recorded: "in progress is not evidence of progress". This
+was caught by checking artifacts, not job status.
