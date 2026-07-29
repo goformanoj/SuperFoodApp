@@ -1,8 +1,8 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `af87cb9` · last green build **#155** (artifact `jarvis-debug-apk`, 19.4 MB, confirmed) · updated 2026-07-29
-> **Awaiting CI: `5a18bbf`** — the orb is now real 3D geometry and the sprite artwork is deleted. `testDebugUnitTest` gates `assembleDebug`, so an artifact means the logic is right. **The user is well behind on-device; a fresh install is by far the highest-value next step.**
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `632d595` · last green build **#158** (artifact `jarvis-debug-apk`, 18.6 MB, confirmed) · updated 2026-07-29
+> **Awaiting CI: `0f54e35`** — rings are shaded light bands, every theme has its own backdrop, and ring colour is sampled from the reference renders. `testDebugUnitTest` gates `assembleDebug`, so an artifact means the logic is right. **The user is well behind on-device; a fresh install is by far the highest-value next step.**
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
@@ -101,6 +101,16 @@ Each theme owns its **geometry**, not just its palette — a crystal lattice doe
 - **⚠️ Pre-publish gate:** the wordmark is **baked into the artwork**. Renaming the app — which the Marvel trademark issue may force — means commissioning new art, not a code change.
 - **Not verified here:** how it *looks* and whether it holds framerate — no emulator or SDK in this environment. CI compiling is the ceiling, and the user is the only one who can judge the resemblance.
 - **Flagged:** the Avengers mark in one reference image was deliberately not reproduced. Marvel IP, and with the "JARVIS" name it is a real takedown risk — already a pre-publish gate in `COMMERCIALIZATION.md`.
+
+## 🎨 Themes — five rewrites, and where it landed
+The user supplied six reference renders. Getting them into the app took five attempts, and the sequence is the point:
+1. **Hand-drawn vector shapes** (`dd7bf2c`) — six orb geometries drawn on a Canvas. Verdict: a generic sci-fi HUD, not the designs.
+2. **Higher-fidelity vectors** (`bdc3489`) — dotted light strips, wireframe globes, lens flares, circuit traces, a metal wordmark. Closer, still not it: *"how do any of these resemble the images???"*
+3. **Ship the renders as sprites** (`49a5128`) — an exact likeness, because it WAS the image. But a still image cannot move, so rings were added orbiting outside it. Rejected: *"the objects in the image should move instead of you adding extra moving elements outside."*
+4. **Slice the sprites into rotating bands** (`af87cb9`) — the artwork's own rings turned. They sheared into hard-edged wedges: a flat photograph has no depth to rotate through. *"Absolutely horrible."*
+5. **Real 3D geometry** (`632d595`, `0f54e35`) — where it now is. Rings are circles in space, tilted and precessing, projected through a perspective camera, depth-shaded, additively blended. Each is a **filled luminous band** (inner + outer edge, foreshortening correctly) rather than a stroked wire. Every theme has **its own backdrop** — wireframe globe, geodesic shell, warm haze with HUD brackets, nebula over a circuit floor. **Ring colour is measured from the references**, not chosen: the brightest quartile of each annulus, sampled at ten radii, wordmark masked out.
+
+**The constraint, stated plainly:** the references are photorealistic renders. 100% resemblance *without* shipping them is not achievable — it would mean authoring the exact 3D scene that produced each image, which cannot be recovered from a 2D render. The choice is exact-but-static (ship the images) or procedural-and-alive (this). One option remains untried: texture-map the renders onto the 3D ring geometry via `drawVertices`, which would move correctly AND look like the source, at the cost of shipping the images as textures. Offered, not yet chosen.
 
 ## 🔨 Part C tail — self-correction and a quieter reply (build pending CI)
 - **Recovers from a failed step** (`53fc4e0`) — when a step fails, the executor no longer gives up on the whole sequence. It hands the model the reason it failed *and* a fresh reading of the live screen, and runs the replacement it comes back with (max two recoveries per sequence, so a wrong plan cannot loop). This is what "sense that something is not playing and figure it out" needed: the plan is rewritten from what is actually on screen, not retried blindly.

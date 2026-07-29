@@ -1554,3 +1554,43 @@ The through-line across all four attempts: **ask whether the medium can express
 the thing before spending effort in it.** Vectors could not reach a
 photorealistic render. Sprites could not move. Sliced sprites could not rotate.
 Only 3D geometry actually IS rings.
+
+### 2026-07-29 — Shaded light bands, per-theme backdrops, and colour measured from the source (0f54e35)
+Two things the user named after seeing the 3D orb on a device: "where are the
+light shaded rings — (arc reactor)" and "what about the background of all the
+themes?"
+
+Both were fair and both were omissions rather than bugs.
+
+**The rings were wires, not ribbons.** The Arc Reactor reference shows broad
+swept BANDS of light whose brightness falls off across their width. A stroked
+polyline cannot express that at any width. Each ring is now built from an inner
+and an outer edge in 3D and filled chunk by chunk as quads, with a hot filament
+stroked along the centre line. The filled form also foreshortens — the near side
+of the band is visibly wider than the far side — which is a depth cue a
+constant-width stroke structurally cannot give.
+
+**The backgrounds were one star field recoloured six times.** That is most of
+why six themes still read as one screen in different accents: every reference
+puts a specific world behind its orb, and that world is half the design. Now a
+dotted 3D wireframe globe for the two blue designs, a strut-and-ball geodesic
+shell plus ground mesh for the faceted ones, warm haze and HUD corner brackets
+for the forge, nebula clouds over a circuit floor for the last.
+
+**And the colour stopped being guessed.** Hand-picked accents got each theme into
+the right family and no closer. Each reference was resampled about its centre and,
+for every tenth of the radius, the brightest quartile of pixels in that annulus
+averaged. The brightest quartile specifically: the mean of a whole annulus is
+dominated by the dark gaps BETWEEN rings, so averaging everything yields mud, and
+it is the rings that need matching. The baked wordmark was masked out of the
+sample. A ring at 0.6 of the orb's radius is now drawn in the colour the reference
+has at 0.6 of its radius, and the backdrop starts from that render's own corner
+colour. No images ship — the measurement is baked into a table.
+
+The lesson worth keeping is about the brief, not the code. Five rewrites went
+into "make it look like these images", and the honest answer — that 100%
+resemblance to a photorealistic render, without shipping that render, requires
+the source 3D scene and a 2D image does not contain it — should have been said
+after the second attempt, not the fifth. Stating a real constraint early is not
+refusing the work; it is what lets the user choose between exact-but-static and
+procedural-and-alive while there is still time to choose.
