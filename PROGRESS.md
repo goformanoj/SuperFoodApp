@@ -1,8 +1,8 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `49a5128` · last green build **#152** (artifact `jarvis-debug-apk`, 19.3 MB, confirmed) · updated 2026-07-29
-> **Awaiting CI: `cee0dbf`** — the artwork's own rings now rotate, and the wordmark is back in the centre. `testDebugUnitTest` gates `assembleDebug`, so an artifact means the logic is right. **The user is well behind on-device; a fresh install is by far the highest-value next step.**
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `af87cb9` · last green build **#155** (artifact `jarvis-debug-apk`, 19.4 MB, confirmed) · updated 2026-07-29
+> **Awaiting CI: `5a18bbf`** — the orb is now real 3D geometry and the sprite artwork is deleted. `testDebugUnitTest` gates `assembleDebug`, so an artifact means the logic is right. **The user is well behind on-device; a fresh install is by far the highest-value next step.**
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
@@ -90,6 +90,9 @@ Each theme owns its **geometry**, not just its palette — a crystal lattice doe
 - **The wordmark** (`bdc3489`) — "JARVIS / SYSTEM" over the orb centre, the anchor every reference image has and the app did not. Cut from a vertical gradient (white specular → the theme's metal → its secondary) with a zero-offset coloured shadow as glow. Orbitron already ships and is the same squared face the designs use. Each palette names its own metal, since deriving it from the accent got it wrong.
 - **Status block** — uppercase and widely tracked like the artwork, but showing JARVIS's **real** state. A line permanently reading "COMMAND ACCEPTED" would be decoration lying about what the app is doing.
 - **The artwork IS the orb now** (`3284ed3`) — the user's screenshot settled it: "how do any of these resemble the images???" They did not. Lattice was scattered crystals joined by a staircase of traces, Prism a spiky star rather than a faceted gem, Forge a sunburst of sticks. **The approach was wrong, not the execution:** the references are photorealistic renders and vector shapes on a Canvas cannot reach them, however many are added — two passes went into proving that. Each design is now cropped to its orb, scaled to 720px and shipped as WebP with a radial alpha falloff so it floats rather than showing a square edge. **641 KB for all six**, crops framed to exclude the status text baked into the source images.
+- **~~The whole sprite approach~~ — rejected, and rightly** (`5a18bbf`). Sliced bands sheared into hard-edged wedges: *"the rings don't look natural… absolutely horrible. Can you not make proper 3D rings."* A flat photograph has no depth to turn through, so no tuning could fix it.
+- **The orb is real 3D geometry** (`5a18bbf`) — each ring is a circle in three dimensions with its own tilt, precessing and spinning on its own multiple of one master clock, projected through a **perspective** camera. Three things make it read as depth: perspective (the near side projects larger — orthographic looks flat), **depth shading** (each of 24 chunks per ring takes brightness and width from its own Z, so rings pass in front of and behind the core), and **additive light** (`BlendMode.Plus`, so crossing rings bloom — alpha compositing cannot fake it). Plus dust on a Fibonacci sphere, crystal shards, hub spokes, and a mic-driven core.
+- **The images are gone** (`5a18bbf`) — 780 KB of drawables deleted, with the cropping, alpha masks and text inpainting they needed. Procedural geometry scales to any size, so the picker previews are the real orb rather than a shrunken bitmap.
 - **~~Motion sits around the art~~ — rejected, and rightly** (`cee0dbf`). Rings drawn *outside* the artwork orbited a picture that never moved. The user: *"the objects in the image should move instead of you adding extra moving elements outside the image."*
 - **The artwork's own rings rotate** (`cee0dbf`) — each sprite is clipped into concentric bands and each band turns at its own speed, so the design's real rings move against each other. Band edges are cut where an artwork already has a gap between rings, so a seam lands where the eye reads a boundary anyway. Per-theme profiles: Filigree four bands (it is all fine rings), Lattice only two turning nearly together (a hexagon of prisms shears apart otherwise), Machine's gear against a near-still dome.
 - **The wordmark is drawn in code again, centred** (`cee0dbf`) — baked into the art it ran wider than the circular fade, so it was clipped on the right and read as off-centre; and it could not survive being sliced and spun with the bands.
@@ -197,7 +200,7 @@ Worth knowing: **Groq's limits are per account, not per user.** This is the sing
 | Files tab (PDFs + notes) | 🔬 | pending | app-private, no new permission |
 | Recovers from a failed step | 🔬 | pending | replans from the live screen, max 2 tries |
 | No spoken thought process | 🔬 | pending | narration clauses stripped, not tidied |
-| Six themes, orb = the real artwork | 🔬 | pending | its own rings rotate in bands |
+| Six themes, orb built in 3D | 🔬 | pending | tilted rings, depth-shaded, additive |
 | Artwork shipped as the orb | 🔬 | pending | exact replicas; 641 KB for six |
 | Animated overlay round the art | 🔬 | pending | rings, travelling arc, dust, flares |
 | Theme-driven background/surfaces | 🔬 | pending | not just the accent any more |

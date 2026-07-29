@@ -1500,3 +1500,57 @@ used.
 And: every image step here was verified by rendering a contact sheet and LOOKING
 at it. The mirror artifact, the Arc dead spot and the text bleeding into the
 first crop were all invisible to reasoning and obvious on sight.
+
+### 2026-07-29 — The orb becomes real 3D geometry (5a18bbf)
+Fourth attempt, and the user's verdict on the third was blunt and correct: "the
+rings don't look natural, ur using images again … the ones you made right now
+are absolutely horrible. Can you not make proper 3D rings for an application,
+the images are just a reference, but you need to create those."
+
+The screenshot showed exactly why: slicing a sprite into concentric bands and
+rotating each one shears it into hard-edged wedges. It cannot not do that. A
+photograph is flat; there is no depth in it to rotate through, so neighbouring
+bands slide against each other and tear. No tuning fixes that — the approach was
+wrong, not the parameters.
+
+**What the rings are now.** Each is a genuine circle in three dimensions with its
+own tilt, precessing and spinning on its own multiple of one master clock, then
+projected through a perspective camera. Three things carry the illusion:
+
+- **Perspective, not orthographic.** The near side of a tilted ring projects
+  larger than the far side. Orthographic loses precisely this, and a rotating
+  ring degenerates into a pulsing ellipse.
+- **Depth shading.** Each of 24 chunks per ring takes its brightness and stroke
+  width from its own Z, so a ring visibly passes in front of and behind the core.
+  This is the single biggest contributor to it reading as 3D.
+- **Additive light.** Every stroke uses BlendMode.Plus, so where two rings cross
+  the light sums and blooms. That is what the reference renders do, and it is not
+  something alpha compositing can imitate.
+
+Also: dust on a Fibonacci sphere (even coverage — sampling latitude and longitude
+independently clumps at the poles), crystal shards standing off the widest ring,
+hub spokes for the mechanical themes, and a core that swells with the mic.
+
+**The images are deleted** — 780 KB of drawables, plus the cropping, alpha masks
+and text inpainting they required. Procedural geometry scales to any size, so the
+theme picker previews are the real orb instead of a shrunken bitmap.
+
+**A real bug caught in pre-flight, not on the device.** Kotlin's `%` truncates
+toward zero, so it returns a NEGATIVE remainder for a negative left operand —
+unlike the modulo most maths write-ups assume. Four rings spin backwards; their
+travelling-arc phase went negative, which drove the brightness expression above 1
+and would have lit those rings solidly instead of showing a moving arc. Fixed
+with a `wrap01` helper in the tested layer. Worth noting the shape of the catch:
+the property was arithmetic, not logic, and it only surfaced because the exact
+expression was evaluated in Python against real ring parameters before pushing.
+
+18 tests on the geometry, all pre-flighted: rotations preserve length and leave
+their own axis alone, a quarter turn about X sends Y to Z, perspective makes
+nearer larger, a point behind the camera cannot divide by zero, an untilted ring
+is flat and circular, a tilted one has a real near and far side, sphere points
+spread 67/66/67 across three bands, and wrap01 never leaves the unit range.
+
+The through-line across all four attempts: **ask whether the medium can express
+the thing before spending effort in it.** Vectors could not reach a
+photorealistic render. Sprites could not move. Sliced sprites could not rotate.
+Only 3D geometry actually IS rings.
