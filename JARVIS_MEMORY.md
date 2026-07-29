@@ -1347,3 +1347,60 @@ COMMERCIALIZATION.md; recording it here so the omission reads as a decision
 rather than an oversight.
 
 22 tests across OrbMath and JarvisPalette.
+
+### 2026-07-29 — The themes were a mock; redrawn against the art (bdc3489)
+The user looked at the first version and said it did not resemble the images:
+"if not happy with the design, u have made a mock… try to stick more the design
+of the images, like the thin light strips", then "they should strongly resemble
+the design in the images". Both are correct. What shipped was a competent
+generic sci-fi HUD, and the designs are specific.
+
+Going back to the images and naming what was actually different, rather than
+adding more of what was already there:
+
+**Texture — the phrase "thin light strips" was the whole clue.** The rings in
+every reference are fine DOTTED strips, not solid strokes. That single property
+accounts for most of the difference between "artwork" and "a circle". Now drawn
+with a dash path effect, which matters twice: it looks right, and it is one draw
+call where a loop of sixty dots would have been sixty. Six such rings per orb per
+frame is exactly where framerate goes. Dense radial hatching came with it — a
+filigree without fine radial lines reads as a dial.
+
+**Depth.** Four designs sit inside a genuine wireframe globe. The give-away is
+that latitudes bunch toward the poles while meridians narrow toward the centre,
+and a flat circle cannot fake either. Two others are built from struts and
+node-balls instead, so that is a separate primitive.
+
+**Light.** Bright points throw four-point lens flares with a white specular core.
+Energy bands glow with falloff — drawn as three concentric arcs of decreasing
+width and increasing brightness, because one stroke cannot produce a falloff.
+
+**The wordmark, which I had simply not noticed was load-bearing.** Every image
+has "JARVIS / SYSTEM" across the middle of the orb, and the app had a small
+"J.A.R.V.I.S." label. It is the visual anchor. Cut from a vertical gradient —
+white specular, the theme's metal, its secondary — with a zero-offset coloured
+shadow for glow. Orbitron already shipped and is the same squared techno face
+the designs use, so no new font was needed. Each palette names its own wordmark
+metal because deriving it from the accent produced gold letters on the cyan
+themes.
+
+The lesson: **the first version failed by being generic, not by being wrong.**
+Every element I had drawn is present in the references somewhere; what I had
+missed was the specific texture, and texture is what makes art look like itself.
+When a design brief is a set of images, the useful question is "name what is in
+the image that is not in my version", not "does mine look good".
+
+Second, structural: the redraw only became tractable because the six styles were
+already separate renderers. Building a primitives vocabulary
+(dottedRing/wireSphere/geodesicShell/flare/radialHatch/circuitTrace/crystalFacet/
+energyRibbon/groundMesh) and recomposing the styles from it was an afternoon;
+had it been one parameterised orb, it would have been a rewrite.
+
+One deliberate departure from the artwork: the status block is styled like the
+designs (uppercase, wide tracking) but shows the app's REAL state. The images
+read "COMMAND ACCEPTED / LISTENING… / AWAITING INPUT" as decoration; a status
+line that always said that would be lying about what JARVIS is doing, which is
+the failure this project has been bitten by before.
+
+Still unverified by me: the resemblance itself. No emulator here, so CI
+compiling is the ceiling and the user is the judge.

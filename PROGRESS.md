@@ -86,7 +86,10 @@ Each theme owns its **geometry**, not just its palette — a crystal lattice doe
 - **Live previews** — the picker runs the real renderer in each card. Three themes differ mainly in how they *move*, so still swatches would have shown six near-identical circles.
 - **Switching moves the whole app** — `JarvisTheme` derives the colour scheme from the palette and provides both composition locals; HomeScreen's hardcoded cyan is gone.
 - **Tested:** particle placement is a pure function of a seed (never `Math.random` — a Canvas redraws every frame, and a re-rolled starfield is static, not stars). Determinism, range, distribution, spacing and divide-by-zero guards are covered, plus palette tests for id round-tripping, unique styles and contrast floors. Old ids (`ember`, `signal`, `violet`) fall back to the default.
-- **Not verified here:** how it *looks* and whether it holds framerate — no emulator or SDK in this environment. CI compiling is the ceiling.
+- **Redrawn to match the art** (`bdc3489`) — the first pass was a mock and the user said so. What was missing: **texture** (the rings in the designs are fine *dotted light strips*, not strokes — now dashed strokes, one draw call each, plus the dense radial hatching that makes filigree read as filigree rather than a dial), **depth** (four designs sit inside a real wireframe globe — latitudes bunching at the poles, meridians narrowing to the centre — plus a strut-and-ball geodesic shell for the node-built ones), and **light** (four-point lens flares with a white specular core; energy bands that glow with falloff instead of being flat arcs). Also: gold **circuit traces with right-angle bends** for Lattice, **crystal facets showing internal cut lines**, and a **perspective ground mesh**. A reusable `OrbPrimitives` vocabulary now backs all six styles.
+- **The wordmark** (`bdc3489`) — "JARVIS / SYSTEM" over the orb centre, the anchor every reference image has and the app did not. Cut from a vertical gradient (white specular → the theme's metal → its secondary) with a zero-offset coloured shadow as glow. Orbitron already ships and is the same squared face the designs use. Each palette names its own metal, since deriving it from the accent got it wrong.
+- **Status block** — uppercase and widely tracked like the artwork, but showing JARVIS's **real** state. A line permanently reading "COMMAND ACCEPTED" would be decoration lying about what the app is doing.
+- **Not verified here:** how it *looks* and whether it holds framerate — no emulator or SDK in this environment. CI compiling is the ceiling, and the user is the only one who can judge the resemblance.
 - **Flagged:** the Avengers mark in one reference image was deliberately not reproduced. Marvel IP, and with the "JARVIS" name it is a real takedown risk — already a pre-publish gate in `COMMERCIALIZATION.md`.
 
 ## 🔨 Part C tail — self-correction and a quieter reply (build pending CI)
@@ -188,5 +191,7 @@ Worth knowing: **Groq's limits are per account, not per user.** This is the sing
 | Recovers from a failed step | 🔬 | pending | replans from the live screen, max 2 tries |
 | No spoken thought process | 🔬 | pending | narration clauses stripped, not tidied |
 | Six themes, six animated orbs | 🔬 | pending | own geometry + motion each; live previews |
+| Dotted strips, wire spheres, flares | 🔬 | pending | the redraw to match the art |
+| JARVIS/SYSTEM wordmark | 🔬 | pending | per-theme metal gradient + glow |
 | Theme-driven background/surfaces | 🔬 | pending | not just the accent any more |
 | Backdrop + mic-driven waveform | 🔬 | pending | from the designs |
