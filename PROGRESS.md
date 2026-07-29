@@ -1,8 +1,26 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `632d595` · last green build **#158** (artifact `jarvis-debug-apk`, 18.6 MB, confirmed) · updated 2026-07-29
-> **Awaiting CI: `0f54e35`** — rings are shaded light bands, every theme has its own backdrop, and ring colour is sampled from the reference renders. `testDebugUnitTest` gates `assembleDebug`, so an artifact means the logic is right. **The user is well behind on-device; a fresh install is by far the highest-value next step.**
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `31f3b05` · last green build **#161** (artifact `jarvis-debug-apk`, 18.63 MB, confirmed) · updated 2026-07-29
+> **Awaiting CI: `af37dbc`** — three guards from one device session: phantom alarms, ask-and-act, and the alarm-volume check. `testDebugUnitTest` gates `assembleDebug`, so an artifact means the logic is right.
+> **First real device session against the current build.** User-confirmed working: type-vs-send, no spoken steps, below-fold chats, mic yielding to playback, learned memory, PDF creation.
+
+## 🔨 Part C tail — what a real device session found (build pending CI)
+The user ran a full session and shared three traces. Six things were confirmed working; five were broken, and every fix below quotes the trace line that caused it.
+
+**Confirmed on device** ✅ — type vs send, no spoken thought process, chats below the fold, the mic yielding while audio plays, `<<REMEMBER>>`, and PDF creation.
+
+**Fixed** (`af37dbc`):
+- **Phantom alarms.** "play Beat It" emitted `<<ALARM|TIMER|600|nap>>` and a real ten-minute timer was set; later, asked to play a song, it volunteered "what time would you like to set an alarm to wake up to this song?". `AlarmGuard` now drops alarm actions when nothing in the utterance was about time — in code beside `SendGuard`, because prompt wording is probabilistic and the rare miss costs the user their morning.
+- **Asking and acting at once.** The reply asked "what app would you like to use, or should I open YouTube?" and opened YouTube anyway. `AskGuard` drops **every** action when the spoken reply ends in a question — all of them, since keeping a prefix commits to the same choice more quietly.
+- **The alarm-volume check** (a direct user request). The alarm stream carries its own volume, so a turned-down phone accepts an alarm and then says nothing at the hour. JARVIS now checks after setting one and warns if it is off or under a third; "turn the alarm volume up" raises it.
+- **The Files hunt** — the worst failure. Asked to open the PDF it had just made, JARVIS opened the *phone's* Files app, tapped "Starred" and "Hide Safe folder", opened an unrelated `Scriptilio4.pdf`, and told the user it had saved "Important Points" in Documents — invented. The prompt now states its files live in JARVIS's own Files screen and that it must never invent a location.
+- **Reading the screen aloud** and **unresolved nicknames** — it spoke the raw screen listing back, and emitted `<<OPEN|jao>>` after learning YouTube was called "jao". Both are prompt rules now.
+
+Still open from the same session:
+- **No way to open its own artifact.** The prompt stops the damage, but there is no marker for "show me the PDF you just made". That is the natural next piece.
+- **`<<OPEN|unknown>>` fails silently** — the trace shows `running Open(app=jao)` and then nothing at all. Open should report failure like taps do.
+- **Execution is still not smooth.** The user's words: "look how many tries it took me to achieve the final result." Step recovery fires, but produced `Open(app=Open)` — a non-existent app name — and hunted blindly.
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started

@@ -1594,3 +1594,64 @@ the source 3D scene and a 2D image does not contain it — should have been said
 after the second attempt, not the fifth. Stating a real constraint early is not
 refusing the work; it is what lets the user choose between exact-but-static and
 procedural-and-alive while there is still time to choose.
+
+### 2026-07-29 — What a real device session found (af37dbc)
+The user ran a full session against the current build and shared three traces —
+the first substantial on-device evidence in a long while, and worth more than
+everything the theme work produced.
+
+**Confirmed working**, which matters as much as the failures: type vs send, no
+spoken thought process, chats below the fold, the mic yielding while audio
+plays, <<REMEMBER>>, and PDF creation. Six fixes that had been sitting
+unverified are now real.
+
+**The phantom timer is the one that should not have been possible.** "play Beat
+It" produced <<ALARM|TIMER|600|nap>> and a ten-minute timer was actually set.
+Nothing in the utterance was about time; the model reached for a marker it had
+been taught and the executor obeyed. Later in the same session, asked to play a
+song, it volunteered "what time would you like to set an alarm to wake up to
+this song?" — the same fixation.
+
+This is the third instance of one pattern. Sending a message needed SendGuard.
+Acting while asking needed AskGuard. Setting an alarm needed AlarmGuard. In
+every case the behaviour was taught in the prompt FIRST and happened on a device
+ANYWAY. The rule is now explicit in the handoff: anything irreversible or
+real-world gets a code guard, and the prompt is only the polite request. A
+prompt is probabilistic; an alarm at six in the morning is not.
+
+AskGuard drops every action rather than a suffix. The trace's failure was
+opening YouTube while asking which app to use — keeping any prefix of that plan
+would commit to the same choice more quietly, which is worse than either asking
+or acting.
+
+**The alarm volume check** the user asked for directly is the same class as the
+tap-verification work: setting an alarm and having it ring are different things,
+and reporting the first while the second is impossible is the failure this
+project keeps returning to. The threshold is deliberately low — warning about a
+usable volume every time teaches the user to ignore the warning.
+
+**The Files hunt was the worst outcome.** Asked to open the PDF it had just
+made, JARVIS opened the PHONE's Files app, tapped "Starred", then "Hide Safe
+folder", then opened an unrelated Scriptilio4.pdf belonging to the user, and
+finally reported it had saved "Important Points" in the Documents category —
+entirely invented. Two failures stacked: it does not know its own artifacts live
+in its own Files screen, and it fabricated a location rather than admitting it
+did not know. Both are prompt rules now, but the real fix is a marker that opens
+its own artifact, which does not exist yet.
+
+Also fixed: it read the raw screen listing aloud back to the user ("[Navigate
+up] Scriptilio4.pdf [Share]…"), and having learned "YouTube is called jao" it
+emitted <<OPEN|jao>>, which no phone can resolve — and which failed SILENTLY,
+with the trace showing "running Open(app=jao)" and nothing after.
+
+The prompt absorbed five new rules and still came in under its tested ceiling at
+5,964 chars, paid for by trimming prose that restated rules stated elsewhere.
+That is the diet working as intended: the ceiling forces the trade rather than
+letting the prompt creep back.
+
+21 tests across the three guards, each keyed to the trace line that motivated it.
+
+Left undone and named: no marker for "open the PDF you just made", <<OPEN>> still
+failing silently, and the user's real complaint — "look how many tries it took me
+to achieve the final result". Recovery fires but plans badly; one recovery
+produced Open(app=Open), which is not an app.
