@@ -1,8 +1,8 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `6774e99` · last green build **#133** · updated 2026-07-29
-> Awaiting CI: `53fc4e0`→`6f5043d` — step recovery, the narration fix, the prompt diet, and the red-build fix. **Builds #134–#138 failed** on a stale `ModelRouterTest`; `6f5043d` fixes it, and nothing more merges to `main` until the artifact appears. **The user is many builds behind on-device; a fresh install is by far the highest-value next step.**
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `6f5043d` · last green build **#139** (artifact `jarvis-debug-apk`, 18.6 MB, confirmed) · updated 2026-07-29
+> Everything is merged. Builds #134–#138 failed on a stale `ModelRouterTest`; #139 is green, which also confirms the narration tests and `SystemPromptTest` pass — `testDebugUnitTest` gates `assembleDebug`, so an artifact means the logic is right. **The user is ~20 builds behind on-device; a fresh install is by far the highest-value next step.**
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started

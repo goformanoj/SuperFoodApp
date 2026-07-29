@@ -5,8 +5,7 @@
 
 ## Current position + immediate next
 - **Shipped:** Part A, the testing rig, **Part B** (work session), **Part C** (screen awareness, state memory, send guard, `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, step recovery), the navigation restructure, learned memory, custom instructions, themes, alarms, the voice picker, and **Part F — Files**.
-- **`main` @ `6774e99`** (green build **#133**) — fifteen commits merged on 2026-07-29: learned memory, the navigation restructure, the rate-limit and retired-model fixes, and Files.
-- **Unmerged and NOT yet green:** `53fc4e0` → `6f5043d` (step recovery, the narration fix, the prompt diet, and the red-build fix). Builds #134–#138 all **failed** on a stale `ModelRouterTest`; `6f5043d` fixes it. **Confirm the `jarvis-debug-apk` artifact appears before merging any of it**, and note `SystemPromptTest` has never yet run in CI.
+- **`main` @ `6f5043d`** (green build **#139**, artifact confirmed) — everything is merged: learned memory, the navigation restructure, the rate-limit and retired-model fixes, Files, step recovery, the narration fix, the shared/slimmed system prompt, and the red-build fix.
 - **Device-confirmed:** `<<PICK>>` works — it chose "Beat It Michael Jackson" from 15 real on-screen options, and supersede fired correctly on a mid-sequence interruption.
 - **Next:** flow charts for Files (specced, no new provider needed), then **Part G — Automation** (specced, security shape fixed, not started). Still owed by the user: the **theme designs**, and a decision on a paid provider for image generation.
 - **Highest-value action:** the user is many builds behind on-device. One fresh install now carries around twenty fixes they reported and have not been able to retest.
