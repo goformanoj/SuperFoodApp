@@ -5,14 +5,17 @@
 
 ## Current position + immediate next
 - **Shipped:** Part A, the testing rig, **Part B** (work session), **Part C** (screen awareness, state memory, send guard, `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, step recovery), the navigation restructure, learned memory, custom instructions, themes, alarms, the voice picker, and **Part F — Files**.
-- **`main` @ `d27191e`** (green build **#117**). **17 commits sit unmerged on the session branch**, from `e2506cb` through `774b5cf` — merging them once CI is green is the first job of the next session.
+- **`main` @ `6774e99`** (green build **#133**) — fifteen commits merged on 2026-07-29: learned memory, the navigation restructure, the rate-limit and retired-model fixes, and Files.
+- **Unmerged and NOT yet green:** `53fc4e0` → `6f5043d` (step recovery, the narration fix, the prompt diet, and the red-build fix). Builds #134–#138 all **failed** on a stale `ModelRouterTest`; `6f5043d` fixes it. **Confirm the `jarvis-debug-apk` artifact appears before merging any of it**, and note `SystemPromptTest` has never yet run in CI.
 - **Device-confirmed:** `<<PICK>>` works — it chose "Beat It Michael Jackson" from 15 real on-screen options, and supersede fired correctly on a mid-sequence interruption.
 - **Next:** flow charts for Files (specced, no new provider needed), then **Part G — Automation** (specced, security shape fixed, not started). Still owed by the user: the **theme designs**, and a decision on a paid provider for image generation.
 - **Highest-value action:** the user is many builds behind on-device. One fresh install now carries around twenty fixes they reported and have not been able to retest.
 - **The system-prompt diet is done** (`4ad64b8`) — ~2,299 → ~1,355 tokens, one shared `SystemPrompt.kt` instead of a copy in each client, and the literal `\n` bug both copies carried is gone. Next cheap win on the same axis: **step recovery re-sends the whole prompt** when it only needs the SCREEN section — a `systemOverride` there would roughly halve a recovery's cost.
 - **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly, and step recovery should now replan around it; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
 
-## Two rules that keep being re-learned
+## Three rules that keep being re-learned
+- **"In progress" is not evidence of progress.** The job-status API lags 2–5 hours; a status that has not moved means *unknown*, not *running*. **Check `list_workflow_run_artifacts`** — on 2026-07-29 four commits were built on top of a red branch and reported to the user as "still building", when one artifact check would have shown the failures immediately.
+- **A behaviour and its tests change together.** Reverting the model routing left two tests asserting the old FAST routing, which gated `assembleDebug` and produced no APK for four commits. If a test still passes after a deliberate behaviour change, it was testing the wrong thing.
 - **A tidier version of the wrong output is still the wrong output.** "Here are the steps: ." was fixed once by repairing the punctuation, and the user saw it again. When something should not be spoken, delete it — don't clean it up.
 - **Ask "is this thing unusable?", not "is this status code in my list?"** The same fallback bug was fixed three times (404, then 429, then 400) before being fixed by condition rather than by code.
 

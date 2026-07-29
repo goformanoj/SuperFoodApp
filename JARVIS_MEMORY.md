@@ -1242,3 +1242,45 @@ damage and nothing catches it: no literal backslash-n, a 6,000-char ceiling,
 every marker the app can PARSE is also TAUGHT (a marker the parser knows and the
 prompt does not mention is dead code), and the eight rules that were each paid
 for by a device failure are still present by phrase.
+
+### 2026-07-29 — Four commits with no APK, because I trusted the status API (6f5043d)
+The build had been red since 53fc4e0 and I built three more commits on top of it
+without checking. Worse, I told the user the work was "still building" — the
+job-status API showed in_progress with timestamps frozen four minutes apart, and
+I read that as live state instead of the lag this project has documented since
+build #85.
+
+The failure itself was small and entirely mine. 53fc4e0 changed tierFor to return
+SMART unconditionally, reverting the routing experiment. Two ModelRouterTest
+cases still asserted commands route to Tier.FAST. 149 tests, 2 failed. Since
+testDebugUnitTest gates assembleDebug — which is the whole point of that gate —
+no artifact was produced for 53fc4e0, 35b063e, 4ad64b8 or c6b9fcd. The user could
+not have installed any of it.
+
+Nothing was wrong with the code. I changed a behaviour deliberately and did not
+change the tests that described the old one. That is the same shape as the Type
+regression in 48d7847: removing a behaviour removes its side effects too, and a
+deliberate change is still a change — its tests are part of it, not a record of
+what it used to do.
+
+While fixing it I also deleted what the revert had orphaned: COMMAND_VERBS,
+CONVERSATION_CUES, MAX_COMMAND_WORDS and expectsAction became unreachable the
+moment tierFor turned into a constant, and only tierFor is called from anywhere.
+Leaving routing heuristics in place implies the app still routes when it does
+not. The reasoning stays in the KDoc so nobody rebuilds the experiment blind;
+git history holds the code if a stronger small model makes it worth retrying.
+
+Two lessons, and the second is the expensive one:
+
+**A behaviour and its tests change together.** If a test still passes after a
+deliberate behaviour change, it was testing the wrong thing; if it fails, it is
+part of the change, not an obstacle to it.
+
+**"In progress" is not evidence of progress.** SESSION_HANDOFF has said since
+build #85 that the job-status API lags 2-5 hours and the artifact is the reliable
+signal. I read the status field anyway, and reported it to the user as fact.
+Checking the artifact list — which I had already done correctly for 6774e99
+minutes earlier — would have shown four failures immediately. The rule was
+written down, and I still used the lagging signal because it was the one the API
+handed me first. Check the artifact, and when a status has not moved, treat that
+as unknown rather than as running.
