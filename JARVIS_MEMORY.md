@@ -1688,3 +1688,33 @@ the same package, solving the same problem.
 
 Related and already recorded: "in progress is not evidence of progress". This
 was caught by checking artifacts, not job status.
+
+### 2026-07-29 — Guessing at a compile error, twice (3d41cf8)
+The AlarmGuard/AskGuard/AlarmVolume work has been red since af37dbc — builds
+#163 through #167, no artifact.
+
+I could not read the error. CI runs Gradle with --stacktrace, so a Kotlin
+compile failure ends with roughly 120 lines of internal Gradle frames
+(ExecuteActionsTaskExecuter, BuildCacheStep, DefaultBuildOperationRunner…) and
+the "e: file:line: error" lines sit above the tail the logs API will return.
+Three fetches produced the same useless window.
+
+So I inspected the code instead and found a real hazard: AlarmGuard.containsWord
+used Regex("(^|\\W)${…}(\\W|$)") — a bare dollar in an escaped string literal.
+I fixed it, and told the user that was the fix. Build #166 failed anyway.
+
+That is the mistake worth recording, and it is one this project has already
+learned in another form. A plausible defect found while searching is not
+evidence that it is THE defect. Reporting it as the cause was the same error as
+reading a lagging "in progress" job status as "still running" — substituting
+something available for something true. The honest report would have been "I
+found a hazard and fixed it; I still have not seen the error."
+
+The actual fix for the diagnosis problem is to stop truncating the evidence:
+--stacktrace has never once been useful here, because every failure has been a
+compile error or a failing assertion and both report themselves clearly. It is
+now removed from both Gradle invocations, so the next red build shows the error
+where it can be read.
+
+main never left green at 31f3b05, so nothing shipped broken — the definition of
+done did its job even while the diagnosis went sideways.
