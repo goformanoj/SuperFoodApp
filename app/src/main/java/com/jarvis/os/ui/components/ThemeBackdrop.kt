@@ -11,22 +11,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import com.jarvis.os.ui.theme.JarvisPalette
 import com.jarvis.os.ui.theme.LocalPalette
+import com.jarvis.os.ui.theme.OrbStyle
 
 /**
- * The space the orb lives in: a wash behind it, a dotted dome overhead, a
- * drifting star field and a perspective ground mesh below.
+ * The world each theme's orb sits in.
  *
- * All four are in the reference designs, and their absence is most of why a
- * first pass reads as "an orb on black" rather than as the artwork. Deliberately
- * low-contrast — it has to give depth behind the UI without competing with it.
+ * This used to be one generic star field recoloured six ways, which is why the
+ * themes still read as the same screen in different accents — every reference
+ * puts something specific behind the orb, and that is half of what makes them
+ * distinct. Each theme now gets its own: a dotted wireframe globe for the two
+ * blue designs, a strut-and-ball geodesic shell for the faceted ones, HUD
+ * brackets and warm haze for the forge, a nebula and circuit floor for the last.
+ *
+ * The base colour is measured from the corners of each reference render rather
+ * than chosen, so the backdrop starts from the source's own light.
  */
 @Composable
 fun ThemeBackdrop(
@@ -34,11 +42,11 @@ fun ThemeBackdrop(
     palette: JarvisPalette = LocalPalette.current,
 ) {
     val transition = rememberInfiniteTransition(label = "backdrop")
-    // Very slow. A backdrop that visibly turns is a distraction; one that drifts
-    // imperceptibly is atmosphere.
+    // Very slow. A backdrop that visibly turns competes with the orb; one that
+    // drifts imperceptibly is atmosphere.
     val drift by transition.animateFloat(
-        0f, 360f,
-        infiniteRepeatable(tween(200_000, easing = LinearEasing)),
+        0f, Orb3D.TAU,
+        infiniteRepeatable(tween(150_000, easing = LinearEasing)),
         label = "backdropDrift",
     )
 
@@ -46,60 +54,225 @@ fun ThemeBackdrop(
         val w = size.width
         val h = size.height
         val focus = Offset(w / 2f, h * 0.34f)
+        val base = ThemeArt.backdrop(palette.orbStyle)
 
-        // Wash from behind the orb.
+        // Wash from behind the orb, in the reference's own background colour.
         drawRect(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    palette.accent.copy(alpha = 0.11f),
-                    palette.secondary.copy(alpha = 0.055f),
+                    base.copy(alpha = 0.42f),
+                    base.copy(alpha = 0.16f),
                     Color.Transparent,
                 ),
                 center = focus,
-                radius = maxOf(w, h) * 0.78f,
+                radius = maxOf(w, h) * 0.8f,
             ),
         )
 
-        // Star field, deterministic so it drifts rather than flickers.
-        for (i in 0 until 80) {
-            val x = OrbMath.unitRandom(i * 3 + 1) * w
-            val y = OrbMath.unitRandom(i * 3 + 2) * h
-            val warm = OrbMath.unitRandom(i * 13 + 5) > 0.74f
-            val bright = OrbMath.unitRandom(i * 17 + 7) > 0.94f
-            val alpha = OrbMath.range(i * 7 + 11, 0.10f, 0.50f)
-            if (bright) {
-                // A few real stars with flares, as in the Nebula design.
-                flare(Offset(x, y), OrbMath.range(i, 3f, 7f) * density, Color.White, alpha * 1.4f)
-            } else {
-                drawCircle(
-                    color = (if (warm) palette.highlight else Color.White).copy(alpha = alpha),
-                    radius = OrbMath.range(i * 3 + 3, 0.6f, 1.9f) * density,
-                    center = Offset(x, y),
-                )
+        when (palette.orbStyle) {
+            OrbStyle.Reactor, OrbStyle.Lattice ->
+                wireGlobe(focus, minOf(w, h) * 0.62f, drift, palette.accent, dense = palette.orbStyle == OrbStyle.Lattice)
+
+            OrbStyle.Prism, OrbStyle.Machine -> {
+                nodeShell(focus, minOf(w, h) * 0.60f, drift, palette.secondary)
+                groundMesh(h * 0.64f, palette.secondary, rows = 10, columns = 16, alpha = 0.20f)
+            }
+
+            OrbStyle.Filigree -> {
+                warmHaze(focus, minOf(w, h) * 0.70f, palette.accent, palette.highlight)
+                hudBrackets(palette.accent)
+            }
+
+            OrbStyle.Nebula -> {
+                nebulaClouds(w, h, palette.accent, palette.secondary)
+                circuitFloor(h * 0.66f, palette.accent)
             }
         }
 
-        // The dome overhead: dotted latitude arcs, turning almost imperceptibly.
-        val dotted = PathEffect.dashPathEffect(floatArrayOf(1.6f * density, 5f * density))
-        rotate(drift * 0.12f, focus) {
-            listOf(0.52f, 0.68f, 0.86f, 1.05f).forEachIndexed { i, frac ->
-                val rad = maxOf(w, h) * frac
-                drawOval(
-                    color = palette.secondary.copy(alpha = 0.10f - i * 0.018f),
-                    topLeft = Offset(focus.x - rad, focus.y - rad * 0.86f),
-                    size = Size(rad * 2f, rad * 1.72f),
-                    style = Stroke(1f * density, pathEffect = dotted),
-                )
-            }
-        }
+        starField(w, h, palette.highlight, palette.orbStyle == OrbStyle.Nebula)
+    }
+}
 
-        // Ground mesh in the lower part, receding to a horizon behind the orb.
-        groundMesh(
-            horizonY = h * 0.62f,
-            color = palette.secondary,
-            rows = 10,
-            columns = 16,
-            alpha = 0.16f,
+/** A dotted wireframe globe in real 3D — latitudes and meridians, slowly turning. */
+private fun DrawScope.wireGlobe(
+    centre: Offset,
+    radius: Float,
+    t: Float,
+    colour: Color,
+    dense: Boolean,
+) {
+    val dots = PathEffect.dashPathEffect(floatArrayOf(px(1.4f), px(5f)))
+    val cam = radius * 3.6f
+    val focal = radius * 2.7f
+    val lats = if (dense) 7 else 5
+    val meridians = if (dense) 12 else 9
+
+    for (i in 1..lats) {
+        val phi = (i.toFloat() / (lats + 1)) * Orb3D.TAU / 2f - Orb3D.TAU / 4f
+        val ringR = radius * kotlin.math.cos(phi)
+        val yOff = radius * kotlin.math.sin(phi)
+        val pts = Orb3D.ring(ringR, 64, Orb3D.TAU / 4f, 0f, t * 0.4f)
+            .map { Orb3D.project(Vec3(it.x, it.z + yOff, it.y), cam, focal) }
+        strokeProjected(pts, centre, colour.copy(alpha = 0.20f), 1f, dots)
+    }
+    for (m in 0 until meridians) {
+        val pts = Orb3D.ring(radius, 64, 0f, (m.toFloat() / meridians) * Orb3D.TAU + t * 0.4f, 0f)
+            .map { Orb3D.project(it, cam, focal) }
+        strokeProjected(pts, centre, colour.copy(alpha = 0.13f), 1f, dots)
+    }
+}
+
+/** A strut-and-ball geodesic shell, as behind the faceted designs. */
+private fun DrawScope.nodeShell(centre: Offset, radius: Float, t: Float, colour: Color) {
+    val cam = radius * 3.6f
+    val focal = radius * 2.7f
+    val rings = 4
+    for (i in 1..rings) {
+        val phi = (i.toFloat() / (rings + 1)) * Orb3D.TAU / 2f - Orb3D.TAU / 4f
+        val ringR = radius * kotlin.math.cos(phi)
+        val yOff = radius * kotlin.math.sin(phi)
+        val nodes = 14
+        val pts = (0 until nodes).map { n ->
+            val a = (n.toFloat() / nodes) * Orb3D.TAU + t * 0.35f
+            Orb3D.project(
+                Vec3(kotlin.math.cos(a) * ringR, yOff, kotlin.math.sin(a) * ringR),
+                cam, focal,
+            )
+        }
+        pts.forEachIndexed { n, p ->
+            val q = pts[(n + 1) % pts.size]
+            val depth = Orb3D.depthFactor(p.depth, radius)
+            drawLine(
+                colour.copy(alpha = 0.06f + depth * 0.16f),
+                Offset(centre.x + p.x, centre.y + p.y),
+                Offset(centre.x + q.x, centre.y + q.y),
+                px(1f),
+            )
+            drawCircle(
+                colour.copy(alpha = 0.14f + depth * 0.32f),
+                px(1.6f + depth * 1.4f),
+                Offset(centre.x + p.x, centre.y + p.y),
+            )
+        }
+    }
+}
+
+/** Warm concentric haze for the forge. */
+private fun DrawScope.warmHaze(centre: Offset, radius: Float, accent: Color, highlight: Color) {
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(highlight.copy(alpha = 0.10f), accent.copy(alpha = 0.05f), Color.Transparent),
+            center = centre,
+            radius = radius,
+        ),
+        radius = radius,
+        center = centre,
+        blendMode = BlendMode.Plus,
+    )
+    val dots = PathEffect.dashPathEffect(floatArrayOf(px(1.2f), px(6f)))
+    listOf(0.62f, 0.78f, 0.94f).forEachIndexed { i, f ->
+        drawCircle(
+            colour(accent, 0.09f - i * 0.02f),
+            radius * f,
+            centre,
+            style = Stroke(px(1f), pathEffect = dots),
         )
     }
 }
+
+/** Corner brackets, as in the forge reference's HUD panels. */
+private fun DrawScope.hudBrackets(colour: Color) {
+    val w = size.width
+    val h = size.height
+    val len = minOf(w, h) * 0.07f
+    val inset = len * 0.5f
+    val c = colour.copy(alpha = 0.22f)
+    listOf(
+        Triple(Offset(inset, inset), Offset(1f, 0f), Offset(0f, 1f)),
+        Triple(Offset(w - inset, inset), Offset(-1f, 0f), Offset(0f, 1f)),
+        Triple(Offset(inset, h - inset), Offset(1f, 0f), Offset(0f, -1f)),
+        Triple(Offset(w - inset, h - inset), Offset(-1f, 0f), Offset(0f, -1f)),
+    ).forEach { (p, dx, dy) ->
+        drawLine(c, p, Offset(p.x + dx.x * len, p.y), px(1.4f), cap = StrokeCap.Round)
+        drawLine(c, p, Offset(p.x, p.y + dy.y * len), px(1.4f), cap = StrokeCap.Round)
+    }
+}
+
+/** Soft nebula clouds, deterministic so they do not swim between frames. */
+private fun DrawScope.nebulaClouds(w: Float, h: Float, accent: Color, secondary: Color) {
+    for (i in 0 until 5) {
+        val x = OrbMath.range(i * 31 + 5, 0.1f, 0.9f) * w
+        val y = OrbMath.range(i * 31 + 9, 0.05f, 0.85f) * h
+        val r = OrbMath.range(i * 31 + 13, 0.18f, 0.42f) * minOf(w, h)
+        val c = if (i % 2 == 0) accent else secondary
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(c.copy(alpha = 0.075f), Color.Transparent),
+                center = Offset(x, y),
+                radius = r,
+            ),
+            radius = r,
+            center = Offset(x, y),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/** A circuit-board floor, as under the nebula reference. */
+private fun DrawScope.circuitFloor(horizonY: Float, colour: Color) {
+    groundMesh(horizonY, colour, rows = 9, columns = 14, alpha = 0.14f)
+    val w = size.width
+    val h = size.height
+    // Right-angled traces running along the floor.
+    for (i in 0 until 7) {
+        val y = horizonY + (h - horizonY) * OrbMath.range(i * 17 + 3, 0.15f, 0.95f)
+        val x0 = OrbMath.range(i * 17 + 7, 0f, 0.6f) * w
+        val x1 = x0 + OrbMath.range(i * 17 + 11, 0.15f, 0.4f) * w
+        val drop = OrbMath.range(i * 17 + 19, 0.02f, 0.06f) * h
+        val path = Path().apply {
+            moveTo(x0, y)
+            lineTo(x1, y)
+            lineTo(x1, y + drop)
+            lineTo(x1 + w * 0.12f, y + drop)
+        }
+        drawPath(path, colour.copy(alpha = 0.16f), style = Stroke(px(1.2f)))
+    }
+}
+
+/** Stars. Deterministic placement, so they drift rather than flicker. */
+private fun DrawScope.starField(w: Float, h: Float, warm: Color, heavy: Boolean) {
+    val count = if (heavy) 120 else 70
+    for (i in 0 until count) {
+        val x = OrbMath.unitRandom(i * 3 + 1) * w
+        val y = OrbMath.unitRandom(i * 3 + 2) * h
+        val alpha = OrbMath.range(i * 7 + 11, 0.10f, 0.50f)
+        if (OrbMath.unitRandom(i * 17 + 7) > 0.95f) {
+            flare(Offset(x, y), OrbMath.range(i, 3f, 7f) * density, Color.White, alpha * 1.3f)
+        } else {
+            drawCircle(
+                color = (if (OrbMath.unitRandom(i * 13 + 5) > 0.74f) warm else Color.White)
+                    .copy(alpha = alpha),
+                radius = OrbMath.range(i * 3 + 3, 0.6f, 1.9f) * density,
+                center = Offset(x, y),
+            )
+        }
+    }
+}
+
+private fun DrawScope.strokeProjected(
+    pts: List<Projected>,
+    centre: Offset,
+    colour: Color,
+    width: Float,
+    effect: PathEffect?,
+) {
+    val path = Path()
+    pts.forEachIndexed { i, p ->
+        val x = centre.x + p.x
+        val y = centre.y + p.y
+        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+    }
+    drawPath(path, colour, style = Stroke(px(width), pathEffect = effect))
+}
+
+private fun colour(c: Color, alpha: Float) = c.copy(alpha = alpha)

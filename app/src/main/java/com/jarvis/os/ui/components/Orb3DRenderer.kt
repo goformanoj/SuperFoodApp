@@ -43,6 +43,8 @@ data class Ring3D(
     val width: Float,
     /** Fraction of the ring lit brightly — the travelling arc. 1f lights it all. */
     val arc: Float = 0.34f,
+    /** Half-thickness of the luminous band, as a fraction of the ring's radius. */
+    val band: Float = 0.10f,
 )
 
 /** Everything a theme needs to build its orb. */
@@ -115,7 +117,7 @@ fun DrawScope.drawOrb3D(
     val breathe = 1f + f.breathe * 0.02f + f.amp * 0.05f
 
     spec.rings.forEach { ring ->
-        drawRing(ring, r * breathe, camera, focal, t, accent, highlight, f.amp)
+        drawRing(style, ring, r * breathe, camera, focal, t, accent, highlight, f.amp)
     }
 
     if (spec.shards > 0) {
@@ -128,11 +130,21 @@ fun DrawScope.drawOrb3D(
         drawSpokes(spec.spokes, r * breathe, camera, focal, t, highlight)
     }
 
-    drawCore(spec.coreSize, r, accent, highlight, secondary, f)
+    drawCore(spec.coreSize, r, ThemeArt.at(style, 0f), highlight, secondary, f)
 }
 
-/** One ring: a glow halo, a body, and a bright travelling arc — all depth-shaded. */
+/**
+ * One ring, drawn as a luminous shaded BAND rather than a stroked line.
+ *
+ * A stroke gives a wire; the references show broad swept ribbons of light whose
+ * brightness falls off across their width and around their length. So the ring is
+ * built from an inner and an outer edge in 3D and filled chunk by chunk, each
+ * quad taking its own colour from its depth and its phase. Filled quads also
+ * foreshorten correctly — the near side of the band is visibly wider than the far
+ * side, which a constant-width stroke can never show.
+ */
 private fun DrawScope.drawRing(
+    style: OrbStyle,
     ring: Ring3D,
     radius: Float,
     camera: Float,
@@ -142,73 +154,74 @@ private fun DrawScope.drawRing(
     highlight: Color,
     amp: Float,
 ) {
-    val colour = lerpColor(accent, highlight, ring.warmth)
+    // The colour the reference actually has at this radius, nudged toward the
+    // theme's accent so the live state (thinking, error, speaking) still shows.
+    val sampled = ThemeArt.at(style, ring.radius)
+    val colour = lerpColor(sampled, lerpColor(accent, highlight, ring.warmth), 0.35f)
     val rr = radius * ring.radius
+    val half = rr * ring.band
     // Precession: the tilt itself turns, which is what makes a ring read as a
-    // gyroscope rather than as a fixed ellipse with something sliding round it.
+    // gyroscope rather than a fixed ellipse with something sliding round it.
     val tiltX = ring.tiltX + sin(t * ring.precession) * 0.45f
     val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * 0.55f
-    val pts = Orb3D.ring(rr, SEG, tiltX, tiltY, t * ring.spin)
-        .map { Orb3D.project(it, camera, focal) }
+    val spin = t * ring.spin
 
-    // Halo: one soft pass over the whole ring.
-    val whole = Path()
-    pts.forEachIndexed { i, p ->
-        val x = center.x + p.x
-        val y = center.y + p.y
-        if (i == 0) whole.moveTo(x, y) else whole.lineTo(x, y)
-    }
-    drawPath(
-        whole,
-        colour.copy(alpha = 0.10f + amp * 0.06f),
-        style = Stroke(px(ring.width * 3.4f), cap = StrokeCap.Round),
-        blendMode = BlendMode.Plus,
-    )
+    val outer = Orb3D.ring(rr + half, SEG, tiltX, tiltY, spin).map { Orb3D.project(it, camera, focal) }
+    val inner = Orb3D.ring(rr - half, SEG, tiltX, tiltY, spin).map { Orb3D.project(it, camera, focal) }
+    val mid = Orb3D.ring(rr, SEG, tiltX, tiltY, spin).map { Orb3D.project(it, camera, focal) }
 
-    // Body and bright arc, in chunks so each takes its own depth.
     val per = SEG / CHUNKS
     for (c in 0 until CHUNKS) {
-        val start = c * per
-        val slice = pts.subList(start, minOf(start + per + 1, pts.size))
-        if (slice.size < 2) continue
+        val a = c * per
+        val b = minOf(a + per, SEG)
+        if (b <= a) continue
 
-        val depth = Orb3D.depthFactor(slice.map { it.depth }.average().toFloat(), rr)
-        val path = Path()
-        slice.forEachIndexed { i, p ->
-            val x = center.x + p.x
-            val y = center.y + p.y
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        val depth = Orb3D.depthFactor(
+            ((mid[a].depth + mid[b].depth) / 2f), rr,
+        )
+        val phase = Orb3D.wrap01((c.toFloat() / CHUNKS) + spin / Orb3D.TAU)
+        // A long, soft falloff around the ring rather than a hard arc: the
+        // references light most of the band, brightest at its head.
+        val sweep = if (phase < ring.arc) (1f - phase / ring.arc) else 0f
+
+        // The band itself: quad between the two edges, brightest near the camera.
+        val quad = Path().apply {
+            moveTo(center.x + outer[a].x, center.y + outer[a].y)
+            for (i in a..b) lineTo(center.x + outer[i].x, center.y + outer[i].y)
+            for (i in b downTo a) lineTo(center.x + inner[i].x, center.y + inner[i].y)
+            close()
         }
 
-        // Far side dim and thin, near side bright and thick.
-        val body = 0.16f + depth * 0.34f
+        val base = (0.05f + depth * 0.16f) * (0.55f + amp * 0.45f)
+        drawPath(quad, colour.copy(alpha = base), blendMode = BlendMode.Plus)
+        if (sweep > 0.01f) {
+            drawPath(
+                quad,
+                colour.copy(alpha = sweep * (0.10f + depth * 0.30f)),
+                blendMode = BlendMode.Plus,
+            )
+        }
+
+        // A bright filament along the band's centre line — the hot core of the
+        // ribbon, which is what stops a filled band looking like flat paint.
+        val line = Path().apply {
+            moveTo(center.x + mid[a].x, center.y + mid[a].y)
+            for (i in a..b) lineTo(center.x + mid[i].x, center.y + mid[i].y)
+        }
         drawPath(
-            path,
-            colour.copy(alpha = body),
-            style = Stroke(px(ring.width * (0.55f + depth * 0.65f)), cap = StrokeCap.Round),
+            line,
+            colour.copy(alpha = (0.18f + depth * 0.42f + sweep * 0.40f).coerceAtMost(1f)),
+            style = Stroke(px(ring.width * (0.4f + depth * 0.7f)), cap = StrokeCap.Round),
             blendMode = BlendMode.Plus,
         )
 
-        // The travelling bright arc, a fixed span of the ring that the spin
-        // carries around it.
-        val phase = Orb3D.wrap01((c.toFloat() / CHUNKS) + (t * ring.spin) / Orb3D.TAU)
-        val lit = if (phase < ring.arc) (1f - phase / ring.arc).coerceIn(0f, 1f) else 0f
-        if (lit > 0.02f) {
-            drawPath(
-                path,
-                colour.copy(alpha = lit * (0.30f + depth * 0.60f) * (0.75f + amp * 0.5f)),
-                style = Stroke(px(ring.width * (0.5f + depth * 0.5f)), cap = StrokeCap.Round),
-                blendMode = BlendMode.Plus,
+        if (sweep > 0.88f && depth > 0.55f) {
+            flare(
+                Offset(center.x + mid[b].x, center.y + mid[b].y),
+                radius * 0.06f * depth,
+                Color.White,
+                0.45f * depth,
             )
-            if (lit > 0.85f && depth > 0.55f) {
-                val head = slice.last()
-                flare(
-                    Offset(center.x + head.x, center.y + head.y),
-                    radius * 0.055f * depth,
-                    Color.White,
-                    0.5f * depth,
-                )
-            }
         }
     }
 }
