@@ -13,6 +13,7 @@ import com.jarvis.os.ai.ModelRouter
 import com.jarvis.os.ai.Tier
 import com.jarvis.os.alarm.AlarmActions
 import com.jarvis.os.alarm.AlarmSetter
+import com.jarvis.os.alarm.AlarmVolume
 import com.jarvis.os.calendar.CalAction
 import com.jarvis.os.calendar.CalendarActions
 import com.jarvis.os.calendar.CalendarReader
@@ -423,7 +424,18 @@ class AssistantEngine(context: Context) {
                 val reply = raw.replace("<<END>>", "", ignoreCase = true)
                 // Pull out and run the two command families (calendar + screen).
                 val (afterCal, actions) = CalendarActions.parse(reply)
-                val (afterAlarm, alarms) = AlarmActions.parse(afterCal)
+                val (afterAlarm, rawAlarms) = AlarmActions.parse(afterCal)
+                // An alarm nobody asked for is a real noise at a real time, and
+                // the user finds out when it goes off. A trace had "play Beat It"
+                // set a ten-minute timer called "nap".
+                val alarms = AlarmGuard.apply(userText, rawAlarms)
+                if (alarms.size != rawAlarms.size) {
+                    DebugLog.log(
+                        DebugLog.Stage.MARKERS,
+                        "alarm suppressed: nothing in \"$userText\" asked for one — " +
+                            "dropped ${rawAlarms.size - alarms.size}",
+                    )
+                }
                 val (afterMemory, memories) = MemoryActions.parse(afterAlarm)
                 applyMemories(memories)
                 val (afterFiles, fileRequests) = ArtifactActions.parse(afterMemory)
@@ -435,12 +447,22 @@ class AssistantEngine(context: Context) {
                 // is reversible. The model's search examples all end in a submit,
                 // so it tends to append one — drop it when the user asked only to
                 // compose.
-                val guarded = SendGuard.apply(userText, parsed.steps)
-                if (guarded.size != parsed.steps.size) {
+                // Asking and acting are different turns. A trace asked "what app
+                // would you like to use?" and opened YouTube in the same reply.
+                val asked = AskGuard.apply(parsed.clean, parsed.steps)
+                if (asked.size != parsed.steps.size) {
+                    DebugLog.log(
+                        DebugLog.Stage.MARKERS,
+                        "actions suppressed: the reply asks the user a question — " +
+                            "waiting for the answer instead of deciding for them",
+                    )
+                }
+                val guarded = SendGuard.apply(userText, asked)
+                if (guarded.size != asked.size) {
                     DebugLog.log(
                         DebugLog.Stage.MARKERS,
                         "send suppressed: user asked to compose, not send — dropped " +
-                            "${parsed.steps.drop(guarded.size).joinToString(", ")}",
+                            "${asked.drop(guarded.size).joinToString(", ")}",
                     )
                 }
                 val plan = parsed.copy(steps = guarded)
@@ -468,15 +490,21 @@ class AssistantEngine(context: Context) {
                 val alarmsSet = withContext(Dispatchers.IO) {
                     alarms.count { AlarmSetter.set(appContext, it) }
                 }
+                // Setting an alarm and having it ring are different things: the
+                // alarm stream has its own volume and a silenced phone accepts the
+                // alarm without complaint, then says nothing at the hour.
+                if (AlarmVolume.asksToRaise(userText)) raiseAlarmVolume()
+                val volumeNote = if (alarmsSet > 0) alarmVolumeWarning() else null
                 // Decide what to SAY now, but defer any app switch until after we
                 // finish speaking (run in onSpokenDone) so the reply isn't cut off.
                 val needsPerm = plan.needsAccessibility && !ScreenControlService.isRunning()
                 val spoken = when {
                     needsPerm ->
                         "To control the screen, open Accessibility settings, go to Downloaded apps, and switch on JARVIS Screen Control, then ask me again."
-                    clean.isNotBlank() -> clean
+                    clean.isNotBlank() -> listOfNotNull(clean, volumeNote).joinToString(" ")
                     filesMade > 0 && clean.isBlank() -> "Done — it's in your Files."
-                    alarmsSet > 0 && clean.isBlank() -> "Done, that's set."
+                    alarmsSet > 0 && clean.isBlank() ->
+                        listOfNotNull("Done, that's set.", volumeNote).joinToString(" ")
                     added > 0 && deleted > 0 -> "Done, I've rescheduled it."
                     added > 0 -> "Okay, I've added it to your calendar."
                     deleted > 0 -> "Done, I've removed it from your calendar."
@@ -616,6 +644,42 @@ class AssistantEngine(context: Context) {
             )
         } catch (e: Exception) {
             // No settings activity available — the spoken guidance still tells the user what to do.
+        }
+    }
+
+    /**
+     * Warns when an alarm that was just set will not actually be heard.
+     *
+     * The alarm stream carries its own volume, independent of media and ringer.
+     * A phone turned down accepts the alarm silently and then says nothing at the
+     * hour, which is the same failure as reporting a tap that did nothing.
+     */
+    private fun alarmVolumeWarning(): String? {
+        val audio = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            ?: return null
+        val verdict = AlarmVolume.check(
+            current = audio.getStreamVolume(AudioManager.STREAM_ALARM),
+            max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM),
+        )
+        AlarmVolume.warning(verdict)?.let {
+            DebugLog.log(DebugLog.Stage.ALARM, "alarm volume check: $verdict")
+            return it
+        }
+        return null
+    }
+
+    /** Raises the alarm stream when the user asks for it, and says what it did. */
+    private fun raiseAlarmVolume() {
+        val audio = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+        val target = AlarmVolume.targetFor(max)
+        try {
+            audio.setStreamVolume(AudioManager.STREAM_ALARM, target, 0)
+            DebugLog.log(DebugLog.Stage.ALARM, "alarm volume raised to $target/$max")
+        } catch (e: SecurityException) {
+            // Do Not Disturb can refuse the change. Report it rather than
+            // pretending the alarm is now loud.
+            DebugLog.log(DebugLog.Stage.ALARM, "could not raise alarm volume: ${e.message}")
         }
     }
 
