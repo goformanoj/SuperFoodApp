@@ -67,8 +67,13 @@ object AlarmGuard {
         listOf("set", "make", "put", "wake", "remind", "start", "in ", "at ", "for ")
             .any { text.contains(it) }
 
+    // Same plain-string test SendGuard uses. The regex version this replaced
+    // carried a bare `$` before a closing paren, which is exactly the kind of
+    // construct that compiles in one Kotlin version and not the next — and there
+    // was no reason to reach for a Regex here at all.
     private fun containsWord(text: String, word: String): Boolean =
-        Regex("(^|\\W)${Regex.escape(word)}(\\W|$)").containsMatchIn(text)
+        text == word || text.startsWith("$word ") || text.endsWith(" $word") ||
+            text.contains(" $word ")
 
     private fun normalise(text: String): String = text.lowercase()
         .replace("'", "")
