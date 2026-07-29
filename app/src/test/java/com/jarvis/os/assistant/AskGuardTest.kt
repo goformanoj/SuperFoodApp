@@ -52,7 +52,9 @@ class AskGuardTest {
 
     @Test
     fun `no steps and no reply are not errors`() {
-        assertEquals(emptyList<String>(), AskGuard.apply("Shall I open it for you?", emptyList()))
+        // The type argument is explicit because AskGuard.apply is generic: a bare
+        // emptyList() gives the compiler nothing to infer T from.
+        assertEquals(emptyList<String>(), AskGuard.apply("Shall I open it for you?", emptyList<String>()))
         assertFalse(AskGuard.asksQuestion(""))
         assertFalse(AskGuard.asksQuestion("   "))
     }
