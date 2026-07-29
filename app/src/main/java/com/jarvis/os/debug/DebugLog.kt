@@ -28,6 +28,7 @@ object DebugLog {
         SPOKE("SPOKE"),
         SESSION("SESS"),
         ALARM("ALARM"),
+        FILE("FILE"),
         ERROR("ERROR"),
     }
 

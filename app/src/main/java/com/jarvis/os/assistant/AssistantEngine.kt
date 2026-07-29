@@ -29,6 +29,9 @@ import com.jarvis.os.data.MemoryActions
 import com.jarvis.os.data.UserPreferences
 import com.jarvis.os.data.formatMemory
 import com.jarvis.os.debug.DebugLog
+import com.jarvis.os.files.ArtifactActions
+import com.jarvis.os.files.ArtifactStore
+import com.jarvis.os.files.ArtifactWriter
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.VoiceController
@@ -63,6 +66,7 @@ class AssistantEngine(context: Context) {
     private val appContext = context.applicationContext
     private val store = ConversationStore(appContext)
     private val userPrefs = UserPreferences(appContext)
+    private val artifacts = ArtifactStore(appContext)
     private val conversation: MutableList<ChatTurn> = store.load()
 
     private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
@@ -401,7 +405,11 @@ class AssistantEngine(context: Context) {
                 val (afterAlarm, alarms) = AlarmActions.parse(afterCal)
                 val (afterMemory, memories) = MemoryActions.parse(afterAlarm)
                 applyMemories(memories)
-                val parsed = ScreenActions.parse(afterMemory)
+                val (afterFiles, fileRequests) = ArtifactActions.parse(afterMemory)
+                val filesMade = withContext(Dispatchers.IO) {
+                    fileRequests.count { ArtifactWriter.write(appContext, it, artifacts) != null }
+                }
+                val parsed = ScreenActions.parse(afterFiles)
                 // "Type it" and "send it" are different instructions and only one
                 // is reversible. The model's search examples all end in a submit,
                 // so it tends to append one — drop it when the user asked only to
@@ -446,6 +454,7 @@ class AssistantEngine(context: Context) {
                     needsPerm ->
                         "To control the screen, open Accessibility settings, go to Downloaded apps, and switch on JARVIS Screen Control, then ask me again."
                     clean.isNotBlank() -> clean
+                    filesMade > 0 && clean.isBlank() -> "Done — it's in your Files."
                     alarmsSet > 0 && clean.isBlank() -> "Done, that's set."
                     added > 0 && deleted > 0 -> "Done, I've rescheduled it."
                     added > 0 -> "Okay, I've added it to your calendar."

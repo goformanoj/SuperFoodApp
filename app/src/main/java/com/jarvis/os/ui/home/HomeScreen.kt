@@ -63,6 +63,7 @@ import com.jarvis.os.ui.chat.ChatScreen
 import com.jarvis.os.ui.components.HudOrb
 import com.jarvis.os.ui.debug.DiagnosticsScreen
 import com.jarvis.os.ui.calendar.CalendarScreen
+import com.jarvis.os.ui.files.FilesScreen
 import com.jarvis.os.ui.settings.InstructionsScreen
 import com.jarvis.os.ui.settings.SettingsScreen
 import com.jarvis.os.ui.speech.VOICE_SAMPLE
@@ -165,6 +166,7 @@ fun JarvisApp(
                     onForget = onForgetFact,
                 )
                 Dest.Calendar -> CalendarScreen()
+                Dest.Files -> FilesScreen()
                 else -> PlaceholderScreen(current)
             }
 
