@@ -42,6 +42,36 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
 - **Privacy constraint (non-negotiable, see [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md)):** screen text sent to a third-party LLM is a sensitive-data transfer — it needs explicit consent and **redaction of password / OTP / payment fields before anything leaves the device**.
 - **Acceptance:** "open the chat with <name>" and "search <query>" land reliably in the common apps.
 
+### Part F — Files (artifacts JARVIS makes) ⏸️
+- **Goal:** "make a PDF of the important points", "draw a flow chart of this" → JARVIS produces the file, and it lands in the **Files** tab.
+- **Feasible now, no new provider:**
+  - **Text / Markdown** — trivial.
+  - **PDF** — Android's own `android.graphics.pdf.PdfDocument` renders text to a real PDF on-device. No library, no network, no cost.
+  - **Flow charts / diagrams** — the model emits a simple node/edge description; the app draws it to a `Canvas` and exports as PNG or into the PDF. Deterministic, and it cannot hallucinate a broken image.
+- **Blocked on a decision — image generation.** Groq has **no image model**. Real image generation needs a second provider (OpenAI `gpt-image`, Google Imagen, Stability, Replicate), all of which cost per image and need another key. Until that is decided, "make me an image" must be answered honestly rather than faked.
+- **Design:** a block marker, because a document body is multi-line and the existing single-line markers cannot carry it:
+  ```
+  <<FILE|pdf|Meeting notes>>
+  # Heading
+  - point one
+  <<ENDFILE>>
+  ```
+- **Storage:** app-private `filesDir/artifacts` + a small JSON index (name, kind, created, size). Files tab lists them, opens via `FileProvider`, and shares. Deleting one deletes the file.
+- **Acceptance:** "make a PDF of what we just discussed" → file appears in Files, opens in a PDF viewer, can be shared.
+
+### Part G — Automation (paired devices) ⏸️
+- **Goal:** pair another Android device (a tablet) with JARVIS, then drive it by voice from the phone. The Automation tab lists paired devices and their status.
+- **How it can actually work:** the tablet runs the same app in **agent mode** with its own accessibility service. The phone sends it commands; the tablet executes them locally and reports back. Nothing else can drive another Android device without root or a PC — Android deliberately forbids one app controlling another device.
+- **Transport options:**
+  | Option | Works when | Cost | Notes |
+  |---|---|---|---|
+  | **Local network (same Wi-Fi)** | Both on one network | £0 | NSD/mDNS discovery + a small socket or HTTP server on the tablet. Simplest, no account needed. **Recommended first.** |
+  | **Cloud relay** | Anywhere | Server cost | Needs the Part E backend and identity; the natural sequel once that exists. |
+  | **Bluetooth** | In range | £0 | Fiddly pairing, short range, no real advantage over Wi-Fi. |
+- **Security is the hard part, not the transport.** A device that accepts remote commands to tap and type is a remote-control channel: it needs an explicit pairing step (code shown on the tablet, entered on the phone), a shared secret kept after pairing, commands accepted only from a paired device, and a visible "being controlled" indicator on the tablet. Get this wrong and the feature is a vulnerability.
+- **Dependency:** the marker protocol and executor already exist and are device-agnostic — the tablet can reuse `ScreenActions` + `ScreenControlService` unchanged. What is new is pairing, transport, and trust.
+- **Acceptance:** pair a tablet; "on my tablet, open YouTube" runs there, not on the phone; the tablet shows it is being controlled; unpairing stops it.
+
 ### Part D — polish ⏸️
 - Tap-to-talk toggle (always-on vs press-to-talk); clear idle transcript/reply; first-run permission onboarding (mic/calendar/accessibility incl. the Realme "Downloaded apps" path).
 
