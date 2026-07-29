@@ -1404,3 +1404,51 @@ the failure this project has been bitten by before.
 
 Still unverified by me: the resemblance itself. No emulator here, so CI
 compiling is the ceiling and the user is the judge.
+
+### 2026-07-29 — The orbs are the artwork now, not a drawing of it (3284ed3)
+The user sent a screenshot of the theme picker: "how do any of these resemble
+the images???" Fair. Lattice was scattered crystals joined by a staircase of
+gold traces, Prism a spiky star instead of a faceted gem, Forge a sunburst of
+sticks. Only Arc was close, and only loosely.
+
+**The lesson is about the approach, not the execution.** Twice I tried to
+hand-draw the designs with vector shapes on a Canvas, and the second attempt was
+genuinely better than the first — dotted strips, wireframe globes, lens flares,
+real primitives. It still did not resemble the references, and it never would
+have. Those images are photorealistic renders: volumetric glass, real lighting,
+depth of field, thousands of particles. That is not a thing you converge on by
+adding more shapes. I spent two full passes learning it, when comparing the
+medium to the target would have said so before the first line of code.
+
+So the artwork is now the orb. Cropped to the sphere, 720px, WebP with a radial
+alpha falloff so it floats on the background instead of showing a square tile
+edge. 641 KB for all six. Crops deliberately framed above the status text that
+is baked into the lower part of each source image — the first crop of Arc caught
+it, which is why looking at the output mattered rather than trusting the numbers.
+
+Resemblance is now exact by construction: there is no reconstruction step to get
+wrong, because it IS the image.
+
+The user also suggested trying 3D tools. Worth recording why not: a 3D tool
+would *rebuild* the scene — model, material, light, render, hope — which is
+another approximation, just a slower one. When the goal is stated as "exact
+replicas", the shortest correct path is to ship the original, and any pipeline
+that regenerates it is strictly worse.
+
+What the code supplies is what a still image cannot: motion and reaction. The
+art breathes and swells with the microphone; counter-rotating dotted rings, a
+travelling bright arc, orbiting dust and flares live OUTSIDE it. Drawing over
+the render would only muddy work already better than anything the Canvas can
+add — that constraint is what makes the composite read as one object rather than
+as a picture with scribble on top. Error and Speaking wash the art through a
+SrcAtop blend so it still reports state; Idle and Listening leave it untouched.
+
+Deleted, not left to rot: the drawn wordmark plus its per-theme metal colour
+(the art already carries JARVIS / SYSTEM, and keeping both meant two wordmarks),
+and every primitive that existed only to reconstruct an orb — wireSphere,
+geodesicShell, circuitTrace, crystalFacet, energyRibbon. What survives is what
+still has a job around the art.
+
+**New pre-publish gate:** the wordmark is baked into the artwork. The Marvel
+trademark problem may force a rename before Play, and that now means new art
+rather than a code change. Recorded in PROGRESS and COMMERCIALIZATION.
