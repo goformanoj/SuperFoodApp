@@ -98,6 +98,17 @@ class JarvisPaletteTest {
     }
 
     @Test
+    fun `the wordmark is bright enough to read over the artwork`() {
+        // It is drawn over the middle of the orb, which is the busiest and often
+        // brightest part of every design.
+        JarvisPalette.entries.forEach {
+            val c = it.wordmark
+            val luminance = 0.299f * c.red + 0.587f * c.green + 0.114f * c.blue
+            assertTrue("${it.id} wordmark is too dark ($luminance)", luminance > 0.70f)
+        }
+    }
+
+    @Test
     fun `the default is a real entry`() {
         assertTrue(JarvisPalette.Default in JarvisPalette.entries)
     }

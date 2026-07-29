@@ -1,83 +1,27 @@
 package com.jarvis.os.ui.components
 
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
- * The drawing vocabulary the six themes are built from.
+ * What is left of the hand-drawn vocabulary, now that the orbs are the shipped
+ * artwork with their own rings rotating.
  *
- * Two attempts hand-drew the whole orb from shapes like these and neither
- * resembled the references, which are photorealistic renders. The artwork is now
- * shipped as-is and these survive only for what sits AROUND it: dotted light
- * strips, lens flares and the ground mesh. The shape-building primitives that
- * tried to reconstruct the orbs themselves were deleted rather than left to rot.
- *
- * Dotted rings use a dash path effect rather than a loop of circles. A ring of
- * sixty dots drawn individually is sixty draw calls, and six such rings per
- * frame per orb is where the framerate goes; a dashed stroke is one call and
- * looks the same.
+ * Everything that used to reconstruct an orb, and everything that used to orbit
+ * around one, has been deleted across three passes: the first two because
+ * vector shapes cannot reach a photorealistic render, the third because rings
+ * added outside the artwork read as decoration bolted onto a picture. Only the
+ * backdrop still draws: stars with flares, and the ground mesh.
  */
 
 /** Stroke widths in dp — a raw pixel width is hairline on a dense screen. */
 internal fun DrawScope.px(dp: Float): Float = dp * density
 
-/**
- * A ring drawn as a fine dotted light strip — the texture that recurs in every
- * one of the designs.
- *
- * [dotLength] and [gap] are in dp, so the dot density stays constant across
- * screen densities instead of turning solid on a dense one.
- */
-internal fun DrawScope.dottedRing(
-    radius: Float,
-    color: Color,
-    width: Float = 1f,
-    dotLength: Float = 1.5f,
-    gap: Float = 4f,
-    centre: Offset = center,
-) {
-    drawCircle(
-        color = color,
-        radius = radius,
-        center = centre,
-        style = Stroke(
-            width = px(width),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(px(dotLength), px(gap))),
-        ),
-    )
-}
 
-/** A dotted arc, for the partial bands in the Reactor and Forge designs. */
-internal fun DrawScope.dottedArc(
-    radius: Float,
-    startAngle: Float,
-    sweep: Float,
-    color: Color,
-    width: Float = 1f,
-    dotLength: Float = 1.5f,
-    gap: Float = 4f,
-) {
-    drawArc(
-        color = color,
-        startAngle = startAngle,
-        sweepAngle = sweep,
-        useCenter = false,
-        topLeft = Offset(center.x - radius, center.y - radius),
-        size = Size(radius * 2f, radius * 2f),
-        style = Stroke(
-            width = px(width),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(px(dotLength), px(gap))),
-        ),
-    )
-}
 
 
 
@@ -115,31 +59,6 @@ internal fun DrawScope.flare(at: Offset, size: Float, color: Color, alpha: Float
     }
 }
 
-/**
- * Dense fine radial lines between two radii — the hatched texture inside the
- * Forge rings and behind the Reactor bands. Every [emphasisEvery]-th line is
- * brighter, which is what stops it reading as a flat grey band.
- */
-internal fun DrawScope.radialHatch(
-    innerRadius: Float,
-    outerRadius: Float,
-    count: Int,
-    color: Color,
-    alpha: Float = 0.35f,
-    emphasisEvery: Int = 4,
-    width: Float = 1f,
-) {
-    for (i in 0 until count) {
-        val a = OrbMath.spokeAngle(i, count)
-        val strong = i % emphasisEvery == 0
-        drawLine(
-            color = color.copy(alpha = if (strong) alpha * 2.2f else alpha),
-            start = Offset(center.x + cos(a) * innerRadius, center.y + sin(a) * innerRadius),
-            end = Offset(center.x + cos(a) * outerRadius, center.y + sin(a) * outerRadius),
-            strokeWidth = px(if (strong) width * 1.5f else width),
-        )
-    }
-}
 
 
 

@@ -34,6 +34,12 @@ enum class JarvisPalette(
      * makes a theme look like its design.
      */
     @DrawableRes val art: Int,
+    /**
+     * The metal the JARVIS wordmark is cut from. It is drawn in code rather than
+     * left in the artwork, because the artwork is sliced into rotating bands and
+     * baked text would be sliced and spun with them.
+     */
+    val wordmark: Color,
     val background: Color,
     val surface: Color,
     val orbStyle: OrbStyle,
@@ -46,6 +52,7 @@ enum class JarvisPalette(
         secondary = Color(0xFF0A84FF),
         highlight = Color(0xFFF5B944),
         art = R.drawable.theme_arc,
+        wordmark = Color(0xFFA8ECF7),
         background = Color(0xFF04101E),
         surface = Color(0xFF0A1A2E),
         orbStyle = OrbStyle.Reactor,
@@ -58,6 +65,7 @@ enum class JarvisPalette(
         secondary = Color(0xFF1B9BD8),
         highlight = Color(0xFFE0A93A),
         art = R.drawable.theme_lattice,
+        wordmark = Color(0xFFBDF2FF),
         background = Color(0xFF06182B),
         surface = Color(0xFF0B2439),
         orbStyle = OrbStyle.Lattice,
@@ -70,6 +78,7 @@ enum class JarvisPalette(
         secondary = Color(0xFF8B5CF6),
         highlight = Color(0xFFE8A87C),
         art = R.drawable.theme_prism,
+        wordmark = Color(0xFFEFB694),
         background = Color(0xFF160A20),
         surface = Color(0xFF241333),
         orbStyle = OrbStyle.Prism,
@@ -82,6 +91,7 @@ enum class JarvisPalette(
         secondary = Color(0xFFC2410C),
         highlight = Color(0xFFFFD79A),
         art = R.drawable.theme_forge,
+        wordmark = Color(0xFFFFDCA8),
         background = Color(0xFF120A07),
         surface = Color(0xFF20120C),
         orbStyle = OrbStyle.Filigree,
@@ -94,6 +104,7 @@ enum class JarvisPalette(
         secondary = Color(0xFFD08B5B),
         highlight = Color(0xFFE9C0A0),
         art = R.drawable.theme_core,
+        wordmark = Color(0xFFF0CBB0),
         background = Color(0xFF150A22),
         surface = Color(0xFF231338),
         orbStyle = OrbStyle.Machine,
@@ -106,6 +117,7 @@ enum class JarvisPalette(
         secondary = Color(0xFFE0845C),
         highlight = Color(0xFF7DD3FC),
         art = R.drawable.theme_nebula,
+        wordmark = Color(0xFFEBD8EC),
         background = Color(0xFF0F0518),
         surface = Color(0xFF1C0C2B),
         orbStyle = OrbStyle.Nebula,
