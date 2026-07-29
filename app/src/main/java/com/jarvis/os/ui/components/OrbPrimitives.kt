@@ -4,7 +4,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -15,13 +14,11 @@ import kotlin.math.sin
 /**
  * The drawing vocabulary the six themes are built from.
  *
- * The first attempt at these themes drew clean solid arcs and looked like a
- * generic HUD rather than the designs. What actually characterises the
- * reference images is texture: rings are fine DOTTED light strips, not strokes;
- * there are real wireframe spheres with latitude and meridian lines; bright
- * points throw four-point lens flares; crystals show their internal facet lines.
- * Those are the primitives, so each style can be assembled from them instead of
- * approximated.
+ * Two attempts hand-drew the whole orb from shapes like these and neither
+ * resembled the references, which are photorealistic renders. The artwork is now
+ * shipped as-is and these survive only for what sits AROUND it: dotted light
+ * strips, lens flares and the ground mesh. The shape-building primitives that
+ * tried to reconstruct the orbs themselves were deleted rather than left to rot.
  *
  * Dotted rings use a dash path effect rather than a loop of circles. A ring of
  * sixty dots drawn individually is sixty draw calls, and six such rings per
@@ -82,108 +79,7 @@ internal fun DrawScope.dottedArc(
     )
 }
 
-/**
- * A wireframe globe: latitude ellipses stacked up the sphere plus meridian
- * ellipses through the poles.
- *
- * This is the shape behind four of the six designs, and it is what a flat circle
- * cannot fake — the give-away is that latitudes bunch toward the poles while
- * meridians narrow toward the centre.
- */
-internal fun DrawScope.wireSphere(
-    radius: Float,
-    color: Color,
-    latitudes: Int = 5,
-    meridians: Int = 8,
-    alpha: Float = 0.30f,
-    dotted: Boolean = true,
-    nodes: Boolean = false,
-    nodeColor: Color = color,
-) {
-    val effect = if (dotted) {
-        PathEffect.dashPathEffect(floatArrayOf(px(1.5f), px(4f)))
-    } else {
-        null
-    }
 
-    // Latitudes: circles of shrinking radius, offset up and down the sphere.
-    for (i in 1..latitudes) {
-        val t = i.toFloat() / (latitudes + 1)
-        val phi = t * OrbMath.TAU / 2f - OrbMath.TAU / 4f   // -90°..+90°
-        val ringR = radius * cos(phi)
-        val yOff = radius * sin(phi)
-        // Flattened vertically: a latitude seen edge-on is an ellipse, not a circle.
-        val ringRy = ringR * 0.26f
-        drawOval(
-            color = color.copy(alpha = alpha),
-            topLeft = Offset(center.x - ringR, center.y + yOff - ringRy),
-            size = Size(ringR * 2f, ringRy * 2f),
-            style = Stroke(px(1f), pathEffect = effect),
-        )
-        if (nodes) {
-            for (m in 0 until meridians) {
-                val a = OrbMath.spokeAngle(m, meridians)
-                drawCircle(
-                    color = nodeColor.copy(alpha = alpha * 2.2f),
-                    radius = px(1.8f),
-                    center = Offset(
-                        center.x + cos(a) * ringR,
-                        center.y + yOff + sin(a) * ringRy,
-                    ),
-                )
-            }
-        }
-    }
-
-    // Meridians: ellipses through the poles, narrowing toward the centre.
-    for (m in 0 until meridians) {
-        val t = m.toFloat() / meridians
-        val rx = radius * cos(t * OrbMath.TAU / 2f)
-        drawOval(
-            color = color.copy(alpha = alpha * 0.8f),
-            topLeft = Offset(center.x - kotlin.math.abs(rx), center.y - radius),
-            size = Size(kotlin.math.abs(rx) * 2f, radius * 2f),
-            style = Stroke(px(1f), pathEffect = effect),
-        )
-    }
-
-    // The silhouette.
-    drawCircle(
-        color = color.copy(alpha = alpha * 1.4f),
-        radius = radius,
-        center = center,
-        style = Stroke(px(1.2f)),
-    )
-}
-
-/**
- * A geodesic shell: nodes on a ring joined to their neighbours and to a second,
- * smaller ring — the strut-and-ball frame in the Prism and Core designs.
- */
-internal fun DrawScope.geodesicShell(
-    radius: Float,
-    color: Color,
-    segments: Int = 16,
-    alpha: Float = 0.5f,
-) {
-    val inner = radius * 0.74f
-    for (i in 0 until segments) {
-        val a1 = OrbMath.spokeAngle(i, segments)
-        val a2 = OrbMath.spokeAngle(i + 1, segments)
-        val half = OrbMath.spokeAngle(i, segments, 360f / segments / 2f)
-
-        val outer1 = Offset(center.x + cos(a1) * radius, center.y + sin(a1) * radius)
-        val outer2 = Offset(center.x + cos(a2) * radius, center.y + sin(a2) * radius)
-        val innerP = Offset(center.x + cos(half) * inner, center.y + sin(half) * inner)
-
-        drawLine(color.copy(alpha = alpha), outer1, outer2, px(1f))
-        drawLine(color.copy(alpha = alpha * 0.7f), outer1, innerP, px(1f))
-        drawLine(color.copy(alpha = alpha * 0.7f), outer2, innerP, px(1f))
-        // Node balls, as in the designs.
-        drawCircle(color.copy(alpha = alpha * 1.8f), px(2.6f), outer1)
-        drawCircle(color.copy(alpha = alpha), px(1.6f), innerP)
-    }
-}
 
 /**
  * A four-point lens flare. Every design puts these where energy is brightest,
@@ -245,96 +141,8 @@ internal fun DrawScope.radialHatch(
     }
 }
 
-/**
- * A gold circuit trace: an L-bent path drawn as parallel strips, as the traces
- * between the crystals in the Lattice design. Right angles are the whole point —
- * a curve would read as a wire, not a printed trace.
- */
-internal fun DrawScope.circuitTrace(
-    from: Offset,
-    to: Offset,
-    color: Color,
-    strips: Int = 3,
-    spacing: Float = 3f,
-    alpha: Float = 0.9f,
-) {
-    for (s in 0 until strips) {
-        val off = (s - (strips - 1) / 2f) * px(spacing)
-        val path = Path().apply {
-            moveTo(from.x, from.y + off)
-            lineTo((from.x + to.x) / 2f, from.y + off)
-            lineTo((from.x + to.x) / 2f, to.y + off)
-            lineTo(to.x, to.y + off)
-        }
-        drawPath(
-            path = path,
-            color = color.copy(alpha = if (s == strips / 2) alpha else alpha * 0.45f),
-            style = Stroke(px(if (s == strips / 2) 1.8f else 1f)),
-        )
-    }
-}
 
-/**
- * A crystal facet: a filled translucent triangle showing its internal
- * triangulation, which is what makes the shapes in the designs read as cut glass
- * rather than as flat polygons.
- */
-internal fun DrawScope.crystalFacet(
-    a: Offset,
-    b: Offset,
-    c: Offset,
-    fill: Color,
-    edge: Color,
-    fillAlpha: Float = 0.55f,
-) {
-    val path = Path().apply {
-        moveTo(a.x, a.y)
-        lineTo(b.x, b.y)
-        lineTo(c.x, c.y)
-        close()
-    }
-    drawPath(path, fill.copy(alpha = fillAlpha))
-    // Internal lines from each corner to the opposite midpoint — the cut lines.
-    val midAB = Offset((a.x + b.x) / 2f, (a.y + b.y) / 2f)
-    val midBC = Offset((b.x + c.x) / 2f, (b.y + c.y) / 2f)
-    val midCA = Offset((c.x + a.x) / 2f, (c.y + a.y) / 2f)
-    drawLine(edge.copy(alpha = 0.30f), c, midAB, px(0.8f))
-    drawLine(edge.copy(alpha = 0.30f), a, midBC, px(0.8f))
-    drawLine(edge.copy(alpha = 0.30f), b, midCA, px(0.8f))
-    drawPath(path, edge.copy(alpha = 0.95f), style = Stroke(px(1.1f)))
-}
 
-/**
- * A tapered energy ribbon: a broad soft band with a bright core along it, for
- * the swirling arcs in the Reactor design. Drawn as three concentric arcs of
- * decreasing width and increasing brightness, which gives the glow falloff a
- * single stroke cannot.
- */
-internal fun DrawScope.energyRibbon(
-    radius: Float,
-    startAngle: Float,
-    sweep: Float,
-    color: Color,
-    width: Float,
-    alpha: Float = 1f,
-) {
-    val layers = listOf(
-        Triple(width * 3.2f, 0.10f, 0f),
-        Triple(width * 1.7f, 0.28f, 0f),
-        Triple(width * 0.7f, 0.85f, 0f),
-    )
-    for ((w, a, _) in layers) {
-        drawArc(
-            color = color.copy(alpha = a * alpha),
-            startAngle = startAngle,
-            sweepAngle = sweep,
-            useCenter = false,
-            topLeft = Offset(center.x - radius, center.y - radius),
-            size = Size(radius * 2f, radius * 2f),
-            style = Stroke(px(w), cap = StrokeCap.Round),
-        )
-    }
-}
 
 /**
  * A perspective ground mesh: horizontal lines bunching toward a horizon and

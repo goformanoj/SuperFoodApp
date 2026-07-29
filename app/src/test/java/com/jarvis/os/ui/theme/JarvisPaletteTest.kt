@@ -65,7 +65,6 @@ class JarvisPaletteTest {
             assertNotEquals("${it.id}: highlight equals background", it.highlight, it.background)
             assertNotEquals("${it.id}: accent equals highlight", it.accent, it.highlight)
             assertNotEquals("${it.id}: surface equals background", it.surface, it.background)
-            assertNotEquals("${it.id}: wordmark equals background", it.wordmark, it.background)
         }
     }
 
@@ -90,14 +89,12 @@ class JarvisPaletteTest {
     }
 
     @Test
-    fun `the wordmark is the brightest thing in every theme`() {
-        // It is cut from a gradient running white -> wordmark -> secondary and
-        // sits over the middle of the orb. A dark one disappears into the core.
-        JarvisPalette.entries.forEach {
-            val c = it.wordmark
-            val luminance = 0.299f * c.red + 0.587f * c.green + 0.114f * c.blue
-            assertTrue("${it.id} wordmark is too dark ($luminance)", luminance > 0.70f)
-        }
+    fun `every theme ships its own artwork`() {
+        // The art IS the orb, so a missing or shared drawable means a theme
+        // silently wearing another theme's face.
+        val ids = JarvisPalette.entries.map { it.art }
+        ids.forEach { assertTrue("a theme has no artwork", it != 0) }
+        assertEquals("two themes share one drawable", ids.size, ids.toSet().size)
     }
 
     @Test
