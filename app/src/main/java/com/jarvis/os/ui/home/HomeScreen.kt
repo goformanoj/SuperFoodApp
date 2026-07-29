@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.ui.chat.ChatScreen
 import com.jarvis.os.ui.components.HudOrb
+import com.jarvis.os.ui.components.ThemeBackdrop
+import com.jarvis.os.ui.components.VoiceWave
 import com.jarvis.os.ui.debug.DiagnosticsScreen
 import com.jarvis.os.ui.calendar.CalendarScreen
 import com.jarvis.os.ui.files.FilesScreen
@@ -68,19 +70,17 @@ import com.jarvis.os.ui.settings.InstructionsScreen
 import com.jarvis.os.ui.settings.SettingsScreen
 import com.jarvis.os.ui.speech.VOICE_SAMPLE
 import com.jarvis.os.voice.Speaker
-import com.jarvis.os.ui.theme.Background
-import com.jarvis.os.ui.theme.Cyan
-import com.jarvis.os.ui.theme.ElectricBlue
 import com.jarvis.os.ui.theme.ErrorRed
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.JarvisPalette
+import com.jarvis.os.ui.theme.LocalAccent
+import com.jarvis.os.ui.theme.LocalPalette
 import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.SuccessGreen
 import com.jarvis.os.ui.theme.Surface
 import com.jarvis.os.ui.theme.SurfaceGlass
 import com.jarvis.os.ui.theme.TextPrimary
 import com.jarvis.os.ui.theme.TextSecondary
-import com.jarvis.os.ui.theme.WarningOrange
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.VoiceUiState
 import kotlinx.coroutines.launch
@@ -98,7 +98,10 @@ private enum class Dest(val label: String, val icon: ImageVector, val blurb: Str
     Diagnostics("Diagnostics", Icons.Filled.BugReport, "Self-checks, a typed command box, and the shareable trace."),
 }
 
-private val taskAccents = listOf(Cyan, WarningOrange, SuccessGreen)
+/** Task row accents, led by the theme so the card is not stuck on cyan. */
+@Composable
+private fun taskAccents(): List<Color> =
+    listOf(LocalAccent.current, LocalPalette.current.highlight, SuccessGreen)
 
 /**
  * App shell: a top-left menu opens the module drawer. Home shows the live voice
@@ -144,7 +147,7 @@ fun JarvisApp(
             )
         },
     ) {
-        Box(modifier = modifier.fillMaxSize().background(Background)) {
+        Box(modifier = modifier.fillMaxSize().background(palette.background)) {
             when (current) {
                 Dest.Home -> HomeContent(state)
                 Dest.Chat -> ChatScreen(state.messages, onClearChat)
@@ -191,6 +194,10 @@ fun JarvisApp(
 private fun HomeContent(state: VoiceUiState) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val viewport = maxHeight
+        // The backdrop sits behind the scrolling content, so the starfield stays
+        // put while the page moves over it — the orb lives in a space rather than
+        // floating on flat black.
+        ThemeBackdrop()
         Column(
             Modifier
                 .fillMaxSize()
@@ -227,7 +234,12 @@ private fun HeroSection(state: VoiceUiState, height: Dp) {
 
         Spacer(Modifier.height(28.dp))
         HudOrb(orb = state.orb, amplitude = state.amplitude, size = 280.dp)
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(8.dp))
+
+        // The waveform strip from the designs. Driven by the real mic level, so
+        // it shows whether JARVIS can currently hear you rather than just moving.
+        VoiceWave(amplitude = state.amplitude)
+        Spacer(Modifier.height(12.dp))
 
         Text(state.status, style = MaterialTheme.typography.labelLarge, color = statusColor(state.orb))
 
@@ -244,7 +256,7 @@ private fun HeroSection(state: VoiceUiState, height: Dp) {
                 Text(
                     text = state.reply,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = if (state.orb == OrbState.Error) ErrorRed else Cyan,
+                    color = if (state.orb == OrbState.Error) ErrorRed else LocalAccent.current,
                     textAlign = TextAlign.Center,
                 )
             }
@@ -280,11 +292,11 @@ private fun PlaceholderScreen(dest: Dest) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(dest.icon, contentDescription = null, tint = Cyan, modifier = Modifier.size(64.dp))
+        Icon(dest.icon, contentDescription = null, tint = LocalAccent.current, modifier = Modifier.size(64.dp))
         Spacer(Modifier.height(20.dp))
         Text(dest.label, style = MaterialTheme.typography.displayMedium, color = TextPrimary)
         Spacer(Modifier.height(10.dp))
-        Text("COMING SOON", style = MaterialTheme.typography.labelSmall, color = Cyan)
+        Text("COMING SOON", style = MaterialTheme.typography.labelSmall, color = LocalAccent.current)
         Spacer(Modifier.height(16.dp))
         Text(
             text = dest.blurb,
@@ -302,7 +314,7 @@ private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
         Text(
             text = "J.A.R.V.I.S.",
             style = MaterialTheme.typography.headlineSmall,
-            color = Cyan,
+            color = LocalAccent.current,
             modifier = Modifier.padding(start = 24.dp, bottom = 4.dp),
         )
         Text(
@@ -323,8 +335,8 @@ private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
                 colors = NavigationDrawerItemDefaults.colors(
                     selectedContainerColor = SurfaceGlass,
                     unselectedContainerColor = Color.Transparent,
-                    selectedIconColor = Cyan,
-                    unselectedIconColor = Cyan,
+                    selectedIconColor = LocalAccent.current,
+                    unselectedIconColor = LocalAccent.current,
                     selectedTextColor = TextPrimary,
                     unselectedTextColor = TextPrimary,
                 ),
@@ -363,8 +375,9 @@ private fun TasksCard() {
             agenda == null -> EmptyNote("Grant calendar access and your real schedule appears here.")
             agenda.isEmpty() -> EmptyNote("Nothing scheduled in the next couple of days.")
             else -> Column {
+                val accents = taskAccents()
                 agenda.take(MAX_AGENDA_ROWS).forEachIndexed { index, event ->
-                    EventRow(event, taskAccents[index % taskAccents.size])
+                    EventRow(event, accents[index % accents.size])
                     if (index != agenda.take(MAX_AGENDA_ROWS).lastIndex) {
                         Spacer(Modifier.height(14.dp))
                     }
@@ -412,9 +425,10 @@ private fun EventRow(event: CalendarReader.Event, accent: Color) {
 
 private const val MAX_AGENDA_ROWS = 4
 
+@Composable
 private fun statusColor(orb: OrbState): Color = when (orb) {
-    OrbState.Listening -> Cyan
-    OrbState.Thinking -> ElectricBlue
+    OrbState.Listening -> LocalAccent.current
+    OrbState.Thinking -> LocalPalette.current.secondary
     OrbState.Speaking -> SuccessGreen
     OrbState.Error -> ErrorRed
     else -> TextSecondary

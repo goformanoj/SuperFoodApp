@@ -1,8 +1,12 @@
 package com.jarvis.os.ui.settings
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,21 +23,26 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
+import com.jarvis.os.ui.components.OrbPreview
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.JarvisPalette
-import com.jarvis.os.ui.theme.SurfaceGlass
 import com.jarvis.os.ui.theme.TextPrimary
 import com.jarvis.os.ui.theme.TextSecondary
 
 /**
- * Pick the app's look. The choice is real and persisted; only the accent moves
- * for now, with the full re-skin waiting on designs — so adding one later is a
- * data change, not a rewrite.
+ * Pick the app's look — six designs, each with its own orb geometry, colours and
+ * motion.
+ *
+ * Every card runs the real orb renderer rather than showing a colour swatch.
+ * Three of these themes differ mainly in how they MOVE, so a still preview would
+ * make them look like the same design in different colours, which is exactly the
+ * choice the user needs to be able to make.
  */
 @Composable
 fun ThemesScreen(
@@ -52,7 +61,7 @@ fun ThemesScreen(
         if (!embedded) Spacer(Modifier.height(56.dp))
         Text("Themes", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
         Text(
-            "How JARVIS looks. Your choice is remembered.",
+            "Tap one to switch. Each preview is live — it is the same orb you get.",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
             modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
@@ -60,27 +69,41 @@ fun ThemesScreen(
 
         JarvisPalette.entries.forEach { palette ->
             val selected = palette == current
+            val borderColor by animateColorAsState(
+                if (selected) palette.accent else GlassBorder,
+                tween(300),
+                label = "border",
+            )
+            val previewSize by animateDpAsState(
+                if (selected) 104.dp else 88.dp,
+                tween(300),
+                label = "preview",
+            )
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 5.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (selected) palette.accent.copy(alpha = 0.10f) else SurfaceGlass)
-                    .border(
-                        1.dp,
-                        if (selected) palette.accent else GlassBorder,
-                        RoundedCornerShape(14.dp),
+                    .padding(vertical = 6.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                palette.background,
+                                palette.surface.copy(alpha = if (selected) 0.95f else 0.7f),
+                            ),
+                        ),
                     )
+                    .border(if (selected) 1.5.dp else 1.dp, borderColor, RoundedCornerShape(18.dp))
                     .clickable { onSelect(palette) }
-                    .padding(16.dp),
+                    .padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Spacer(
-                    Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(palette.accent, palette.secondary))),
-                )
+                Box(
+                    modifier = Modifier.size(112.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    OrbPreview(palette = palette, size = previewSize)
+                }
                 Spacer(Modifier.size(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -88,7 +111,20 @@ fun ThemesScreen(
                         style = MaterialTheme.typography.bodyLarge,
                         color = if (selected) palette.accent else TextPrimary,
                     )
-                    Text(palette.blurb, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Text(
+                        palette.blurb,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                    if (selected) {
+                        Text(
+                            "In use",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.accent,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
                 }
                 if (selected) {
                     Spacer(
@@ -101,10 +137,10 @@ fun ThemesScreen(
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
         Text(
-            "Right now a theme changes the accent colour throughout. Full layouts land " +
-                "once the designs are decided.",
+            "A theme changes the orb's shape and motion, the accent colours and the " +
+                "backdrop. Your choice is remembered.",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
         )

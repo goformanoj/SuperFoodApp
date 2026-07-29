@@ -14,13 +14,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.CompositionLocalProvider
-import com.jarvis.os.ui.theme.LocalAccent
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.jarvis.os.assistant.AssistantEngine
 import com.jarvis.os.ui.home.JarvisApp
-import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.JarvisPalette
 import com.jarvis.os.ui.theme.JarvisTheme
 
@@ -42,11 +39,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         engine = AssistantEngine(applicationContext)
         setContent {
-            JarvisTheme {
-                // Held here so a theme change repaints the whole app immediately.
-                var palette by remember { mutableStateOf(JarvisPalette.fromId(engine.themeId())) }
-                CompositionLocalProvider(LocalAccent provides palette.accent) {
-                Surface(modifier = Modifier.fillMaxSize(), color = Background) {
+            // Held above the theme so a change repaints the whole app immediately,
+            // background and surfaces included — not only the accent.
+            var palette by remember { mutableStateOf(JarvisPalette.fromId(engine.themeId())) }
+            JarvisTheme(palette) {
+                Surface(modifier = Modifier.fillMaxSize(), color = palette.background) {
                     val state by engine.state
                     JarvisApp(
                         state = state,
@@ -68,7 +65,6 @@ class MainActivity : ComponentActivity() {
                             engine.saveThemeId(it.id)
                         },
                     )
-                }
                 }
             }
         }
