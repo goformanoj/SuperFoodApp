@@ -1284,3 +1284,66 @@ minutes earlier — would have shown four failures immediately. The rule was
 written down, and I still used the lagging signal because it was the one the API
 handed me first. Check the artifact, and when a status has not moved, treat that
 as unknown rather than as running.
+
+### 2026-07-29 — Six themes, six animated orbs (dd7bf2c)
+The user sent six design images and asked for all of them: switchable,
+interactive, "should have moving objects like that of the orb we had before (the
+ring was moving)". This closes the placeholder that had been standing since
+bbe22d6, where the picker changed one accent colour and the screen admitted the
+designs were still owed.
+
+**The decision that shaped everything: geometry belongs to the theme, not just
+colour.** The obvious cheap version is one orb renderer with six palettes. Laid
+against the images that is plainly wrong — a hexagonal crystal lattice does not
+become an ornate filigree disc by recolouring it, and a spiral nebula is not a
+gear. So `OrbStyle` selects a renderer and the palette carries the colours it
+draws in. Six styles: Reactor, Lattice, Prism, Filigree, Machine, Nebula.
+
+**Motion was the actual request, and one shared rotation would have failed it.**
+Three independent clocks feed every style — a fast spin, a slow drift, a
+counter-rotation — plus a breathing pulse. Styles take what they need, so the
+lattice turns as one rigid piece while the reactor churns at four radii in
+opposite directions and the filigree has six rings drifting at different speeds.
+They read as different designs rather than one design in six colours. Live
+microphone amplitude widens strokes and brightens cores, so the orb answers the
+room; Thinking speeds every clock up, since that is the state where the user is
+waiting on something.
+
+**Particles must not use Math.random.** A Canvas redraws on every animation
+frame, so anything deciding WHERE a mote sits gets asked sixty times a second. A
+real random scatters the starfield anew each frame and renders as static, not
+stars. `OrbMath` is therefore a pure function of an integer seed — which also
+makes it the only part of this work that can be unit-tested, and it is:
+determinism, range, distribution across ten buckets, even spacing, spiral
+monotonicity, and the divide-by-zero guards for a zero-sided shape and a
+one-point spiral.
+
+**Persistence is by id string, so ids are a contract.** The four old themes
+(ember, signal, violet) are gone. An install holding one of those must fall back
+to the default rather than crash or blank, and that fallback is tested. Palette
+tests also pin unique ids, one theme per style, and contrast floors — a
+background luminance ceiling and an accent floor, because every screen draws
+light text over these and only a person would otherwise notice a theme that had
+made the app unreadable.
+
+Switching now moves the whole app: `JarvisTheme` derives the colour scheme from
+the palette and provides both composition locals, so a screen gets the current
+theme by being inside the app rather than by remembering to thread it down.
+HomeScreen's hardcoded Cyan is gone.
+
+The picker renders the real orb in every card. Three of these themes differ
+mainly in how they MOVE, so a static swatch would show six near-identical
+circles — it would remove exactly the information the choice depends on.
+
+**What I could not verify.** No emulator, no Android SDK, no Gradle here, so
+"does it look right" and "does it hold framerate" are the user's to answer. CI
+compiling plus the unit tests is my ceiling, and I said so rather than implying
+it was checked.
+
+**Trademark note.** One reference image carried the Avengers mark. It was
+deliberately not reproduced — Marvel IP, and combined with the JARVIS name it is
+a genuine takedown risk once this is public. Already a pre-publish gate in
+COMMERCIALIZATION.md; recording it here so the omission reads as a decision
+rather than an oversight.
+
+22 tests across OrbMath and JarvisPalette.

@@ -67,6 +67,28 @@ Still open in Part F:
 - **Flow charts / diagrams** — specced (model describes nodes and edges, app draws to a `Canvas`), not built. No new provider needed.
 - **Image generation** — blocked on choosing a paid provider.
 
+## 🎨 Part D — the six themes (build pending CI)
+**Shipped** (`dd7bf2c`): the user supplied six designs and they are all in, switchable from Settings → Appearance.
+
+Each theme owns its **geometry**, not just its palette — a crystal lattice does not become a filigree disc by recolouring it. `OrbStyle` picks the renderer:
+
+| Theme | Centrepiece | Motion |
+|---|---|---|
+| Arc Reactor | cyan + gold energy bands | four radii churning in opposite directions |
+| Lattice | six crystal prisms on a gold-trace hexagon | turns as one rigid piece |
+| Prism | faceted gem inside a node dome | gold vortex spiralling inward |
+| Forge | ornate copper filigree, molten core | six rings counter-rotating at different speeds |
+| Core | gear ringed by crystal shards | gear and hub turn opposite ways |
+| Nebula | crystal flower over a starfield | four spiral dust arms sweeping |
+
+- **Everything moves**, which was the brief. Three independent clocks (fast spin, slow drift, counter-rotation) plus a breathing pulse feed every style, so each has its own character rather than one shared rotation. Live mic amplitude widens strokes and brightens cores. **Thinking** speeds every clock up — that is the state where the user is waiting.
+- **Backdrop + waveform** — every design puts the orb in a space, not on flat black: a wash, a drifting dust field and the faint arc of a dome. The waveform strip under the orb is driven by the real mic level, so it shows whether JARVIS can currently hear you.
+- **Live previews** — the picker runs the real renderer in each card. Three themes differ mainly in how they *move*, so still swatches would have shown six near-identical circles.
+- **Switching moves the whole app** — `JarvisTheme` derives the colour scheme from the palette and provides both composition locals; HomeScreen's hardcoded cyan is gone.
+- **Tested:** particle placement is a pure function of a seed (never `Math.random` — a Canvas redraws every frame, and a re-rolled starfield is static, not stars). Determinism, range, distribution, spacing and divide-by-zero guards are covered, plus palette tests for id round-tripping, unique styles and contrast floors. Old ids (`ember`, `signal`, `violet`) fall back to the default.
+- **Not verified here:** how it *looks* and whether it holds framerate — no emulator or SDK in this environment. CI compiling is the ceiling.
+- **Flagged:** the Avengers mark in one reference image was deliberately not reproduced. Marvel IP, and with the "JARVIS" name it is a real takedown risk — already a pre-publish gate in `COMMERCIALIZATION.md`.
+
 ## 🔨 Part C tail — self-correction and a quieter reply (build pending CI)
 - **Recovers from a failed step** (`53fc4e0`) — when a step fails, the executor no longer gives up on the whole sequence. It hands the model the reason it failed *and* a fresh reading of the live screen, and runs the replacement it comes back with (max two recoveries per sequence, so a wrong plan cannot loop). This is what "sense that something is not playing and figure it out" needed: the plan is rewritten from what is actually on screen, not retried blindly.
 - **Model routing reverted** (`53fc4e0`) — routing commands to the small model was tried and measured over three device traces: it returned **no markers on every single command**, so each fell through to the smart model anyway. That doubles requests rather than halving them. `tierFor` now always returns SMART, with the evidence recorded at the call site. The fast tier stays where it demonstrably works — the `<<PICK>>` chooser and the Diagnostics ping, both ten-token prompts answering with one value.
@@ -76,7 +98,7 @@ Still open in Part F:
 
 Still open in the UI (Part D):
 - **Files** and **Automation** — the only remaining placeholders; **awaiting the user's spec**.
-- **Themes needs designs** — the switch and persistence work, the looks are still just accent colours.
+- ~~Themes needs designs~~ — **done** (`dd7bf2c`), see below.
 - Resolved: Settings now contains Voice + Appearance, Chat absorbed Memory, and Vision/Skills were removed for having nothing behind them.
 
 Still open in Part C:
@@ -165,3 +187,6 @@ Worth knowing: **Groq's limits are per account, not per user.** This is the sing
 | Files tab (PDFs + notes) | 🔬 | pending | app-private, no new permission |
 | Recovers from a failed step | 🔬 | pending | replans from the live screen, max 2 tries |
 | No spoken thought process | 🔬 | pending | narration clauses stripped, not tidied |
+| Six themes, six animated orbs | 🔬 | pending | own geometry + motion each; live previews |
+| Theme-driven background/surfaces | 🔬 | pending | not just the accent any more |
+| Backdrop + mic-driven waveform | 🔬 | pending | from the designs |

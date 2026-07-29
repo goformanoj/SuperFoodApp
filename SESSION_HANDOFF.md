@@ -4,19 +4,23 @@
 > Companion: [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md) · [`PROGRESS.md`](PROGRESS.md) · [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) · [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) · [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)
 
 ## Current position + immediate next
-- **Shipped:** Part A, the testing rig, **Part B** (work session), **Part C** (screen awareness, state memory, send guard, `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, step recovery), the navigation restructure, learned memory, custom instructions, themes, alarms, the voice picker, and **Part F — Files**.
+- **Shipped:** Part A, the testing rig, **Part B** (work session), **Part C** (screen awareness, state memory, send guard, `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, step recovery), the navigation restructure, learned memory, custom instructions, alarms, the voice picker, **Part F — Files**, and **the six themes** (`dd7bf2c`) — six orb geometries, each animated, with theme-driven backgrounds, a backdrop and a mic-driven waveform.
 - **`main` @ `6f5043d`** (green build **#139**, artifact confirmed) — everything is merged: learned memory, the navigation restructure, the rate-limit and retired-model fixes, Files, step recovery, the narration fix, the shared/slimmed system prompt, and the red-build fix.
 - **Device-confirmed:** `<<PICK>>` works — it chose "Beat It Michael Jackson" from 15 real on-screen options, and supersede fired correctly on a mid-sequence interruption.
-- **Next:** flow charts for Files (specced, no new provider needed), then **Part G — Automation** (specced, security shape fixed, not started). Still owed by the user: the **theme designs**, and a decision on a paid provider for image generation.
-- **Highest-value action:** the user is many builds behind on-device. One fresh install now carries around twenty fixes they reported and have not been able to retest.
+- **Next:** flow charts for Files (specced, no new provider needed), then **Part G — Automation** (specced, security shape fixed, not started). Still owed by the user: a decision on a paid provider for image generation. *(Theme designs are no longer owed — the user supplied six and all six are built.)*
+- **Awaiting CI:** `dd7bf2c` (the themes). Compilation is the only mechanical check that matters here — **how it looks and whether it holds framerate cannot be verified in this environment** and are the user's to judge.
+- **Unfixable from here, worth adding:** the app has no build stamp (`versionCode 1`, `versionName "1.0"`, shown nowhere), so neither the user nor Claude can tell which build a device is running. Every shared trace is unidentified. Deriving the version from the CI run number and showing it in Diagnostics was offered and not yet built.
+- **Highest-value action:** the user is well behind on-device — **11 commits changed app code since build #117**, the last point `main` was green before this session. One fresh install carries every fix they reported and could not retest.
 - **The system-prompt diet is done** (`4ad64b8`) — ~2,299 → ~1,355 tokens, one shared `SystemPrompt.kt` instead of a copy in each client, and the literal `\n` bug both copies carried is gone. Next cheap win on the same axis: **step recovery re-sends the whole prompt** when it only needs the SCREEN section — a `systemOverride` there would roughly halve a recovery's cost.
 - **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly, and step recovery should now replan around it; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
 
-## Three rules that keep being re-learned
+## Rules that keep being re-learned
 - **"In progress" is not evidence of progress.** The job-status API lags 2–5 hours; a status that has not moved means *unknown*, not *running*. **Check `list_workflow_run_artifacts`** — on 2026-07-29 four commits were built on top of a red branch and reported to the user as "still building", when one artifact check would have shown the failures immediately.
 - **A behaviour and its tests change together.** Reverting the model routing left two tests asserting the old FAST routing, which gated `assembleDebug` and produced no APK for four commits. If a test still passes after a deliberate behaviour change, it was testing the wrong thing.
 - **A tidier version of the wrong output is still the wrong output.** "Here are the steps: ." was fixed once by repairing the punctuation, and the user saw it again. When something should not be spoken, delete it — don't clean it up.
 - **Ask "is this thing unusable?", not "is this status code in my list?"** The same fallback bug was fixed three times (404, then 429, then 400) before being fixed by condition rather than by code.
+- **Never state a number you have not measured.** "~20 builds behind" was repeated from a vague docs note and asserted to the user as fact; the real figure was 11 code commits. If a number is an estimate, say so, or go and count.
+- **A preview must carry the information the choice depends on.** Three of the six themes differ mainly in how they *move*; a static colour swatch would have shown six near-identical circles. The picker runs the real renderer for that reason.
 
 ## How the debugging loop actually works now
 The user shares a trace from **Diagnostics → Share**; it shows heard → raw reply → markers parsed → per-step screen outcomes → spoken. Every fix in Part C came from one. **Read the trace before theorising** — it has repeatedly contradicted the obvious guess (e.g. the model's plan was fine and the executor was wrong).
