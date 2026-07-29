@@ -1452,3 +1452,51 @@ still has a job around the art.
 **New pre-publish gate:** the wordmark is baked into the artwork. The Marvel
 trademark problem may force a rename before Play, and that now means new art
 rather than a code change. Recorded in PROGRESS and COMMERCIALIZATION.
+
+### 2026-07-29 — The artwork's own rings rotate (cee0dbf)
+Third attempt at the themes, and the one the user's two sentences pointed at:
+"(Jarvis system) - is off centred" and "the objects in the image let's say the
+light striped rings should move instead of you adding extra moving elements
+outside the image".
+
+Both were fair, and both had causes rather than symptoms.
+
+**The wordmark.** It was baked into the reference images. It ran WIDER than the
+circular alpha fade I applied, so the fade cut it on the right, and it sits below
+the orb's centre in the source art, so no crop could centre it. It is drawn in
+code again — centred by construction, clipped by nothing.
+
+**The motion.** I had shipped the renders and then orbited dotted rings, dust and
+flares AROUND them. The artwork never moved. That reads exactly as what it was:
+decoration bolted onto a picture. Each sprite is now clipped into concentric
+bands and each band is rotated at its own speed, so the design's real rings turn
+against each other. Band edges are cut where an artwork already has a gap between
+rings, so a seam falls where the eye reads a boundary anyway. Profiles are per
+theme: Filigree gets four bands because it is all fine rings; Lattice gets two
+turning nearly together, because a hexagon of crystal prisms shears apart if its
+halves move differently.
+
+**Removing the baked text was the prerequisite** — sliced and spun with the
+bands, it would smear. Rotational cloning does it: these designs are concentric,
+so for a covered pixel the same radius at another angle holds the right content —
+same ring, same brightness, same texture. Not a blur, not a generic inpaint.
+
+Two things went wrong on the way and both were caught by looking:
+- **Mirroring across the horizontal axis** seemed the obvious first choice: the
+  text is below centre, the designs look symmetric about that axis. It turns the
+  lower half into a reflection of the upper and every single theme grew a
+  lens-shaped "eye" through the middle. Reverted to rotation.
+- **Falling back to black** where a radius was covered at every angle put a dead
+  spot in the centre of Arc. The fallback now walks outward for a radius that has
+  real pixels.
+
+The lesson worth keeping, and it is the same one three times now: when a result
+cannot be reached, change the approach rather than the effort. Two passes tried
+to hand-draw photorealistic renders with vector shapes, adding more detail each
+time. Shipping the render reached it immediately and deleted 785 lines. This pass
+deleted more still — the surrounding decoration and the OrbMath helpers only it
+used.
+
+And: every image step here was verified by rendering a contact sheet and LOOKING
+at it. The mirror artifact, the Arc dead spot and the text bleeding into the
+first crop were all invisible to reasoning and obvious on sight.

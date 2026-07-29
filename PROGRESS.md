@@ -1,8 +1,8 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `6f5043d` · last green build **#139** (artifact `jarvis-debug-apk`, 18.6 MB, confirmed) · updated 2026-07-29
-> Everything is merged. Builds #134–#138 failed on a stale `ModelRouterTest`; #139 is green, which also confirms the narration tests and `SystemPromptTest` pass — `testDebugUnitTest` gates `assembleDebug`, so an artifact means the logic is right. **The user is ~20 builds behind on-device; a fresh install is by far the highest-value next step.**
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `49a5128` · last green build **#152** (artifact `jarvis-debug-apk`, 19.3 MB, confirmed) · updated 2026-07-29
+> **Awaiting CI: `cee0dbf`** — the artwork's own rings now rotate, and the wordmark is back in the centre. `testDebugUnitTest` gates `assembleDebug`, so an artifact means the logic is right. **The user is well behind on-device; a fresh install is by far the highest-value next step.**
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
@@ -90,8 +90,11 @@ Each theme owns its **geometry**, not just its palette — a crystal lattice doe
 - **The wordmark** (`bdc3489`) — "JARVIS / SYSTEM" over the orb centre, the anchor every reference image has and the app did not. Cut from a vertical gradient (white specular → the theme's metal → its secondary) with a zero-offset coloured shadow as glow. Orbitron already ships and is the same squared face the designs use. Each palette names its own metal, since deriving it from the accent got it wrong.
 - **Status block** — uppercase and widely tracked like the artwork, but showing JARVIS's **real** state. A line permanently reading "COMMAND ACCEPTED" would be decoration lying about what the app is doing.
 - **The artwork IS the orb now** (`3284ed3`) — the user's screenshot settled it: "how do any of these resemble the images???" They did not. Lattice was scattered crystals joined by a staircase of traces, Prism a spiky star rather than a faceted gem, Forge a sunburst of sticks. **The approach was wrong, not the execution:** the references are photorealistic renders and vector shapes on a Canvas cannot reach them, however many are added — two passes went into proving that. Each design is now cropped to its orb, scaled to 720px and shipped as WebP with a radial alpha falloff so it floats rather than showing a square edge. **641 KB for all six**, crops framed to exclude the status text baked into the source images.
-- **Motion sits around the art, never over it** — painting on the render would only muddy it. The art breathes and swells with the mic; outside it are counter-rotating dotted rings, a bright arc travelling the outer ring, orbiting dust and flares that brighten with the room. Each theme has its own overlay character (Filigree busy, Lattice sparse, Nebula star-strewn). Error and Speaking wash the art via `SrcAtop` so it still reports state; Idle and Listening leave it exactly as drawn.
-- **Deleted rather than left to rot:** the drawn wordmark and its per-theme metal (the art carries JARVIS / SYSTEM, so keeping both meant two), and the primitives that existed only to reconstruct the orbs — `wireSphere`, `geodesicShell`, `circuitTrace`, `crystalFacet`, `energyRibbon`.
+- **~~Motion sits around the art~~ — rejected, and rightly** (`cee0dbf`). Rings drawn *outside* the artwork orbited a picture that never moved. The user: *"the objects in the image should move instead of you adding extra moving elements outside the image."*
+- **The artwork's own rings rotate** (`cee0dbf`) — each sprite is clipped into concentric bands and each band turns at its own speed, so the design's real rings move against each other. Band edges are cut where an artwork already has a gap between rings, so a seam lands where the eye reads a boundary anyway. Per-theme profiles: Filigree four bands (it is all fine rings), Lattice only two turning nearly together (a hexagon of prisms shears apart otherwise), Machine's gear against a near-still dome.
+- **The wordmark is drawn in code again, centred** (`cee0dbf`) — baked into the art it ran wider than the circular fade, so it was clipped on the right and read as off-centre; and it could not survive being sliced and spun with the bands.
+- **Text removed from the artwork by rotational cloning** (`cee0dbf`) — these designs are concentric, so a covered pixel's own radius at another angle holds the right content. **Mirroring across the horizontal axis was tried and rejected**: it turns the lower half into a reflection and every theme grows a lens-shaped artifact. Where a radius is covered at every angle the repair walks outward for one that is not, because falling to black left a dead spot in Arc.
+- **Deleted rather than left to rot:** the dotted rings, orbiting dust and flares that surrounded the orb, and the `OrbMath` geometry helpers only they used. What survives is what the backdrop still needs — deterministic star placement, star flares, ground mesh.
 - **⚠️ Pre-publish gate:** the wordmark is **baked into the artwork**. Renaming the app — which the Marvel trademark issue may force — means commissioning new art, not a code change.
 - **Not verified here:** how it *looks* and whether it holds framerate — no emulator or SDK in this environment. CI compiling is the ceiling, and the user is the only one who can judge the resemblance.
 - **Flagged:** the Avengers mark in one reference image was deliberately not reproduced. Marvel IP, and with the "JARVIS" name it is a real takedown risk — already a pre-publish gate in `COMMERCIALIZATION.md`.
@@ -194,7 +197,7 @@ Worth knowing: **Groq's limits are per account, not per user.** This is the sing
 | Files tab (PDFs + notes) | 🔬 | pending | app-private, no new permission |
 | Recovers from a failed step | 🔬 | pending | replans from the live screen, max 2 tries |
 | No spoken thought process | 🔬 | pending | narration clauses stripped, not tidied |
-| Six themes, six animated orbs | 🔬 | pending | own geometry + motion each; live previews |
+| Six themes, orb = the real artwork | 🔬 | pending | its own rings rotate in bands |
 | Artwork shipped as the orb | 🔬 | pending | exact replicas; 641 KB for six |
 | Animated overlay round the art | 🔬 | pending | rings, travelling arc, dust, flares |
 | Theme-driven background/surfaces | 🔬 | pending | not just the accent any more |
