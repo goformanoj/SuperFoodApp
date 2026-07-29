@@ -1,19 +1,21 @@
 package com.jarvis.os.ai
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Routing exists to preserve the big model's per-model daily quota. It errs
- * toward SMART on purpose: a slow good answer beats a fast poor one, and the
- * saving only needs to come from the easy majority to be worth having.
+ * These tests used to assert that commands routed to the FAST model. They kept
+ * asserting it for two commits after the routing was deliberately reverted,
+ * which is what turned CI red: the behaviour changed and its tests did not.
+ *
+ * They now pin the decision that replaced it — every turn in the assistant loop
+ * goes to SMART — so a future re-introduction of routing has to change a test
+ * that says why it was removed.
  */
 class ModelRouterTest {
 
     @Test
-    fun `everyday commands go to the fast model`() {
+    fun `commands go to the smart model, because the small one cannot emit markers`() {
         listOf(
             "open YouTube",
             "play Thriller",
@@ -21,9 +23,7 @@ class ModelRouterTest {
             "send mom a message saying hello",
             "go back",
             "search for standup comedy",
-            "add a meeting tomorrow at ten",
-            "cancel my dentist appointment",
-        ).forEach { assertEquals(it, Tier.FAST, ModelRouter.tierFor(it)) }
+        ).forEach { assertEquals(it, Tier.SMART, ModelRouter.tierFor(it)) }
     }
 
     @Test
@@ -31,53 +31,21 @@ class ModelRouterTest {
         listOf(
             "why is the sky blue",
             "explain how a jet engine works",
-            "tell me about Michael Jackson",
-            "what do you think of this plan",
-            "should I take the job",
             "what is the difference between RAM and storage",
         ).forEach { assertEquals(it, Tier.SMART, ModelRouter.tierFor(it)) }
     }
 
     @Test
-    fun `a request to think wins even when it opens with a command verb`() {
-        // "Tell me about" is the giveaway, not the first word.
-        assertEquals(Tier.SMART, ModelRouter.tierFor("show me why the sky is blue"))
-        assertEquals(Tier.SMART, ModelRouter.tierFor("find me an explain of how engines work"))
-    }
-
-    @Test
-    fun `a long utterance is a conversation however it starts`() {
-        val long = "open the app and then tell me everything you know about how " +
-            "this thing works because I have been wondering for ages"
-
-        assertEquals(Tier.SMART, ModelRouter.tierFor(long))
-    }
-
-    @Test
-    fun `anything unfamiliar defaults to the smart model`() {
+    fun `conversation, silence and nonsense all go to the smart model too`() {
         assertEquals(Tier.SMART, ModelRouter.tierFor("hello Jarvis"))
         assertEquals(Tier.SMART, ModelRouter.tierFor("thanks"))
-        assertEquals(Tier.SMART, ModelRouter.tierFor("I'm bored"))
         assertEquals(Tier.SMART, ModelRouter.tierFor(""))
     }
 
     @Test
-    fun `punctuation and capitals do not change the decision`() {
-        assertEquals(Tier.FAST, ModelRouter.tierFor("Open YouTube!"))
-        assertEquals(Tier.FAST, ModelRouter.tierFor("  play  Thriller  "))
-    }
-
-    @Test
-    fun `expectsAction recognises a command so a fumbled one can be retried`() {
-        assertTrue(ModelRouter.expectsAction("open WhatsApp"))
-        assertTrue(ModelRouter.expectsAction("set an alarm for six"))
-        assertFalse(ModelRouter.expectsAction("why is the sky blue"))
-        assertFalse(ModelRouter.expectsAction("hello"))
-        assertFalse(ModelRouter.expectsAction(""))
-    }
-
-    @Test
-    fun `the command length bound is a sentence, not a paragraph`() {
-        assertTrue(ModelRouter.MAX_COMMAND_WORDS in 6..20)
+    fun `the fast tier still exists for the callers where it works`() {
+        // <<PICK>> chooser and the Diagnostics ping pass Tier.FAST explicitly;
+        // they send ~10 tokens and expect one value back.
+        assertEquals(2, Tier.entries.size)
     }
 }

@@ -4,72 +4,34 @@ package com.jarvis.os.ai
 enum class Tier { FAST, SMART }
 
 /**
- * Chooses the model for a turn.
+ * Chooses the model for a turn in the assistant loop. It is always [Tier.SMART],
+ * on the evidence.
  *
- * "Open YouTube" and "set an alarm for seven" do not need a 70-billion-parameter
- * model; explaining something does. Groq's quotas are per model, so routing the
- * easy majority to the small one both preserves the big model's daily allowance
- * and answers faster.
+ * The idea was sound in the abstract: Groq's quotas are per model, "open YouTube"
+ * does not need seventy billion parameters, so route the easy majority to the
+ * small model and preserve the big one's daily allowance.
  *
- * Conservative by design: anything that is not clearly a short, familiar command
- * goes to the smart model. A slow good answer beats a fast poor one, and the
- * saving only has to come from the easy cases to be worth having.
+ * It was then measured on real traffic and it failed outright. Across three
+ * device traces llama-3.1-8b returned NO markers on a single command, so every
+ * command escalated to the smart model anyway. That does not halve the requests,
+ * it doubles them. The small model cannot hold the marker protocol, and for a
+ * command the protocol IS the answer — the cost of a turn is not its length.
  *
- * Pure Kotlin, so the routing rules are unit-tested.
+ * So this is deliberately a function returning a constant rather than a deleted
+ * class: the decision and its evidence stay visible at the call site, and the
+ * next person to have this idea reads why it did not work before rebuilding it.
+ *
+ * The fast tier is still used where it demonstrably works — the `<<PICK>>`
+ * chooser and the Diagnostics ping, which send about ten tokens and expect one
+ * value back.
+ *
+ * Everything that supported the routing decision (the command-verb list, the
+ * conversation cues, the word-count bound, and `expectsAction`, which escalated
+ * a fumbled command) went with it. Keeping unreachable heuristics around would
+ * have implied the app still routes when it does not; git history has them if
+ * the experiment is ever worth repeating against a stronger small model.
  */
 object ModelRouter {
 
-    /** Beyond this many words it is a conversation, not a command. */
-    const val MAX_COMMAND_WORDS = 12
-
-    /** Openers that mean "do a thing on this phone". */
-    private val COMMAND_VERBS = setOf(
-        "open", "launch", "start", "play", "search", "find", "type", "write", "send",
-        "set", "add", "remind", "schedule", "cancel", "delete", "remove", "scroll",
-        "tap", "click", "press", "go", "back", "home", "close", "stop", "pause",
-        "resume", "next", "previous", "call", "text", "message", "show",
-    )
-
-    /** Cues that the user wants thinking rather than doing. */
-    private val CONVERSATION_CUES = listOf(
-        "why", "how come", "explain", "tell me about", "what do you think",
-        "should i", "do you think", "difference between", "compare", "summarise",
-        "summarize", "advice", "recommend", "opinion", "describe", "who is",
-        "who was", "what is the", "what are the", "help me understand", "teach me",
-    )
-
-    /**
-     * Always [Tier.SMART] for the assistant loop, on the evidence.
-     *
-     * Routing commands to the small model was tried and measured: in three device
-     * traces it returned NO markers on every single command, so each one fell
-     * through to the smart model anyway. That does not halve the requests, it
-     * doubles them — the small model cannot hold the marker protocol, and the
-     * protocol is what commands are made of.
-     *
-     * The fast tier is still used where it demonstrably works: the `<<PICK>>`
-     * chooser and the Diagnostics ping, both of which carry a ten-token prompt
-     * and answer with one value. Kept as a function rather than deleted so the
-     * decision, and the reason, stay visible at the call site.
-     */
     fun tierFor(utterance: String): Tier = Tier.SMART
-
-    /**
-     * True when the turn should have produced an action. Used to escalate: if the
-     * fast model was asked to do something and came back with no command at all,
-     * it probably fumbled the marker syntax, and the turn is worth one retry on
-     * the smart model rather than a shrug.
-     */
-    fun expectsAction(utterance: String): Boolean {
-        val text = normalise(utterance)
-        val words = text.split(" ").filter { it.isNotEmpty() }
-        return words.isNotEmpty() && words.first() in COMMAND_VERBS
-    }
-
-    private fun normalise(text: String): String = text.lowercase()
-        .replace("'", "")
-        .replace("’", "")
-        .replace(Regex("[^a-z0-9 ]"), " ")
-        .replace(Regex(" +"), " ")
-        .trim()
 }
