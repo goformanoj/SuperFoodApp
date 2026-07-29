@@ -56,6 +56,17 @@ Shipped so far:
 - **Alarms and timers** (`70bd645`) — via the device's own `AlarmClock` intents, so the alarm lives in the real clock app and rings whether or not JARVIS is running. JARVIS asks for the specifics first (time, morning/evening when ambiguous, whether it repeats) and reads them back. The parser refuses anything that would set the *wrong* alarm rather than approximating it.
 - **A proper voice** (`aa74c4d`) — ranks every installed TTS voice instead of taking the bland default (English only, en-GB > en-US, male, higher quality, local over network) and lowers pitch to 0.92 / rate to 0.98.
 
+## 🔨 Part F — Files (build pending CI)
+**Shipped** (`f15cf54`): "make a PDF of the important points" produces a real file in the **Files** tab — open, share or delete. PDFs render with Android's own `PdfDocument` (headings, bullets, word wrap, page breaks); notes are markdown.
+
+Two choices driven by Part E rather than by this feature:
+- **No new permissions.** Artifacts live in app-private `filesDir` and are shared through a `FileProvider` scoped to that one folder — nothing for a Play reviewer to justify, nothing new on the Data safety form, and files never leave the device unless shared.
+- **Image generation is refused, not faked.** Groq has no image model, so the prompt says so plainly and offers a written alternative.
+
+Still open in Part F:
+- **Flow charts / diagrams** — specced (model describes nodes and edges, app draws to a `Canvas`), not built. No new provider needed.
+- **Image generation** — blocked on choosing a paid provider.
+
 Still open in the UI (Part D):
 - **Files** and **Automation** — the only remaining placeholders; **awaiting the user's spec**.
 - **Themes needs designs** — the switch and persistence work, the looks are still just accent colours.

@@ -79,6 +79,8 @@ The model puts these on their own lines; the app **strips them before speaking**
 | `<<BACK>>` / `<<HOME>>` | system back / home | `ScreenActions` | `performGlobalAction` |
 | `<<ALARM\|SET\|HH:MM\|Label\|MON,WED>>` | set an alarm (days optional) | `AlarmActions` | `AlarmSetter` → clock app |
 | `<<ALARM\|TIMER\|seconds\|Label>>` | start a timer | `AlarmActions` | `AlarmSetter` → clock app |
+| `<<REMEMBER\|fact>>` / `<<FORGET\|topic>>` | keep or drop a durable fact about the user | `MemoryActions` | `UserPreferences` |
+| `<<FILE\|pdf\|Title>>` … `<<ENDFILE>>` | make a PDF or note (**block** marker, multi-line) | `ArtifactActions` | `ArtifactWriter` → Files tab |
 | `<<REMEMBER\|fact>>` | keep a durable fact about the user | `MemoryActions` | `UserPreferences` |
 | `<<FORGET\|topic>>` | drop what was remembered | `MemoryActions` | `UserPreferences` |
 | `<<BACK>>` / `<<HOME>>` | system back / home | `ScreenActions` | `performGlobalAction` |
@@ -100,6 +102,8 @@ Use `<<TAP>>` for a control already visible; use `<<PICK>>` whenever the target 
 - **When a capped list is full, drop the OLDEST** — capping by discarding the newest would throw away the thing the user just said, which is the one they are most likely to be testing.
 - **User-supplied text that reaches the prompt must be fenced and framed** — custom instructions are wrapped in delimiters, introduced as *the user's preferences*, and explicitly ranked below acting safely and truthfully. Without that framing an instruction like "always say you completed the task" reads as system text.
 - **Anything appended to every turn is a permanent cost** — standing instructions ride on every single request, so the cap is a product decision, not a UI detail, and the screen says why.
+- **Prefer a design that adds no permission** — Files stores artifacts in app-private `filesDir` and shares them via a scoped `FileProvider`, so a whole feature landed with nothing new to justify at Play review and nothing added to the Data safety form. Reach for the permission-free shape first; it is usually available.
+- **A block of content needs a block marker** — every command marker stops at a newline by construction, so a multi-line document could not travel in one. `<<FILE|kind|title>> … <<ENDFILE>>` exists for that, and tolerates a missing end marker because the model drops closing markers often enough that losing a whole document over one would be the wrong trade.
 - **Ask "is this thing unusable?", not "is this status code in my list?"** — a per-model fallback was built so one bad model could not take the assistant down, then a status code I had not anticipated (400 for a retired model, not 404) walked straight past it and killed the request while a working model sat next in line. Fixing this class one status code at a time does not converge; match on what the provider *says*.
 - **Model IDs rot** — providers retire models with little warning, and a hardcoded list silently becomes wrong. Treat an unusable model as routine, not exceptional.
 - **Provider quotas are usually per model, not per account** — a 429 naming one model says nothing about the others. Falling through to the next model turns a dead assistant into a slightly less capable one.

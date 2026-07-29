@@ -1108,3 +1108,39 @@ providers retire them with little warning, so a hardcoded list silently becomes
 wrong and an unusable model must be routine rather than exceptional.
 
 3 tests using the exact body from the device.
+
+### 2026-07-28 — Files: JARVIS makes PDFs and notes (f15cf54)
+User defined the Files tab: artifacts JARVIS is asked to make live there. Built
+PDF and note creation; flow charts and image generation deliberately not.
+
+PDFs use Android's own PdfDocument — no library, no network, no cost, offline —
+rendering headings, bullets, word wrap and page breaks from a plain-text body.
+
+Two decisions came from the bigger picture rather than from this feature, which
+is the part worth remembering:
+
+**No new permissions.** Artifacts live in app-private filesDir and are shared
+through a FileProvider scoped to that single folder. No storage permission to
+request, nothing extra for a Play reviewer to question, nothing added to the Data
+safety form. A version of this feature that reached for shared storage would have
+cost real friction at Part E; the permission-free shape was available and is
+strictly better.
+
+**Image generation is refused rather than faked.** Groq has no image model. The
+prompt states plainly that JARVIS cannot make images and should offer a written
+alternative. Claiming to have produced something it cannot produce is exactly the
+failure this project was already bitten by ("Playing the Thriller video" reported
+success four times while doing nothing).
+
+Design note: the file block needed a different shape from every other marker. All
+of them stop at a newline by construction, so a multi-line document could not
+travel in one. <<FILE|kind|title>> … <<ENDFILE>> is a block marker, and a MISSING
+end marker still produces the file — the model drops closing brackets often
+enough that losing a whole document over one would be the wrong trade. The body is
+stripped from the spoken reply, since a PDF should not be read aloud, and a
+runaway generation is capped rather than filling the user's storage.
+
+Cost note: the system prompt is now ~2,175 tokens, up from 2,001. Files added to
+it. The prompt diet owed to the user is more overdue, not less.
+
+10 tests on the parser.
