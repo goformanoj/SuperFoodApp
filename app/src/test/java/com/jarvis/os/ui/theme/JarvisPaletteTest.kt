@@ -89,15 +89,6 @@ class JarvisPaletteTest {
     }
 
     @Test
-    fun `every theme ships its own artwork`() {
-        // The art IS the orb, so a missing or shared drawable means a theme
-        // silently wearing another theme's face.
-        val ids = JarvisPalette.entries.map { it.art }
-        ids.forEach { assertTrue("a theme has no artwork", it != 0) }
-        assertEquals("two themes share one drawable", ids.size, ids.toSet().size)
-    }
-
-    @Test
     fun `the wordmark is bright enough to read over the artwork`() {
         // It is drawn over the middle of the orb, which is the busiest and often
         // brightest part of every design.

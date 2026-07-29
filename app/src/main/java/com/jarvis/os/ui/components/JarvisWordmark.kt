@@ -29,11 +29,10 @@ import com.jarvis.os.ui.theme.Orbitron
  * secondary at the base, which is what gives the letters the brushed look in the
  * images. A coloured shadow with no offset acts as the glow behind them.
  *
- * Drawn in code rather than left baked into the artwork for two reasons: the art
- * is sliced into rotating bands, so baked text would be sliced and spun with
- * them; and the baked text ran wider than the artwork's circular fade, so it was
- * clipped on the right and read as off-centre. Here it is centred by
- * construction and nothing clips it.
+ * Drawn in code, which is how it stays centred. When it was baked into sprite
+ * artwork it ran wider than the sprite's circular fade, so it was clipped on the
+ * right and read as off-centre. Here it is centred by construction, nothing
+ * clips it, and renaming the app is a code change rather than new art.
  *
  * Orbitron is the family already shipped with the app and is the same squared
  * techno face the designs use, so no new font was needed.

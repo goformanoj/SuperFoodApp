@@ -1,9 +1,7 @@
 package com.jarvis.os.ui.theme
 
-import androidx.annotation.DrawableRes
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
-import com.jarvis.os.R
 
 /**
  * Which geometry the orb draws. Each theme in the user's designs has its own
@@ -15,10 +13,9 @@ enum class OrbStyle { Reactor, Lattice, Prism, Filigree, Machine, Nebula }
 /**
  * A selectable look: a full colour set plus the shape of the orb.
  *
- * Six, drawn from the designs the user supplied. Every one of them animates —
- * the brief was "moving objects like the ring we had before", so each style has
- * its own motion, and the palette carries the colours that motion is drawn in
- * rather than every screen reaching for the fixed [Cyan].
+ * Six, drawn from the designs the user supplied. The orb geometry itself is
+ * built in three dimensions per [OrbStyle]; this carries the colours it is drawn
+ * in, so no screen reaches for the fixed [Cyan] any more.
  */
 enum class JarvisPalette(
     val id: String,
@@ -28,16 +25,9 @@ enum class JarvisPalette(
     val secondary: Color,
     /** The warm counter-colour: gold traces, copper struts, the second energy arc. */
     val highlight: Color,
-    /**
-     * The theme's artwork — the actual orb. Hand-drawing these was tried twice
-     * and could not reach a photorealistic render; shipping the render is what
-     * makes a theme look like its design.
-     */
-    @DrawableRes val art: Int,
-    /**
-     * The metal the JARVIS wordmark is cut from. It is drawn in code rather than
-     * left in the artwork, because the artwork is sliced into rotating bands and
-     * baked text would be sliced and spun with them.
+    /** The metal the JARVIS wordmark is cut from — pale cyan in the two blue
+     * designs, rose gold or gold in the warm ones. Chosen per theme rather than
+     * derived from the accent, because it is the brightest thing on screen.
      */
     val wordmark: Color,
     val background: Color,
@@ -51,7 +41,6 @@ enum class JarvisPalette(
         accent = Color(0xFF22E0F5),
         secondary = Color(0xFF0A84FF),
         highlight = Color(0xFFF5B944),
-        art = R.drawable.theme_arc,
         wordmark = Color(0xFFA8ECF7),
         background = Color(0xFF04101E),
         surface = Color(0xFF0A1A2E),
@@ -64,7 +53,6 @@ enum class JarvisPalette(
         accent = Color(0xFF7DF0FF),
         secondary = Color(0xFF1B9BD8),
         highlight = Color(0xFFE0A93A),
-        art = R.drawable.theme_lattice,
         wordmark = Color(0xFFBDF2FF),
         background = Color(0xFF06182B),
         surface = Color(0xFF0B2439),
@@ -77,7 +65,6 @@ enum class JarvisPalette(
         accent = Color(0xFFB98CF0),
         secondary = Color(0xFF8B5CF6),
         highlight = Color(0xFFE8A87C),
-        art = R.drawable.theme_prism,
         wordmark = Color(0xFFEFB694),
         background = Color(0xFF160A20),
         surface = Color(0xFF241333),
@@ -90,7 +77,6 @@ enum class JarvisPalette(
         accent = Color(0xFFF0A44B),
         secondary = Color(0xFFC2410C),
         highlight = Color(0xFFFFD79A),
-        art = R.drawable.theme_forge,
         wordmark = Color(0xFFFFDCA8),
         background = Color(0xFF120A07),
         surface = Color(0xFF20120C),
@@ -103,7 +89,6 @@ enum class JarvisPalette(
         accent = Color(0xFFA855F7),
         secondary = Color(0xFFD08B5B),
         highlight = Color(0xFFE9C0A0),
-        art = R.drawable.theme_core,
         wordmark = Color(0xFFF0CBB0),
         background = Color(0xFF150A22),
         surface = Color(0xFF231338),
@@ -116,7 +101,6 @@ enum class JarvisPalette(
         accent = Color(0xFFC084FC),
         secondary = Color(0xFFE0845C),
         highlight = Color(0xFF7DD3FC),
-        art = R.drawable.theme_nebula,
         wordmark = Color(0xFFEBD8EC),
         background = Color(0xFF0F0518),
         surface = Color(0xFF1C0C2B),
