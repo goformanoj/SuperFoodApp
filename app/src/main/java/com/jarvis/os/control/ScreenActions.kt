@@ -41,6 +41,15 @@ object ScreenActions {
     // text must never reach the user, whatever the model produced.
     private val MARKER_RESIDUE = Regex("""<<[^<>\n]*>{0,2}""")
 
+    /**
+     * A clause ending in a colon, which in a spoken reply is almost always the
+     * model announcing what it is about to emit — "Here are the steps:", "To do
+     * that, I'll need to:". The markers are stripped, so that narration is left
+     * describing nothing. Removed entirely rather than tidied, and only when the
+     * reply actually carried markers, so ordinary prose is untouched.
+     */
+    private val NARRATION = Regex("""[^.!?]*:\s*""")
+
     // "…the steps: ." -> "…the steps."
     private val DANGLING_PUNCTUATION = Regex("""[:,]\s*(?=[.!?])""")
     private val SPACE_BEFORE_PUNCTUATION = Regex("""\s+([.!?,])""")
@@ -69,12 +78,14 @@ object ScreenActions {
                 "HOME" -> steps.add(ScreenStep.Home)
             }
         }
-        val clean = reply
+        val stripped = reply
             .replace(MARKER, "")
             .replace(MARKER_RESIDUE, "")
-            // Removing the markers leaves the sentence that introduced them
-            // dangling — "Here are the steps: ." was genuinely spoken aloud on a
-            // device. Tidy the punctuation the markers used to sit behind.
+
+        val clean = stripped
+            // The user should hear what JARVIS is doing, never how it plans to do
+            // it. "Here are the steps: ." was genuinely spoken aloud on a device.
+            .let { if (steps.isEmpty()) it else it.replace(NARRATION, "") }
             .replace(DANGLING_PUNCTUATION, "")
             .replace(SPACE_BEFORE_PUNCTUATION, "$1")
             .replace(DOUBLED_PUNCTUATION, "$1")

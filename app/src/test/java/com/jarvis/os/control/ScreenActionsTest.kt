@@ -176,20 +176,30 @@ class ScreenActionsTest {
     // --- spoken text left behind after markers are stripped -----------------
 
     @Test
-    fun `a sentence introducing the markers does not end up dangling`() {
-        // Genuinely spoken on a device: "Here are the steps: ."
+    fun `the model narrating its plan is not spoken at all`() {
+        // Genuinely spoken on a device: "Here are the steps: ." The user should
+        // hear what JARVIS is doing, never how it intends to do it.
         val plan = ScreenActions.parse(
             "To play Beat It, I'll search YouTube. Here are the steps: <<OPEN|YouTube>> <<TAP|Search>>.",
         )
 
-        assertEquals("To play Beat It, I'll search YouTube. Here are the steps.", plan.clean)
+        assertEquals("To play Beat It, I'll search YouTube.", plan.clean)
     }
 
     @Test
-    fun `a mid-sentence marker leaves no gap or stray punctuation`() {
+    fun `narration is removed without swallowing the sentences around it`() {
         val plan = ScreenActions.parse("I'll pull up the chat. Here are the steps: <<TAP|Mom>>. Sending now!")
 
-        assertEquals("I'll pull up the chat. Here are the steps. Sending now!", plan.clean)
+        assertEquals("I'll pull up the chat. Sending now!", plan.clean)
+    }
+
+    @Test
+    fun `a colon in ordinary conversation is left alone`() {
+        // Narration stripping applies only when the reply carried markers, so a
+        // genuine answer keeps its punctuation.
+        val chat = "There are two options: tea or coffee."
+
+        assertEquals(chat, ScreenActions.parse(chat).clean)
     }
 
     @Test
