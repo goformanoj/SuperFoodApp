@@ -65,6 +65,7 @@ class JarvisPaletteTest {
             assertNotEquals("${it.id}: highlight equals background", it.highlight, it.background)
             assertNotEquals("${it.id}: accent equals highlight", it.accent, it.highlight)
             assertNotEquals("${it.id}: surface equals background", it.surface, it.background)
+            assertNotEquals("${it.id}: wordmark equals background", it.wordmark, it.background)
         }
     }
 
@@ -85,6 +86,17 @@ class JarvisPaletteTest {
             val c = it.accent
             val luminance = 0.299f * c.red + 0.587f * c.green + 0.114f * c.blue
             assertTrue("${it.id} accent is too dark ($luminance)", luminance > 0.35f)
+        }
+    }
+
+    @Test
+    fun `the wordmark is the brightest thing in every theme`() {
+        // It is cut from a gradient running white -> wordmark -> secondary and
+        // sits over the middle of the orb. A dark one disappears into the core.
+        JarvisPalette.entries.forEach {
+            val c = it.wordmark
+            val luminance = 0.299f * c.red + 0.587f * c.green + 0.114f * c.blue
+            assertTrue("${it.id} wordmark is too dark ($luminance)", luminance > 0.70f)
         }
     }
 

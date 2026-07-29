@@ -1,11 +1,9 @@
 package com.jarvis.os.ui.components
 
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -47,14 +45,12 @@ fun DrawScope.drawOrbStyle(style: OrbStyle, f: OrbFrame) {
     }
 }
 
-// --- shared pieces -------------------------------------------------------
-
 /** The soft radial bloom every style sits inside. */
-private fun DrawScope.drawBloom(f: OrbFrame, color: Color, scale: Float = 1f) {
+private fun DrawScope.bloom(f: OrbFrame, color: Color, scale: Float = 1f) {
     val r = f.radius * scale * (0.9f + f.amp * 0.16f)
     drawCircle(
         brush = Brush.radialGradient(
-            colors = listOf(color.copy(alpha = 0.22f + f.amp * 0.30f), Color.Transparent),
+            colors = listOf(color.copy(alpha = 0.20f + f.amp * 0.28f), Color.Transparent),
             center = center,
             radius = r,
         ),
@@ -63,466 +59,450 @@ private fun DrawScope.drawBloom(f: OrbFrame, color: Color, scale: Float = 1f) {
     )
 }
 
-/** Dust motes on a ring, deterministic so they do not jitter between frames. */
-private fun DrawScope.drawMotes(
-    f: OrbFrame,
-    count: Int,
-    innerFraction: Float,
-    outerFraction: Float,
-    color: Color,
-    seedBase: Int,
-    rotation: Float,
-) {
-    rotate(rotation, center) {
-        for (i in 0 until count) {
-            val a = OrbMath.range(seedBase + i, 0f, OrbMath.TAU)
-            val rad = f.radius * OrbMath.range(seedBase + i + 977, innerFraction, outerFraction)
-            val dotR = dpOf(OrbMath.range(seedBase + i + 313, 0.8f, 2.4f))
-            val alpha = OrbMath.range(seedBase + i + 55, 0.20f, 0.75f)
-            drawCircle(
-                color = color.copy(alpha = alpha),
-                radius = dotR,
-                center = Offset(center.x + OrbMath.xAt(a, rad), center.y + OrbMath.yAt(a, rad)),
-            )
-        }
-    }
-}
-
-/** A geodesic dome: nodes on a ring joined to their neighbours. */
-private fun DrawScope.drawDome(
-    f: OrbFrame,
-    nodes: Int,
-    fraction: Float,
-    color: Color,
-    rotation: Float,
-) {
-    val rad = f.radius * fraction
-    rotate(rotation, center) {
-        for (i in 0 until nodes) {
-            val a1 = OrbMath.spokeAngle(i, nodes)
-            val a2 = OrbMath.spokeAngle(i + 1, nodes)
-            val p1 = Offset(center.x + OrbMath.xAt(a1, rad), center.y + OrbMath.yAt(a1, rad))
-            val p2 = Offset(center.x + OrbMath.xAt(a2, rad), center.y + OrbMath.yAt(a2, rad))
-            drawLine(color.copy(alpha = 0.35f), p1, p2, dpOf(1f))
-            // Strut inward, giving the dome its depth without a 3D projection.
-            val inner = Offset(
-                center.x + OrbMath.xAt(a1, rad * 0.72f),
-                center.y + OrbMath.yAt(a1, rad * 0.72f),
-            )
-            drawLine(color.copy(alpha = 0.18f), p1, inner, dpOf(1f))
-            drawCircle(color.copy(alpha = 0.75f), dpOf(2.2f), p1)
-        }
-    }
-}
-
-private fun DrawScope.arcRing(
-    fraction: Float,
-    start: Float,
-    sweep: Float,
-    color: Color,
-    width: Float,
-    radius: Float,
-) {
-    val rad = radius * fraction
-    drawArc(
-        color = color,
-        startAngle = start,
-        sweepAngle = sweep,
-        useCenter = false,
-        topLeft = Offset(center.x - rad, center.y - rad),
-        size = Size(rad * 2f, rad * 2f),
-        style = Stroke(width, cap = StrokeCap.Round),
-    )
-}
-
-/**
- * Stroke widths in dp without importing the unit type. Canvas works in raw
- * pixels, so a hardcoded width would be hairline on a dense screen.
- */
-private fun DrawScope.dpOf(value: Float): Float = value * density
+/** A point on a circle around the orb centre. */
+private fun DrawScope.at(angle: Float, radius: Float) =
+    Offset(center.x + cos(angle) * radius, center.y + sin(angle) * radius)
 
 // --- 1. Arc Reactor ------------------------------------------------------
 
-/** Swirling cyan and gold energy bands, counter-rotating. */
+/**
+ * Swirling cyan and gold energy ribbons over a dotted particle shell, with
+ * flares where the bands cross. The design's rings are dotted light strips, not
+ * solid strokes, and the ribbons glow rather than being drawn as flat arcs.
+ */
 private fun DrawScope.drawReactor(f: OrbFrame) {
-    drawBloom(f, f.accent)
+    bloom(f, f.accent, 1.05f)
 
-    // Broad energy bands, alternating direction so the whole thing churns.
-    val bands = listOf(
-        Triple(0.94f, 0f, 1f), Triple(0.80f, 140f, -1f),
-        Triple(0.66f, 40f, 1f), Triple(0.52f, 220f, -1f),
-    )
-    bands.forEachIndexed { i, (frac, offset, dir) ->
-        val rot = if (dir > 0) f.spin else f.counter
-        rotate(rot * (0.6f + i * 0.18f) + offset, center) {
-            arcRing(frac, 0f, 150f, f.accent.copy(alpha = 0.55f), dpOf(4f + f.amp * 3f), f.radius)
-            arcRing(frac, 190f, 90f, f.accent.copy(alpha = 0.30f), dpOf(3f), f.radius)
+    // The dotted shell behind everything.
+    rotate(f.drift * 0.25f, center) {
+        wireSphere(f.radius * 0.99f, f.accent, latitudes = 4, meridians = 7, alpha = 0.20f)
+    }
+
+    // Fine hatched texture in the outer band.
+    rotate(-f.drift * 0.5f, center) {
+        radialHatch(f.radius * 0.86f, f.radius * 0.97f, 84, f.accent, alpha = 0.16f)
+    }
+
+    // Dotted particle rings — the strips that give the design its texture.
+    listOf(0.92f, 0.83f, 0.71f, 0.60f, 0.47f).forEachIndexed { i, frac ->
+        val rot = if (i % 2 == 0) f.drift * (1f + i * 0.3f) else -f.drift * (0.8f + i * 0.2f)
+        rotate(rot, center) {
+            dottedRing(f.radius * frac, f.accent, width = 1.2f, dotLength = 1.4f, gap = 3.5f)
         }
     }
 
-    // Gold counter-arcs — the warm signature in the design.
-    rotate(f.drift, center) {
-        arcRing(0.88f, 20f, 110f, f.highlight.copy(alpha = 0.85f), dpOf(3.5f), f.radius)
-        arcRing(0.72f, 200f, 80f, f.highlight.copy(alpha = 0.6f), dpOf(3f), f.radius)
-    }
-    rotate(-f.drift * 1.4f, center) {
-        arcRing(0.60f, 120f, 70f, f.highlight.copy(alpha = 0.45f), dpOf(2.5f), f.radius)
+    // Cyan energy ribbons, counter-rotating at four radii.
+    val bands = listOf(
+        Triple(0.90f, 10f, true), Triple(0.76f, 150f, false),
+        Triple(0.63f, 60f, true), Triple(0.50f, 230f, false),
+    )
+    bands.forEachIndexed { i, (frac, offset, forward) ->
+        val rot = (if (forward) f.spin else f.counter) * (0.55f + i * 0.2f) + offset
+        rotate(rot, center) {
+            energyRibbon(f.radius * frac, 0f, 165f, f.accent, width = 2.2f + f.amp * 1.6f)
+            energyRibbon(f.radius * frac, 200f, 70f, f.accent, width = 1.6f, alpha = 0.6f)
+        }
     }
 
-    drawMotes(f, 46, 0.35f, 1.0f, f.accent, seedBase = 11, rotation = f.drift * 0.3f)
+    // Gold ribbons weaving the other way — the warm signature of this design.
+    rotate(f.drift * 1.3f, center) {
+        energyRibbon(f.radius * 0.87f, 15f, 130f, f.highlight, width = 2.4f)
+        energyRibbon(f.radius * 0.68f, 195f, 95f, f.highlight, width = 2.0f, alpha = 0.8f)
+    }
+    rotate(-f.drift * 1.8f, center) {
+        energyRibbon(f.radius * 0.55f, 110f, 80f, f.highlight, width = 1.8f, alpha = 0.7f)
+    }
 
-    // Reactive core.
-    val coreR = f.radius * 0.30f * (0.92f + f.breathe * 0.10f + f.amp * 0.22f)
+    // Flares where the energy is brightest.
+    rotate(f.spin * 0.7f, center) {
+        flare(at(0f, f.radius * 0.87f), f.radius * 0.10f, f.highlight, 0.9f)
+        flare(at(OrbMath.TAU * 0.42f, f.radius * 0.63f), f.radius * 0.07f, f.accent, 0.75f)
+    }
+    rotate(-f.spin * 0.5f, center) {
+        flare(at(OrbMath.TAU * 0.7f, f.radius * 0.76f), f.radius * 0.06f, f.accent, 0.6f)
+    }
+
+    // Dust.
+    particles(f, 40, 0.35f, 1.0f, f.accent, seed = 11, rotation = f.drift * 0.3f)
+
+    // Dark well at the centre, as in the image — the logo sits in it.
     drawCircle(
         brush = Brush.radialGradient(
-            listOf(Color.White.copy(alpha = 0.85f), f.accent.copy(alpha = 0.55f), Color.Transparent),
+            listOf(Color.Black.copy(alpha = 0.62f), Color.Transparent),
             center = center,
-            radius = coreR * 1.6f,
+            radius = f.radius * 0.42f,
         ),
-        radius = coreR,
+        radius = f.radius * 0.40f,
+        center = center,
+    )
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(f.accent.copy(alpha = 0.30f + f.amp * 0.4f), Color.Transparent),
+            center = center,
+            radius = f.radius * 0.30f * (0.9f + f.breathe * 0.12f),
+        ),
+        radius = f.radius * 0.26f,
         center = center,
     )
 }
 
 // --- 2. Lattice ----------------------------------------------------------
 
-/** Six crystal prisms in a hexagon, joined by gold circuit traces. */
+/**
+ * Six translucent crystal prisms on a hexagon, joined by gold circuit-trace
+ * strips, inside a dotted dome. The traces are right-angled on purpose: that is
+ * what makes them read as printed circuitry rather than as wires.
+ */
 private fun DrawScope.drawLattice(f: OrbFrame) {
-    drawBloom(f, f.accent, 0.95f)
+    bloom(f, f.accent, 0.98f)
 
-    drawDome(f, nodes = 18, fraction = 1.0f, color = f.accent, rotation = f.drift * 0.4f)
+    rotate(f.drift * 0.3f, center) {
+        wireSphere(f.radius * 0.99f, f.accent, latitudes = 5, meridians = 9, alpha = 0.22f)
+    }
 
-    val ringR = f.radius * 0.62f
+    val ringR = f.radius * 0.60f
     val vertices = 6
+
     rotate(f.drift, center) {
-        // Gold traces along the hexagon edges, drawn first so crystals sit on top.
+        // Gold traces first, so the crystals sit on top of them.
         for (i in 0 until vertices) {
-            val a1 = OrbMath.spokeAngle(i, vertices, -90f)
-            val a2 = OrbMath.spokeAngle(i + 1, vertices, -90f)
-            val p1 = Offset(center.x + OrbMath.xAt(a1, ringR), center.y + OrbMath.yAt(a1, ringR))
-            val p2 = Offset(center.x + OrbMath.xAt(a2, ringR), center.y + OrbMath.yAt(a2, ringR))
-            drawLine(f.highlight.copy(alpha = 0.9f), p1, p2, dpOf(3f), cap = StrokeCap.Round)
-            drawLine(f.highlight.copy(alpha = 0.35f), p1, p2, dpOf(7f), cap = StrokeCap.Round)
+            val p1 = at(OrbMath.spokeAngle(i, vertices, -90f), ringR)
+            val p2 = at(OrbMath.spokeAngle(i + 1, vertices, -90f), ringR)
+            circuitTrace(p1, p2, f.highlight, strips = 3, spacing = 3.5f)
+        }
+        // Inward traces to the core, as in the image.
+        for (i in 0 until vertices) {
+            val p = at(OrbMath.spokeAngle(i, vertices, -90f), ringR)
+            circuitTrace(p, center, f.highlight, strips = 2, spacing = 2.5f, alpha = 0.45f)
         }
 
-        // A crystal at each vertex: an upper and a lower facet, lit differently.
+        // A crystal at each vertex: an upper and lower facet, differently lit,
+        // each showing its internal cut lines.
         for (i in 0 until vertices) {
             val a = OrbMath.spokeAngle(i, vertices, -90f)
-            val cx = center.x + OrbMath.xAt(a, ringR)
-            val cy = center.y + OrbMath.yAt(a, ringR)
-            val s = f.radius * (0.20f + f.amp * 0.03f)
+            val c = at(a, ringR)
+            val s = f.radius * (0.21f + f.amp * 0.03f)
 
-            val top = Path().apply {
-                moveTo(cx, cy - s)
-                lineTo(cx - s * 0.72f, cy)
-                lineTo(cx + s * 0.72f, cy)
-                close()
-            }
-            val bottom = Path().apply {
-                moveTo(cx, cy + s * 0.9f)
-                lineTo(cx - s * 0.72f, cy)
-                lineTo(cx + s * 0.72f, cy)
-                close()
-            }
-            drawPath(top, f.accent.copy(alpha = 0.75f))
-            drawPath(bottom, f.secondary.copy(alpha = 0.65f))
-            drawPath(top, f.accent, style = Stroke(dpOf(1.2f)))
-            drawPath(bottom, f.accent.copy(alpha = 0.7f), style = Stroke(dpOf(1.2f)))
+            crystalFacet(
+                Offset(c.x, c.y - s),
+                Offset(c.x - s * 0.74f, c.y + s * 0.10f),
+                Offset(c.x + s * 0.74f, c.y + s * 0.10f),
+                fill = f.accent, edge = f.accent, fillAlpha = 0.62f,
+            )
+            crystalFacet(
+                Offset(c.x, c.y + s * 0.95f),
+                Offset(c.x - s * 0.74f, c.y + s * 0.10f),
+                Offset(c.x + s * 0.74f, c.y + s * 0.10f),
+                fill = f.secondary, edge = f.accent, fillAlpha = 0.50f,
+            )
+            flare(Offset(c.x, c.y - s * 0.9f), s * 0.30f, Color.White, 0.55f)
         }
     }
 
-    // Dark hex well at the centre, as in the design.
-    rotate(-f.counter * 0.5f, center) {
-        val innerR = f.radius * 0.30f
+    // The dark hexagonal well at the centre.
+    rotate(-f.counter * 0.4f, center) {
+        val innerR = f.radius * 0.29f
         val hex = Path()
         for (i in 0 until 6) {
-            val a = OrbMath.spokeAngle(i, 6, -90f)
-            val x = center.x + OrbMath.xAt(a, innerR)
-            val y = center.y + OrbMath.yAt(a, innerR)
-            if (i == 0) hex.moveTo(x, y) else hex.lineTo(x, y)
+            val p = at(OrbMath.spokeAngle(i, 6, -90f), innerR)
+            if (i == 0) hex.moveTo(p.x, p.y) else hex.lineTo(p.x, p.y)
         }
         hex.close()
-        drawPath(hex, f.accent.copy(alpha = 0.18f + f.amp * 0.25f))
-        drawPath(hex, f.accent.copy(alpha = 0.8f), style = Stroke(dpOf(1.5f)))
+        drawPath(hex, Color.Black.copy(alpha = 0.45f))
+        drawPath(hex, f.accent.copy(alpha = 0.30f + f.amp * 0.30f), style = Stroke(px(1.6f)))
+        dottedRing(innerR * 0.72f, f.accent, width = 1f, dotLength = 1.2f, gap = 3f)
     }
 }
 
 // --- 3. Prism ------------------------------------------------------------
 
-/** A low-poly faceted gem, wrapped in a node dome, with a gold vortex inside. */
+/**
+ * A low-poly faceted gem inside a strut-and-ball geodesic shell, with a gold
+ * particle vortex at its core.
+ */
 private fun DrawScope.drawPrism(f: OrbFrame) {
-    drawBloom(f, f.accent, 0.95f)
-    drawDome(f, nodes = 22, fraction = 1.0f, color = f.highlight, rotation = f.drift * 0.35f)
+    bloom(f, f.accent, 0.98f)
 
-    // Two latitude bands of alternating facets — reads as a faceted sphere
-    // without needing a real projection.
-    val bands = listOf(0.66f to 14, 0.44f to 10)
-    rotate(f.drift * 0.8f, center) {
+    rotate(f.drift * 0.3f, center) {
+        geodesicShell(f.radius * 0.97f, f.highlight, segments = 18, alpha = 0.42f)
+    }
+    rotate(-f.drift * 0.2f, center) {
+        wireSphere(f.radius * 0.80f, f.secondary, latitudes = 4, meridians = 7, alpha = 0.16f)
+    }
+
+    // Two latitude bands of alternating facets — a faceted sphere without a
+    // real projection, which at this size is indistinguishable.
+    val bands = listOf(0.64f to 14, 0.42f to 10)
+    rotate(f.drift * 0.75f, center) {
         bands.forEachIndexed { bandIndex, (frac, facets) ->
             val outer = f.radius * frac
-            val inner = f.radius * frac * 0.62f
+            val inner = f.radius * frac * 0.58f
             for (i in 0 until facets) {
                 val a1 = OrbMath.spokeAngle(i, facets)
                 val a2 = OrbMath.spokeAngle(i + 1, facets)
                 val mid = (a1 + a2) / 2f
                 val up = (i + bandIndex) % 2 == 0
-                val path = Path().apply {
-                    if (up) {
-                        moveTo(center.x + OrbMath.xAt(mid, outer), center.y + OrbMath.yAt(mid, outer))
-                        lineTo(center.x + OrbMath.xAt(a1, inner), center.y + OrbMath.yAt(a1, inner))
-                        lineTo(center.x + OrbMath.xAt(a2, inner), center.y + OrbMath.yAt(a2, inner))
-                    } else {
-                        moveTo(center.x + OrbMath.xAt(mid, inner), center.y + OrbMath.yAt(mid, inner))
-                        lineTo(center.x + OrbMath.xAt(a1, outer), center.y + OrbMath.yAt(a1, outer))
-                        lineTo(center.x + OrbMath.xAt(a2, outer), center.y + OrbMath.yAt(a2, outer))
-                    }
-                    close()
-                }
                 val fill = if (up) f.accent else f.highlight
-                drawPath(path, fill.copy(alpha = if (up) 0.55f else 0.42f))
-                drawPath(path, fill.copy(alpha = 0.9f), style = Stroke(dpOf(1f)))
+                if (up) {
+                    crystalFacet(at(mid, outer), at(a1, inner), at(a2, inner), fill, fill, 0.60f)
+                } else {
+                    crystalFacet(at(mid, inner), at(a1, outer), at(a2, outer), fill, fill, 0.44f)
+                }
             }
         }
     }
 
-    // Gold vortex: motes spiralling into the middle.
-    val arms = 3
-    val perArm = 16
+    // Gold vortex spiralling into the middle.
     rotate(f.spin, center) {
+        val arms = 3
+        val perArm = 18
         for (arm in 0 until arms) {
             for (i in 0 until perArm) {
                 val t = i.toFloat() / perArm
-                val rad = OrbMath.spiralRadius(i, perArm, f.radius * 0.06f, f.radius * 0.34f)
-                val a = OrbMath.spokeAngle(arm, arms) + t * 2.4f
+                val rad = OrbMath.spiralRadius(i, perArm, f.radius * 0.05f, f.radius * 0.32f)
+                val a = OrbMath.spokeAngle(arm, arms) + t * 2.6f
                 drawCircle(
-                    color = f.highlight.copy(alpha = 0.85f - t * 0.55f),
-                    radius = dpOf(1.6f),
-                    center = Offset(center.x + OrbMath.xAt(a, rad), center.y + OrbMath.yAt(a, rad)),
+                    color = f.highlight.copy(alpha = 0.9f - t * 0.6f),
+                    radius = px(1.5f + (1f - t) * 0.8f),
+                    center = at(a, rad),
                 )
             }
         }
     }
 
-    val coreR = f.radius * 0.16f * (0.9f + f.amp * 0.35f)
-    drawCircle(
-        brush = Brush.radialGradient(
-            listOf(f.highlight.copy(alpha = 0.9f), Color.Transparent),
-            center = center,
-            radius = coreR * 2f,
-        ),
-        radius = coreR,
-        center = center,
-    )
+    flare(center, f.radius * (0.15f + f.amp * 0.06f), f.highlight, 0.85f)
 }
 
-// --- 4. Filigree ---------------------------------------------------------
+// --- 4. Forge (filigree) -------------------------------------------------
 
-/** Ornate concentric copper rings around a molten core. */
+/**
+ * Ornate copper filigree around a molten glass core: many fine dotted rings,
+ * dense radial hatching and scalloped petal arcs, each layer drifting at its own
+ * speed. The detail IS the design here — a few clean rings look like a dial.
+ */
 private fun DrawScope.drawFiligree(f: OrbFrame) {
-    drawBloom(f, f.accent, 1.0f)
+    bloom(f, f.accent, 1.05f)
 
-    // Fine concentric rings, each with its own spoke count and drift.
-    val rings = listOf(0.98f, 0.90f, 0.80f, 0.68f, 0.56f, 0.44f)
+    // Fine concentric dotted rings, alternating direction.
+    val rings = listOf(0.98f, 0.93f, 0.87f, 0.80f, 0.72f, 0.63f, 0.53f, 0.43f)
     rings.forEachIndexed { i, frac ->
-        val rot = if (i % 2 == 0) f.drift * (1f + i * 0.2f) else -f.drift * (0.8f + i * 0.15f)
+        val rot = if (i % 2 == 0) f.drift * (0.8f + i * 0.16f) else -f.drift * (0.7f + i * 0.12f)
         rotate(rot, center) {
-            drawCircle(
-                color = f.accent.copy(alpha = 0.30f + 0.06f * i),
-                radius = f.radius * frac,
-                center = center,
-                style = Stroke(dpOf(1.2f)),
+            dottedRing(
+                f.radius * frac, f.accent,
+                width = if (i % 3 == 0) 1.4f else 1f,
+                dotLength = 1.2f + (i % 3) * 0.6f,
+                gap = 3f,
             )
-            // Scalloped petals: short arcs evenly spaced, the filigree texture.
-            val petals = 12 + i * 4
+        }
+    }
+
+    // Dense hatching in two bands — the fine strips that make it read as
+    // filigree rather than as a set of circles.
+    rotate(f.counter * 0.35f, center) {
+        radialHatch(f.radius * 0.80f, f.radius * 0.97f, 96, f.accent, alpha = 0.30f, emphasisEvery = 6)
+    }
+    rotate(-f.counter * 0.55f, center) {
+        radialHatch(f.radius * 0.46f, f.radius * 0.62f, 64, f.highlight, alpha = 0.22f, emphasisEvery = 4)
+    }
+
+    // Scalloped petals: short arcs on three rings, the rose-window motif.
+    listOf(0.90f to 16, 0.75f to 22, 0.58f to 28).forEachIndexed { i, (frac, petals) ->
+        val rot = if (i % 2 == 0) f.drift * 1.6f else -f.drift * 1.2f
+        rotate(rot, center) {
             val step = 360f / petals
             for (p in 0 until petals) {
-                arcRing(
-                    frac,
-                    p * step,
-                    step * 0.55f,
-                    f.accent.copy(alpha = 0.55f),
-                    dpOf(2.2f),
-                    f.radius,
+                dottedArc(
+                    f.radius * frac, p * step, step * 0.5f,
+                    f.accent.copy(alpha = 0.75f), width = 2.2f, dotLength = 2f, gap = 2f,
                 )
             }
         }
     }
 
-    // Radial spokes through the outer band.
-    rotate(f.counter * 0.4f, center) {
-        val spokes = 36
-        for (i in 0 until spokes) {
-            val a = OrbMath.spokeAngle(i, spokes)
-            val rIn = f.radius * 0.82f
-            val rOut = f.radius * 0.96f
-            drawLine(
-                color = f.highlight.copy(alpha = if (i % 3 == 0) 0.7f else 0.25f),
-                start = Offset(center.x + OrbMath.xAt(a, rIn), center.y + OrbMath.yAt(a, rIn)),
-                end = Offset(center.x + OrbMath.xAt(a, rOut), center.y + OrbMath.yAt(a, rOut)),
-                strokeWidth = dpOf(1.4f),
-            )
-        }
-    }
+    particles(f, 26, 0.5f, 0.95f, f.highlight, seed = 501, rotation = f.spin * 0.2f)
 
-    drawMotes(f, 30, 0.5f, 0.95f, f.highlight, seedBase = 501, rotation = f.spin * 0.2f)
-
-    // Molten glass core — the deep red centre in the design.
-    val coreR = f.radius * 0.26f * (0.94f + f.breathe * 0.08f + f.amp * 0.2f)
+    // Molten glass core, lit from the upper left as in the design.
+    val coreR = f.radius * 0.25f * (0.94f + f.breathe * 0.07f + f.amp * 0.18f)
     drawCircle(
         brush = Brush.radialGradient(
             listOf(
-                f.highlight.copy(alpha = 0.9f),
-                f.secondary.copy(alpha = 0.85f),
-                f.secondary.copy(alpha = 0.2f),
+                f.highlight.copy(alpha = 0.95f),
+                f.secondary.copy(alpha = 0.9f),
+                f.secondary.copy(alpha = 0.25f),
                 Color.Transparent,
             ),
-            center = Offset(center.x - coreR * 0.25f, center.y - coreR * 0.3f),
-            radius = coreR * 1.9f,
+            center = Offset(center.x - coreR * 0.3f, center.y - coreR * 0.35f),
+            radius = coreR * 2.0f,
         ),
         radius = coreR,
         center = center,
     )
-    drawCircle(f.accent.copy(alpha = 0.8f), coreR, center, style = Stroke(dpOf(2f)))
+    drawCircle(f.accent.copy(alpha = 0.85f), coreR, center, style = Stroke(px(2f)))
+    flare(Offset(center.x - coreR * 0.35f, center.y - coreR * 0.4f), coreR * 0.5f, Color.White, 0.5f)
 }
 
-// --- 5. Machine ----------------------------------------------------------
+// --- 5. Core (machine) ---------------------------------------------------
 
-/** A turning gear core ringed by violet crystal shards. */
+/**
+ * A turning gear-and-iris core ringed by faceted crystal shards, inside a
+ * strut-and-ball dome.
+ */
 private fun DrawScope.drawMachine(f: OrbFrame) {
-    drawBloom(f, f.accent, 0.95f)
-    drawDome(f, nodes = 20, fraction = 1.0f, color = f.secondary, rotation = f.drift * 0.3f)
+    bloom(f, f.accent, 0.98f)
 
-    // The gear: teeth as short thick radial bars, turning steadily.
-    val teeth = 22
-    val gearR = f.radius * 0.50f
-    rotate(f.spin * 0.5f, center) {
+    rotate(f.drift * 0.25f, center) {
+        geodesicShell(f.radius * 0.98f, f.secondary, segments = 20, alpha = 0.45f)
+    }
+
+    // Concentric machined rings.
+    listOf(0.56f, 0.48f, 0.40f).forEachIndexed { i, frac ->
+        rotate(if (i % 2 == 0) f.spin * 0.4f else -f.spin * 0.6f, center) {
+            drawCircle(
+                f.secondary.copy(alpha = 0.7f), f.radius * frac, center,
+                style = Stroke(px(2.5f)),
+            )
+            radialHatch(f.radius * frac * 0.94f, f.radius * frac, 40, f.highlight, alpha = 0.35f)
+        }
+    }
+
+    // The gear: teeth as short thick radial bars.
+    val teeth = 24
+    val gearR = f.radius * 0.60f
+    rotate(f.spin * 0.45f, center) {
         for (i in 0 until teeth) {
             val a = OrbMath.spokeAngle(i, teeth)
             drawLine(
-                color = f.secondary.copy(alpha = 0.9f),
-                start = Offset(center.x + OrbMath.xAt(a, gearR), center.y + OrbMath.yAt(a, gearR)),
-                end = Offset(
-                    center.x + OrbMath.xAt(a, gearR * 1.16f),
-                    center.y + OrbMath.yAt(a, gearR * 1.16f),
-                ),
-                strokeWidth = dpOf(6f),
-                cap = StrokeCap.Butt,
+                color = f.secondary.copy(alpha = 0.92f),
+                start = at(a, gearR),
+                end = at(a, gearR * 1.14f),
+                strokeWidth = px(6f),
             )
         }
-        drawCircle(f.secondary.copy(alpha = 0.85f), gearR, center, style = Stroke(dpOf(4f)))
+        drawCircle(f.secondary.copy(alpha = 0.85f), gearR, center, style = Stroke(px(4f)))
+        dottedRing(gearR * 0.92f, f.highlight, width = 1.2f, dotLength = 1.5f, gap = 3f)
     }
 
-    // Inner mechanical rings, counter-turning.
+    // Iris blades at the very centre, turning against the gear.
     rotate(-f.spin * 0.9f, center) {
-        drawCircle(f.highlight.copy(alpha = 0.55f), f.radius * 0.36f, center, style = Stroke(dpOf(2.5f)))
-        val spokes = 8
-        for (i in 0 until spokes) {
-            val a = OrbMath.spokeAngle(i, spokes)
-            drawLine(
-                color = f.highlight.copy(alpha = 0.6f),
-                start = Offset(center.x + OrbMath.xAt(a, f.radius * 0.14f), center.y + OrbMath.yAt(a, f.radius * 0.14f)),
-                end = Offset(center.x + OrbMath.xAt(a, f.radius * 0.36f), center.y + OrbMath.yAt(a, f.radius * 0.36f)),
-                strokeWidth = dpOf(2.5f),
-            )
+        val blades = 8
+        val irisR = f.radius * 0.26f
+        for (i in 0 until blades) {
+            val a1 = OrbMath.spokeAngle(i, blades)
+            val a2 = OrbMath.spokeAngle(i + 1, blades)
+            val path = Path().apply {
+                moveTo(center.x, center.y)
+                lineTo(at(a1, irisR).x, at(a1, irisR).y)
+                lineTo(at(a2, irisR * 0.55f).x, at(a2, irisR * 0.55f).y)
+                close()
+            }
+            drawPath(path, f.highlight.copy(alpha = if (i % 2 == 0) 0.40f else 0.24f))
+            drawPath(path, f.highlight.copy(alpha = 0.65f), style = Stroke(px(1f)))
         }
     }
 
     // Crystal shards ringing the machine.
-    val shards = 10
-    rotate(f.drift * 1.2f, center) {
+    rotate(f.drift * 1.1f, center) {
+        val shards = 11
         for (i in 0 until shards) {
             val a = OrbMath.spokeAngle(i, shards)
             val baseR = f.radius * 0.70f
-            val tipR = baseR + f.radius * (0.16f + f.amp * 0.04f)
-            val spread = 0.16f
-            val path = Path().apply {
-                moveTo(center.x + OrbMath.xAt(a, tipR), center.y + OrbMath.yAt(a, tipR))
-                lineTo(center.x + OrbMath.xAt(a - spread, baseR), center.y + OrbMath.yAt(a - spread, baseR))
-                lineTo(center.x + OrbMath.xAt(a + spread, baseR), center.y + OrbMath.yAt(a + spread, baseR))
-                close()
-            }
-            drawPath(path, if (i % 2 == 0) f.accent.copy(alpha = 0.7f) else f.highlight.copy(alpha = 0.5f))
-            drawPath(path, f.accent.copy(alpha = 0.9f), style = Stroke(dpOf(1f)))
+            val tipR = baseR + f.radius * (0.18f + f.amp * 0.05f)
+            val spread = 0.15f
+            val fill = if (i % 2 == 0) f.accent else f.highlight
+            crystalFacet(at(a, tipR), at(a - spread, baseR), at(a + spread, baseR), fill, f.accent, 0.62f)
         }
     }
 
-    val coreR = f.radius * 0.11f * (0.9f + f.amp * 0.4f)
-    drawCircle(
-        brush = Brush.radialGradient(
-            listOf(Color.White.copy(alpha = 0.8f), f.highlight.copy(alpha = 0.5f), Color.Transparent),
-            center = center,
-            radius = coreR * 2.4f,
-        ),
-        radius = coreR,
-        center = center,
-    )
+    flare(center, f.radius * (0.10f + f.amp * 0.05f), Color.White, 0.75f)
 }
 
 // --- 6. Nebula -----------------------------------------------------------
 
-/** Spiral particle arms round a crystal flower, over a starfield. */
+/**
+ * Spiral dust arms over a starfield, around a crystal flower, inside a coarse
+ * copper wireframe.
+ */
 private fun DrawScope.drawNebula(f: OrbFrame) {
-    drawBloom(f, f.accent, 1.05f)
+    bloom(f, f.accent, 1.10f)
 
-    // Static starfield — deterministic, so the stars hold still while the arms turn.
-    drawMotes(f, 54, 0.30f, 1.15f, Color.White, seedBase = 4001, rotation = 0f)
+    // Stars: fixed, so they hold still while the arms sweep past.
+    particles(f, 60, 0.28f, 1.18f, Color.White, seed = 4001, rotation = 0f)
 
-    // Spiral arms of dust.
+    // Dotted shells.
+    listOf(0.96f, 0.82f, 0.66f).forEachIndexed { i, frac ->
+        rotate(if (i % 2 == 0) f.drift * 0.7f else -f.drift * 0.5f, center) {
+            dottedRing(f.radius * frac, f.accent, width = 1f, dotLength = 1.3f, gap = 4f)
+        }
+    }
+
+    // Spiral arms — dense near the hub, thinning outward.
     val arms = 4
-    val perArm = 26
+    val perArm = 30
     for (arm in 0 until arms) {
-        rotate(f.spin * (0.5f + arm * 0.06f), center) {
+        rotate(f.spin * (0.45f + arm * 0.05f), center) {
             for (i in 0 until perArm) {
                 val t = i.toFloat() / perArm
-                val rad = OrbMath.spiralRadius(i, perArm, f.radius * 0.24f, f.radius * 1.02f)
-                val a = OrbMath.spokeAngle(arm, arms) + t * 1.9f
+                val rad = OrbMath.spiralRadius(i, perArm, f.radius * 0.22f, f.radius * 1.04f)
+                val a = OrbMath.spokeAngle(arm, arms) + t * 2.1f
                 val color = if (arm % 2 == 0) f.accent else f.secondary
                 drawCircle(
-                    color = color.copy(alpha = 0.75f - t * 0.4f),
-                    radius = dpOf(1.4f + (1f - t) * 1.6f),
-                    center = Offset(center.x + OrbMath.xAt(a, rad), center.y + OrbMath.yAt(a, rad)),
+                    color = color.copy(alpha = 0.80f - t * 0.45f),
+                    radius = px(1.2f + (1f - t) * 2.0f),
+                    center = at(a, rad),
                 )
             }
         }
     }
 
-    drawDome(f, nodes = 14, fraction = 0.98f, color = f.secondary, rotation = -f.drift * 0.5f)
+    // Coarse copper wireframe, as in the design's large triangles.
+    rotate(-f.drift * 0.4f, center) {
+        geodesicShell(f.radius * 0.94f, f.secondary, segments = 12, alpha = 0.38f)
+    }
 
     // Crystal flower: pointed petals round a dark hub.
-    val petals = 12
-    val petalOuter = f.radius * (0.34f + f.amp * 0.04f)
-    rotate(f.counter * 0.6f, center) {
+    rotate(f.counter * 0.55f, center) {
+        val petals = 14
+        val outerR = f.radius * (0.36f + f.amp * 0.04f)
         for (i in 0 until petals) {
             val a = OrbMath.spokeAngle(i, petals)
-            val spread = 0.22f
-            val path = Path().apply {
-                moveTo(center.x + OrbMath.xAt(a, petalOuter), center.y + OrbMath.yAt(a, petalOuter))
-                lineTo(
-                    center.x + OrbMath.xAt(a - spread, f.radius * 0.17f),
-                    center.y + OrbMath.yAt(a - spread, f.radius * 0.17f),
-                )
-                lineTo(
-                    center.x + OrbMath.xAt(a + spread, f.radius * 0.17f),
-                    center.y + OrbMath.yAt(a + spread, f.radius * 0.17f),
-                )
-                close()
-            }
-            drawPath(path, f.accent.copy(alpha = if (i % 2 == 0) 0.8f else 0.55f))
-            drawPath(path, f.highlight.copy(alpha = 0.7f), style = Stroke(dpOf(1f)))
+            val spread = 0.20f
+            val fill = if (i % 2 == 0) f.accent else f.secondary
+            crystalFacet(
+                at(a, outerR), at(a - spread, f.radius * 0.16f), at(a + spread, f.radius * 0.16f),
+                fill, f.highlight, if (i % 2 == 0) 0.75f else 0.50f,
+            )
         }
     }
 
-    // The hub reads as a dark well the petals sit around, as in the design.
-    val hubR = f.radius * 0.16f
-    drawCircle(Color.Black.copy(alpha = 0.55f), hubR, center)
-    drawCircle(f.highlight.copy(alpha = 0.85f), hubR, center, style = Stroke(dpOf(2f)))
-    drawCircle(
-        brush = Brush.radialGradient(
-            listOf(f.highlight.copy(alpha = 0.55f + f.amp * 0.35f), Color.Transparent),
-            center = center,
-            radius = hubR * 1.6f,
-        ),
-        radius = hubR * 0.9f,
-        center = center,
-    )
+    val hubR = f.radius * 0.155f
+    drawCircle(Color.Black.copy(alpha = 0.60f), hubR, center)
+    drawCircle(f.highlight.copy(alpha = 0.85f), hubR, center, style = Stroke(px(2f)))
+    dottedRing(hubR * 0.66f, f.highlight, width = 1f, dotLength = 1.2f, gap = 2.5f)
+    flare(center, hubR * (0.8f + f.amp * 0.5f), f.highlight, 0.6f)
+}
+
+// --- shared dust ---------------------------------------------------------
+
+/** Dust motes on a ring, deterministic so they drift rather than flicker. */
+private fun DrawScope.particles(
+    f: OrbFrame,
+    count: Int,
+    innerFraction: Float,
+    outerFraction: Float,
+    color: Color,
+    seed: Int,
+    rotation: Float,
+) {
+    rotate(rotation, center) {
+        for (i in 0 until count) {
+            val a = OrbMath.range(seed + i, 0f, OrbMath.TAU)
+            val rad = f.radius * OrbMath.range(seed + i + 977, innerFraction, outerFraction)
+            drawCircle(
+                color = color.copy(alpha = OrbMath.range(seed + i + 55, 0.18f, 0.78f)),
+                radius = px(OrbMath.range(seed + i + 313, 0.7f, 2.1f)),
+                center = at(a, rad),
+            )
+        }
+    }
 }

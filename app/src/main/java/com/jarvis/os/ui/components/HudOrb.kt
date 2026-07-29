@@ -12,8 +12,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -49,6 +47,8 @@ fun HudOrb(
     palette: JarvisPalette = LocalPalette.current,
     showLabel: Boolean = true,
 ) {
+    // The wordmark has to shrink with the orb or it overflows a preview card.
+    val orbScale = (size / 280.dp).coerceIn(0.35f, 1.2f)
     // State recolours the accent; the theme decides what the base colour IS.
     val targetAccent = when (orb) {
         OrbState.Listening -> palette.accent
@@ -102,12 +102,9 @@ fun HudOrb(
             )
         }
 
+        // The wordmark sits over the middle of the orb, as in every design.
         if (showLabel) {
-            Text(
-                text = "J.A.R.V.I.S.",
-                style = MaterialTheme.typography.headlineSmall,
-                color = accent,
-            )
+            JarvisWordmark(palette = palette, scale = orbScale)
         }
     }
 }

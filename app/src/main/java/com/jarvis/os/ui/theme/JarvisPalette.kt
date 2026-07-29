@@ -26,6 +26,12 @@ enum class JarvisPalette(
     val secondary: Color,
     /** The warm counter-colour: gold traces, copper struts, the second energy arc. */
     val highlight: Color,
+    /**
+     * The metal the JARVIS wordmark is cut from — pale cyan in the two blue
+     * designs, rose gold or gold in the warm ones. It is the brightest thing on
+     * screen, so it is chosen per theme rather than derived from the accent.
+     */
+    val wordmark: Color,
     val background: Color,
     val surface: Color,
     val orbStyle: OrbStyle,
@@ -37,6 +43,7 @@ enum class JarvisPalette(
         accent = Color(0xFF22E0F5),
         secondary = Color(0xFF0A84FF),
         highlight = Color(0xFFF5B944),
+        wordmark = Color(0xFFA8ECF7),
         background = Color(0xFF04101E),
         surface = Color(0xFF0A1A2E),
         orbStyle = OrbStyle.Reactor,
@@ -48,6 +55,7 @@ enum class JarvisPalette(
         accent = Color(0xFF7DF0FF),
         secondary = Color(0xFF1B9BD8),
         highlight = Color(0xFFE0A93A),
+        wordmark = Color(0xFFBDF2FF),
         background = Color(0xFF06182B),
         surface = Color(0xFF0B2439),
         orbStyle = OrbStyle.Lattice,
@@ -59,6 +67,7 @@ enum class JarvisPalette(
         accent = Color(0xFFB98CF0),
         secondary = Color(0xFF8B5CF6),
         highlight = Color(0xFFE8A87C),
+        wordmark = Color(0xFFEFB694),
         background = Color(0xFF160A20),
         surface = Color(0xFF241333),
         orbStyle = OrbStyle.Prism,
@@ -70,6 +79,7 @@ enum class JarvisPalette(
         accent = Color(0xFFF0A44B),
         secondary = Color(0xFFC2410C),
         highlight = Color(0xFFFFD79A),
+        wordmark = Color(0xFFFFDCA8),
         background = Color(0xFF120A07),
         surface = Color(0xFF20120C),
         orbStyle = OrbStyle.Filigree,
@@ -81,6 +91,7 @@ enum class JarvisPalette(
         accent = Color(0xFFA855F7),
         secondary = Color(0xFFD08B5B),
         highlight = Color(0xFFE9C0A0),
+        wordmark = Color(0xFFF0CBB0),
         background = Color(0xFF150A22),
         surface = Color(0xFF231338),
         orbStyle = OrbStyle.Machine,
@@ -92,6 +103,7 @@ enum class JarvisPalette(
         accent = Color(0xFFC084FC),
         secondary = Color(0xFFE0845C),
         highlight = Color(0xFF7DD3FC),
+        wordmark = Color(0xFFEBD8EC),
         background = Color(0xFF0F0518),
         surface = Color(0xFF1C0C2B),
         orbStyle = OrbStyle.Nebula,

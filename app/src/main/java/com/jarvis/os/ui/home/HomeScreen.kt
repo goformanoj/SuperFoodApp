@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.ui.chat.ChatScreen
 import com.jarvis.os.ui.components.HudOrb
@@ -241,7 +242,15 @@ private fun HeroSection(state: VoiceUiState, height: Dp) {
         VoiceWave(amplitude = state.amplitude)
         Spacer(Modifier.height(12.dp))
 
-        Text(state.status, style = MaterialTheme.typography.labelLarge, color = statusColor(state.orb))
+        // Uppercase and widely tracked, as the status block reads in the designs.
+        // The text is the app's REAL state, not the decorative three lines from
+        // the artwork — a status that always said "COMMAND ACCEPTED" would be a lie.
+        Text(
+            text = state.status.uppercase(),
+            style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 3.sp),
+            color = statusColor(state.orb),
+            textAlign = TextAlign.Center,
+        )
 
         if (active) {
             Spacer(Modifier.height(10.dp))
