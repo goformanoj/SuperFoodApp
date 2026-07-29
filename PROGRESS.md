@@ -2,7 +2,7 @@
 
 > Living status. Update this whenever something ships.
 > Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `31f3b05` · last green build **#161** (artifact `jarvis-debug-apk`, 18.63 MB, confirmed) · updated 2026-07-29
-> **Red since `af37dbc` — builds #163–#167 all failed on a Kotlin compile error that is not yet identified.** The bare `$` in `AlarmGuard` was a real hazard but not the cause: #166 fixed it and still failed. `3d41cf8` drops `--stacktrace` from CI so the `e: file:line:` lines are readable instead of buried under 120 lines of Gradle frames. **Diagnose from the next build's log before changing anything else.**
+> **Awaiting CI: `221f16d`** — the three guards from the device session, plus the fix for the six-build red streak. **Builds #163–#169 failed on `compileDebugUnitTestKotlin`:** `AskGuard.apply` is generic and a test passed a bare `emptyList()`, so `T` could not be inferred. Main sources compiled cleanly throughout; the bare `$` in `AlarmGuard` was never the cause. Removing `--stacktrace` from CI (`3d41cf8`) is what made the error legible — it turned three failed diagnoses into one successful one.
 > **First real device session against the current build.** User-confirmed working: type-vs-send, no spoken steps, below-fold chats, mic yielding to playback, learned memory, PDF creation.
 
 ## 🔨 Part C tail — what a real device session found (build pending CI)

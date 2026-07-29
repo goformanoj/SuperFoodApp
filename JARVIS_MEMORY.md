@@ -1718,3 +1718,41 @@ where it can be read.
 
 main never left green at 31f3b05, so nothing shipped broken — the definition of
 done did its job even while the diagnosis went sideways.
+
+### 2026-07-29 — Six red builds because the evidence was unreadable (221f16d)
+The real cause, once visible, was trivial:
+
+    > Task :app:compileDebugUnitTestKotlin FAILED
+    e: AskGuardTest.kt:55 Not enough information to infer type argument for 'T'
+
+AskGuard.apply is generic and a test passed a bare emptyList() as the only
+source of T. One explicit type argument fixed it.
+
+Getting to that line took builds #163 through #169. The reason is worth keeping.
+
+CI ran Gradle with --stacktrace, so every compile failure ended in ~120 lines of
+internal Gradle frames and the logs API would only return a tail that landed
+inside them. Three fetches produced identical windows of
+ExecuteActionsTaskExecuter and BuildCacheStep and nothing else. Rather than fix
+the visibility, I inspected the source, found a genuine hazard — a bare `$` in
+an escaped Kotlin string in AlarmGuard — fixed it, and told the user that was
+the fix. Build #166 disproved that. I had substituted the available explanation
+for the true one, which is the same failure as reading a lagging "in progress"
+job status as "still running".
+
+Two things were on screen the entire time and would have ended it early. The
+failing task was compileDebugUnitTestKotlin, not compileDebugKotlin — main
+sources were compiling cleanly, so the fault was in test sources, which cuts the
+search space by an order of magnitude. And "No files were found with the
+provided path: app/build/reports/tests/" says tests never ran, which says
+compile, not assertion.
+
+The fix that actually mattered was removing --stacktrace. It has never once been
+useful in this project: every failure has been a compile error or a failing
+assertion, and both report themselves in one line. With it gone the error was
+readable in a single fetch. Making the evidence legible should have been the
+first move, not the fourth — it is cheap, it is permanent, and everything after
+it was one line of work.
+
+main never left green at 31f3b05 through any of this. The definition of done
+held: six broken builds, nothing shipped.
