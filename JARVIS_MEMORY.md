@@ -1204,3 +1204,41 @@ without swallowing the sentences on either side, and ordinary prose untouched.
 Lesson, and it is the second time this exact shape has bitten me: when the user
 reports something is spoken that should not be, cleaning up how it reads is not a
 fix. Delete it. A tidier version of the wrong output is still the wrong output.
+
+### 2026-07-29 — One system prompt, on a diet, without literal backslash-n (4ad64b8)
+The prompt diet has been owed since the token-limit diagnosis on 2026-07-28 and
+deferred three times. Doing it turned up two bugs that had nothing to do with
+size, which is the argument for doing overdue work rather than re-deferring it.
+
+**It existed twice.** GroqClient and GeminiClient each held a byte-identical
+copy — 9,196 characters, free to drift the moment either was edited alone. Now
+one top-level SYSTEM_PROMPT in the com.jarvis.os.ai package, referenced by both.
+
+**Both copies shipped literal backslash-n.** When the Files and Remember sections
+were added they were spliced in with `\n` separators — inside a Kotlin RAW
+string, where `\n` is two characters, not a newline. So every request since Files
+shipped has been sending the model the text "\n" in the middle of its
+instructions. It presumably coped, which is exactly why it went unnoticed: a
+prompt bug degrades quietly instead of failing.
+
+**The diet: 9,196 -> 5,421 chars, ~2,299 -> ~1,355 tokens.** That is charged on
+EVERY request. Groq's free tier allows 12,000 tokens per minute, so the prompt
+alone was over half the budget before the conversation, the screen listing or the
+user's own words were added — the direct cause of the 25 rejections in 30 seconds
+the user hit. Step recovery makes it sharper still, since a recovery is another
+full-prompt request and can fire twice per sequence.
+
+What was cut is only prose: the explanation of WHY each rule exists, three
+separate restatements of "only claim you did something if you output the
+command", and a stray sentence about calendar DEL that had drifted into the alarm
+block during an earlier edit. Every rule itself survives. The reasoning moved
+into a KDoc comment above the string, where it is still readable by whoever edits
+it next and costs nothing per request. That is the general shape worth keeping:
+a prompt is billed per request, a comment is billed never, so explanation belongs
+in the comment and instruction belongs in the prompt.
+
+Four tests, because a prompt is the one file where a careless trim does real
+damage and nothing catches it: no literal backslash-n, a 6,000-char ceiling,
+every marker the app can PARSE is also TAUGHT (a marker the parser knows and the
+prompt does not mention is dead code), and the eight rules that were each paid
+for by a device failure are still present by phrase.

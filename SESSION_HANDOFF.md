@@ -9,7 +9,7 @@
 - **Device-confirmed:** `<<PICK>>` works — it chose "Beat It Michael Jackson" from 15 real on-screen options, and supersede fired correctly on a mid-sequence interruption.
 - **Next:** flow charts for Files (specced, no new provider needed), then **Part G — Automation** (specced, security shape fixed, not started). Still owed by the user: the **theme designs**, and a decision on a paid provider for image generation.
 - **Highest-value action:** the user is many builds behind on-device. One fresh install now carries around twenty fixes they reported and have not been able to retest.
-- **Owed to the user (repeatedly deferred):** the system-prompt diet — ~2,175 tokens, and it rides on every single request. This is the direct cause of the 429 flood.
+- **The system-prompt diet is done** (`4ad64b8`) — ~2,299 → ~1,355 tokens, one shared `SystemPrompt.kt` instead of a copy in each client, and the literal `\n` bug both copies carried is gone. Next cheap win on the same axis: **step recovery re-sends the whole prompt** when it only needs the SCREEN section — a `systemOverride` there would roughly halve a recovery's cost.
 - **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly, and step recovery should now replan around it; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
 
 ## Two rules that keep being re-learned
