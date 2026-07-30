@@ -1,8 +1,9 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `31f3b05` · last green build **#161** (artifact `jarvis-debug-apk`, 18.63 MB, confirmed) · updated 2026-07-29
-> **Awaiting CI: `221f16d`** — the three guards from the device session, plus the fix for the six-build red streak. **Builds #163–#169 failed on `compileDebugUnitTestKotlin`:** `AskGuard.apply` is generic and a test passed a bare `emptyList()`, so `T` could not be inferred. Main sources compiled cleanly throughout; the bare `$` in `AlarmGuard` was never the cause. Removing `--stacktrace` from CI (`3d41cf8`) is what made the error legible — it turned three failed diagnoses into one successful one.
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `46e1ffc` · last green build **#171** (artifact `jarvis-debug-apk`, 18.64 MB, confirmed) · updated 2026-07-29
+> **Awaiting CI: `2166dd9`** — the Settings lag fix. The three device-session guards are merged and green at `46e1ffc`.
+> **Builds #163–#169 failed on `compileDebugUnitTestKotlin`:** `AskGuard.apply` is generic and a test passed a bare `emptyList()`, so `T` could not be inferred. Main sources compiled cleanly throughout; the bare `$` in `AlarmGuard` was never the cause. Removing `--stacktrace` from CI (`3d41cf8`) is what made the error legible — it turned three failed diagnoses into one successful one.
 > **First real device session against the current build.** User-confirmed working: type-vs-send, no spoken steps, below-fold chats, mic yielding to playback, learned memory, PDF creation.
 
 ## 🔨 Part C tail — what a real device session found (build pending CI)
@@ -129,6 +130,18 @@ The user supplied six reference renders. Getting them into the app took five att
 5. **Real 3D geometry** (`632d595`, `0f54e35`) — where it now is. Rings are circles in space, tilted and precessing, projected through a perspective camera, depth-shaded, additively blended. Each is a **filled luminous band** (inner + outer edge, foreshortening correctly) rather than a stroked wire. Every theme has **its own backdrop** — wireframe globe, geodesic shell, warm haze with HUD brackets, nebula over a circuit floor. **Ring colour is measured from the references**, not chosen: the brightest quartile of each annulus, sampled at ten radii, wordmark masked out.
 
 **The constraint, stated plainly:** the references are photorealistic renders. 100% resemblance *without* shipping them is not achievable — it would mean authoring the exact 3D scene that produced each image, which cannot be recovered from a 2D render. The choice is exact-but-static (ship the images) or procedural-and-alive (this). One option remains untried: texture-map the renders onto the 3D ring geometry via `drawVertices`, which would move correctly AND look like the source, at the cost of shipping the images as textures. Offered, not yet chosen.
+
+## ⚡ Settings performance (build pending CI)
+**Reported by the user:** "the app starts lagging when I go into the setting section."
+
+Measured before changing anything: the theme picker draws **six live 3D orbs at once**, costing ~2,068 draw calls and **~14,628 object allocations per frame** — 880,000 allocations a second at 60fps, which is GC thrash. Three independent causes:
+- **Per-frame allocation.** Every ring rebuilt its geometry into fresh Lists: `Orb3D.ring()` allocates a List + a `Vec3` per point, and `.map { project(it) }` a second List + a `Projected` per point — ~580 objects per ring per frame. `Orb3D.ringInto` now writes `x/y/depth` into a `FloatArray` held across frames, with the two rotations and the projection inlined. **A test asserts it matches `ring()` + `project()` to the float**, because a hand-inlining slip changes the orb's shape silently rather than failing.
+- **No detail scaling.** A 92dp preview was drawn at the same 96 segments / 24 chunks as the 280dp home orb. Detail now follows size (`OrbQuality`).
+- **Off-screen work.** All six cards composed and animated in a scrolling `Column`; now a `LazyColumn`.
+
+**After: ~345 draw calls a frame, no per-frame allocation.** The home orb is unchanged (still `High`).
+
+**The trap avoided** is why `OrbQuality` is a separate type from `OrbDetail`: a selected card animates its orb 88dp↔104dp, so keying the buffers on raw size would rebuild them every frame of that animation — reintroducing the exact problem. A test walks 88→104dp in half-dp steps asserting the band never moves.
 
 ## 🔨 Part C tail — self-correction and a quieter reply (build pending CI)
 - **Recovers from a failed step** (`53fc4e0`) — when a step fails, the executor no longer gives up on the whole sequence. It hands the model the reason it failed *and* a fresh reading of the live screen, and runs the replacement it comes back with (max two recoveries per sequence, so a wrong plan cannot loop). This is what "sense that something is not playing and figure it out" needed: the plan is rewritten from what is actually on screen, not retried blindly.

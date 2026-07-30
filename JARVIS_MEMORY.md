@@ -1756,3 +1756,54 @@ it was one line of work.
 
 main never left green at 31f3b05 through any of this. The definition of done
 held: six broken builds, nothing shipped.
+
+### 2026-07-29 — The Settings lag: measure first, then three causes (2166dd9)
+User: "the app starts lagging when I go into the setting section, can you
+determine why and fix it?"
+
+I had predicted this risk in the handoff and named the wrong remedy — "cut
+CHUNKS in Orb3DRenderer, one line". Measuring first found three causes, and
+CHUNKS was only part of one of them.
+
+The numbers, computed before touching anything: the theme picker draws six live
+3D orbs simultaneously, costing ~2,068 draw calls and ~14,628 object allocations
+per frame — 880,000 allocations a second at 60fps. Allocation, not draw calls,
+was the headline: that rate is GC thrash, and GC thrash is what lag feels like.
+
+Cause one, and the biggest: every ring rebuilt its geometry from scratch every
+frame. Orb3D.ring() allocates a List plus a Vec3 per point, and the
+.map { project(it) } behind it allocates a second List plus a Projected per
+point — six lists and about 580 objects per ring, per frame, times five rings,
+times six orbs. Orb3D.ringInto now writes x/y/depth straight into a FloatArray
+the composable holds across frames, with both rotations and the projection
+inlined by hand.
+
+That inlining is the risky part of the change, because a sign error there does
+not crash — it silently changes the orb's shape, which is the slowest possible
+bug to notice. So there is a test asserting ringInto agrees with ring() +
+project() to within 1e-3 across three tilt/spin combinations, and it was
+pre-flighted numerically identical before pushing.
+
+Cause two: a 92dp preview was drawn at exactly the same 96 segments and 24
+chunks as the 280dp home orb, where at a third the size the extra detail is
+invisible. Detail now follows size.
+
+Cause three: all six cards were composed and animating whether or not they were
+on screen, because ThemesScreen used a scrolling Column. LazyColumn.
+
+Result: about 345 draw calls a frame with roughly three cards visible, and no
+per-frame allocation. The home orb is untouched — it still gets full detail.
+
+The trap worth remembering, because I walked into it and had to back out: my
+first version keyed the buffers on the orb's size. A selected card animates its
+orb between 88dp and 104dp, so that key changes on every frame of the animation
+and the buffers get rebuilt every frame — exactly the problem the buffers exist
+to solve, reintroduced by the fix. Hence OrbQuality as a separate type from
+OrbDetail: the cache key is a BAND, and a test walks 88dp to 104dp in half-dp
+steps asserting the band never moves. A cache keyed on a continuously animating
+value is not a cache.
+
+Lesson: I had guessed the remedy in advance and written it into the handoff.
+The guess was cheap and wrong in proportion — it would have cut roughly a third
+of the draw calls and none of the allocations, so the lag would have survived.
+Measuring took one script and found all three.
