@@ -141,6 +141,43 @@ class Orb3DTest {
     }
 
     @Test
+    fun `ringInto matches the allocating path exactly`() {
+        // This is the whole safety of the optimisation: the buffer version
+        // inlines the two rotations and the projection, so it must agree with
+        // ring() + project() to the float, or the orb quietly changes shape.
+        val segments = 48
+        val out = FloatArray((segments + 1) * 3)
+        listOf(
+            Triple(0f, 0f, 0f),
+            Triple(0.9f, 0.3f, 1.7f),
+            Triple(-1.2f, 0.75f, -2.4f),
+        ).forEach { (tiltX, tiltY, spin) ->
+            Orb3D.ringInto(out, 37f, segments, tiltX, tiltY, spin, 120f, 90f)
+            val expected = Orb3D.ring(37f, segments, tiltX, tiltY, spin)
+                .map { Orb3D.project(it, 120f, 90f) }
+            expected.forEachIndexed { i, p ->
+                assertEquals("x at $i", p.x, out[i * 3], 1e-3f)
+                assertEquals("y at $i", p.y, out[i * 3 + 1], 1e-3f)
+                assertEquals("depth at $i", p.depth, out[i * 3 + 2], 1e-3f)
+            }
+        }
+    }
+
+    @Test
+    fun `ringInto refuses a buffer that is too small`() {
+        // Silently writing past the end, or short, would corrupt a neighbouring
+        // ring's geometry — a bug that looks like a rendering glitch.
+        val tooSmall = FloatArray(10)
+        var threw = false
+        try {
+            Orb3D.ringInto(tooSmall, 10f, 48, 0f, 0f, 0f, 100f, 80f)
+        } catch (e: IllegalArgumentException) {
+            threw = true
+        }
+        assertTrue("a short buffer must fail loudly", threw)
+    }
+
+    @Test
     fun `wrap01 handles the backward-spinning rings`() {
         // Kotlin's % truncates toward zero and returns a negative result for a
         // negative input. Four rings spin backwards; using % directly made their

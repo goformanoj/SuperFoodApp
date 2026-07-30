@@ -4,7 +4,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -58,9 +57,6 @@ data class Orb3DSpec(
     val shards: Int = 0,
 )
 
-private const val SEG = 96
-private const val CHUNKS = 24
-
 /**
  * Real 3D rings, drawn procedurally.
  *
@@ -88,6 +84,7 @@ private const val CHUNKS = 24
 fun DrawScope.drawOrb3D(
     style: OrbStyle,
     f: OrbFrame,
+    detail: OrbDetail,
     accent: Color,
     highlight: Color,
     secondary: Color,
@@ -117,14 +114,14 @@ fun DrawScope.drawOrb3D(
     val breathe = 1f + f.breathe * 0.02f + f.amp * 0.05f
 
     spec.rings.forEach { ring ->
-        drawRing(style, ring, r * breathe, camera, focal, t, accent, highlight, f.amp)
+        drawRing(style, ring, r * breathe, camera, focal, t, detail, accent, highlight, f.amp)
     }
 
     if (spec.shards > 0) {
-        drawShards(spec, r * breathe, camera, focal, t, accent, highlight, f.amp)
+        drawShards(spec, r * breathe, camera, focal, t, detail, accent, highlight, f.amp)
     }
 
-    drawMotes(spec.motes, r * breathe, camera, focal, t, accent, highlight)
+    drawMotes((spec.motes * detail.moteScale).toInt(), r * breathe, camera, focal, t, accent, highlight)
 
     if (spec.spokes > 0) {
         drawSpokes(spec.spokes, r * breathe, camera, focal, t, highlight)
@@ -150,6 +147,7 @@ private fun DrawScope.drawRing(
     camera: Float,
     focal: Float,
     t: Float,
+    detail: OrbDetail,
     accent: Color,
     highlight: Color,
     amp: Float,
@@ -166,29 +164,32 @@ private fun DrawScope.drawRing(
     val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * 0.55f
     val spin = t * ring.spin
 
-    val outer = Orb3D.ring(rr + half, SEG, tiltX, tiltY, spin).map { Orb3D.project(it, camera, focal) }
-    val inner = Orb3D.ring(rr - half, SEG, tiltX, tiltY, spin).map { Orb3D.project(it, camera, focal) }
-    val mid = Orb3D.ring(rr, SEG, tiltX, tiltY, spin).map { Orb3D.project(it, camera, focal) }
+    val seg = detail.segments
+    val outer = detail.outer
+    val inner = detail.inner
+    val mid = detail.mid
+    Orb3D.ringInto(outer, rr + half, seg, tiltX, tiltY, spin, camera, focal)
+    Orb3D.ringInto(inner, rr - half, seg, tiltX, tiltY, spin, camera, focal)
+    Orb3D.ringInto(mid, rr, seg, tiltX, tiltY, spin, camera, focal)
 
-    val per = SEG / CHUNKS
-    for (c in 0 until CHUNKS) {
+    val per = seg / detail.chunks
+    for (c in 0 until detail.chunks) {
         val a = c * per
-        val b = minOf(a + per, SEG)
+        val b = minOf(a + per, seg)
         if (b <= a) continue
 
-        val depth = Orb3D.depthFactor(
-            ((mid[a].depth + mid[b].depth) / 2f), rr,
-        )
-        val phase = Orb3D.wrap01((c.toFloat() / CHUNKS) + spin / Orb3D.TAU)
+        val depth = Orb3D.depthFactor((mid[a * 3 + 2] + mid[b * 3 + 2]) / 2f, rr)
+        val phase = Orb3D.wrap01((c.toFloat() / detail.chunks) + spin / Orb3D.TAU)
         // A long, soft falloff around the ring rather than a hard arc: the
         // references light most of the band, brightest at its head.
         val sweep = if (phase < ring.arc) (1f - phase / ring.arc) else 0f
 
         // The band itself: quad between the two edges, brightest near the camera.
-        val quad = Path().apply {
-            moveTo(center.x + outer[a].x, center.y + outer[a].y)
-            for (i in a..b) lineTo(center.x + outer[i].x, center.y + outer[i].y)
-            for (i in b downTo a) lineTo(center.x + inner[i].x, center.y + inner[i].y)
+        val quad = detail.scratch.apply {
+            reset()
+            moveTo(center.x + outer[a * 3], center.y + outer[a * 3 + 1])
+            for (i in a..b) lineTo(center.x + outer[i * 3], center.y + outer[i * 3 + 1])
+            for (i in b downTo a) lineTo(center.x + inner[i * 3], center.y + inner[i * 3 + 1])
             close()
         }
 
@@ -204,9 +205,12 @@ private fun DrawScope.drawRing(
 
         // A bright filament along the band's centre line — the hot core of the
         // ribbon, which is what stops a filled band looking like flat paint.
-        val line = Path().apply {
-            moveTo(center.x + mid[a].x, center.y + mid[a].y)
-            for (i in a..b) lineTo(center.x + mid[i].x, center.y + mid[i].y)
+        // The filament reuses the same scratch Path, so it is drawn after the
+        // band's fills are already committed.
+        val line = detail.scratch.apply {
+            reset()
+            moveTo(center.x + mid[a * 3], center.y + mid[a * 3 + 1])
+            for (i in a..b) lineTo(center.x + mid[i * 3], center.y + mid[i * 3 + 1])
         }
         drawPath(
             line,
@@ -217,7 +221,7 @@ private fun DrawScope.drawRing(
 
         if (sweep > 0.88f && depth > 0.55f) {
             flare(
-                Offset(center.x + mid[b].x, center.y + mid[b].y),
+                Offset(center.x + mid[b * 3], center.y + mid[b * 3 + 1]),
                 radius * 0.06f * depth,
                 Color.White,
                 0.45f * depth,
@@ -258,6 +262,7 @@ private fun DrawScope.drawShards(
     camera: Float,
     focal: Float,
     t: Float,
+    detail: OrbDetail,
     accent: Color,
     highlight: Color,
     amp: Float,
@@ -280,7 +285,8 @@ private fun DrawScope.drawShards(
         val pr = Orb3D.project(rr, camera, focal)
         val depth = Orb3D.depthFactor((pt.depth + pl.depth + pr.depth) / 3f, base)
 
-        val path = Path().apply {
+        val path = detail.scratch.apply {
+            reset()
             moveTo(center.x + pt.x, center.y + pt.y)
             lineTo(center.x + pl.x, center.y + pl.y)
             lineTo(center.x + pr.x, center.y + pr.y)

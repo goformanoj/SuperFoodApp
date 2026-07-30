@@ -8,6 +8,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,10 +18,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,23 +51,27 @@ fun ThemesScreen(
     modifier: Modifier = Modifier,
     embedded: Boolean = true,
 ) {
-    Column(
+    // Lazy, not a scrolling Column: every card runs a live 3D orb, and a Column
+    // composes and animates all six whether or not they are on screen. Only the
+    // visible ones should be costing frames.
+    LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .then(if (embedded) Modifier else Modifier.systemBarsPadding())
             .padding(horizontal = 20.dp),
     ) {
-        if (!embedded) Spacer(Modifier.height(56.dp))
-        Text("Themes", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
-        Text(
-            "Tap one to switch. Each preview is live — it is the same orb you get.",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-            modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
-        )
+        item {
+            if (!embedded) Spacer(Modifier.height(56.dp))
+            Text("Themes", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
+            Text(
+                "Tap one to switch. Each preview is live — it is the same orb you get.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
+            )
+        }
 
-        JarvisPalette.entries.forEach { palette ->
+        items(JarvisPalette.entries, key = { it.id }) { palette ->
             val selected = palette == current
             val borderColor by animateColorAsState(
                 if (selected) palette.accent else GlassBorder,
@@ -137,13 +141,15 @@ fun ThemesScreen(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-        Text(
-            "A theme changes the orb's shape and motion, the accent colours and the " +
-                "backdrop. Your choice is remembered.",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-        )
-        Spacer(Modifier.height(40.dp))
+        item {
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "A theme changes the orb's shape and motion, the accent colours and the " +
+                    "backdrop. Your choice is remembered.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+            Spacer(Modifier.height(40.dp))
+        }
     }
 }

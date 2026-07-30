@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -76,11 +77,19 @@ fun HudOrb(
     )
 
     val amp = amplitude.coerceIn(0f, 1f)
+    // Held across frames: the picker draws six of these at once, and rebuilding
+    // ring geometry into fresh lists every frame is what made Settings lag.
+    // Keyed on the quality BAND, not the size — a selected card animates its orb
+    // between 88dp and 104dp, and keying on size would rebuild the buffers on
+    // every frame of that animation.
+    val quality = OrbQuality.forSize(size)
+    val detail = remember(quality) { OrbDetail(quality) }
 
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawOrb3D(
                 style = palette.orbStyle,
+                detail = detail,
                 f = OrbFrame(
                     radius = this.size.minDimension / 2f * 0.86f,
                     accent = accent,

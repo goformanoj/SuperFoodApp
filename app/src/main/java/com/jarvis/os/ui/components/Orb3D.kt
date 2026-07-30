@@ -108,6 +108,52 @@ object Orb3D {
     }
 
     /**
+     * Projects a whole ring into [out] as `x, y, depth` triples, allocating
+     * nothing.
+     *
+     * [ring] and a `.map { project(it) }` behind it allocate two Lists and two
+     * objects per point, every ring, every frame. On the theme picker — six orbs
+     * of several rings each — that measured about 14,600 objects per frame, or
+     * 880,000 a second, which is what made Settings lag. The maths is identical;
+     * only the plumbing changed.
+     *
+     * [out] must hold at least `(segments + 1) * 3` floats.
+     */
+    fun ringInto(
+        out: FloatArray,
+        radius: Float,
+        segments: Int,
+        tiltX: Float,
+        tiltY: Float,
+        spin: Float,
+        cameraDistance: Float,
+        focal: Float,
+    ) {
+        val n = max(segments, 3)
+        require(out.size >= (n + 1) * 3) { "buffer holds ${out.size}, need ${(n + 1) * 3}" }
+        val cx = cos(tiltX)
+        val sx = sin(tiltX)
+        val cy = cos(tiltY)
+        val sy = sin(tiltY)
+        for (i in 0..n) {
+            val a = (i.toFloat() / n) * TAU + spin
+            val px = cos(a) * radius
+            val py0 = sin(a) * radius
+            // rotateX then rotateY, inlined so no Vec3 is created.
+            val py = py0 * cx
+            val pz0 = py0 * sx
+            val rx = px * cy + pz0 * sy
+            val rz = -px * sy + pz0 * cy
+            val d = max(cameraDistance - rz, 0.05f)
+            val scale = focal / d
+            val o = i * 3
+            out[o] = rx * scale
+            out[o + 1] = py * scale
+            out[o + 2] = rz
+        }
+    }
+
+    /**
      * Wraps [v] into `0f..1f`.
      *
      * Kotlin's `%` truncates toward zero, so it returns a NEGATIVE result for a
