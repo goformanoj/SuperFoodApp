@@ -68,6 +68,9 @@ class AssistantEngine(context: Context) {
     private val store = ConversationStore(appContext)
     private val userPrefs = UserPreferences(appContext)
     private val artifacts = ArtifactStore(appContext)
+    private val playbook = PlaybookStore(appContext)
+    /** What the user asked for, kept so a sequence that works can be remembered. */
+    private var pendingGoal: String = ""
     private val conversation: MutableList<ChatTurn> = store.load()
 
     private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
@@ -409,6 +412,30 @@ class AssistantEngine(context: Context) {
             return
         }
 
+        // A route that already worked for this request beats deriving one again:
+        // it is instant, it costs no tokens against Groq's per-minute limit, and
+        // it is the sequence that demonstrably succeeded rather than a fresh
+        // guess. Only sequences that ran clean are ever stored, and never any
+        // that do something irreversible.
+        val known = playbook.find(userText)
+        if (known != null && ScreenControlService.isRunning()) {
+            val (route, steps) = known
+            playbook.markUsed(route.template, System.currentTimeMillis())
+            DebugLog.log(
+                DebugLog.Stage.THINK,
+                "replaying known route \"${route.template}\" (used ${route.uses + 1}x)",
+            )
+            DebugLog.log(DebugLog.Stage.MARKERS, "playbook: ${Playbook.markersOf(steps)}")
+            val plan = ScreenActions.Plan(clean = "On it.", steps = steps)
+            pendingGoal = userText
+            pendingScreen = plan
+            addTurn(ChatTurn(ChatTurn.ASSISTANT, plan.clean))
+            DebugLog.log(DebugLog.Stage.SPOKE, plan.clean)
+            set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = plan.clean) }
+            speaker.speak(plan.clean)
+            return
+        }
+
         val history = conversation.takeLast(MAX_CONTEXT_TURNS)
         scope.launch {
             try {
@@ -512,6 +539,7 @@ class AssistantEngine(context: Context) {
                     else -> reply
                 }
                 pendingScreen = if (plan.hasAction) plan else null
+                if (plan.hasAction) pendingGoal = userText
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
                 DebugLog.log(DebugLog.Stage.SPOKE, spoken)
                 set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = spoken) }
@@ -627,7 +655,20 @@ class AssistantEngine(context: Context) {
         }
         if (plan.needsAccessibility) {
             // Run the whole ordered sequence (open -> tap -> type -> enter) via the service.
-            ScreenControlService.instance?.runSteps(plan.steps)
+            val goal = pendingGoal
+            ScreenControlService.instance?.runSteps(plan.steps) { ok ->
+                // Only a sequence that ran clean is worth keeping. Routes that
+                // needed recovery are exactly the ones whose steps were wrong.
+                if (ok && goal.isNotBlank()) {
+                    Playbook.learn(goal, plan.steps)?.let {
+                        playbook.remember(it, System.currentTimeMillis())
+                        DebugLog.log(
+                            DebugLog.Stage.THINK,
+                            "learned route \"${it.template}\" -> ${it.markers}",
+                        )
+                    }
+                }
+            }
         } else {
             // Opens only — no accessibility needed.
             for (step in plan.steps) {
