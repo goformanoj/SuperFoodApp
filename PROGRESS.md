@@ -1,8 +1,8 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `46e1ffc` · last green build **#171** (artifact `jarvis-debug-apk`, 18.64 MB, confirmed) · updated 2026-07-29
-> **Awaiting CI: `2166dd9`** — the Settings lag fix. The three device-session guards are merged and green at `46e1ffc`.
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `a7a19ee` · last green build **#174** (artifact `jarvis-debug-apk`, 18.64 MB, confirmed) · updated 2026-07-30
+> **Awaiting CI: `4ef0a7f`** — the playbook (routes that worked are remembered and replayed). The Settings lag fix is merged and green at `a7a19ee`.
 > **Builds #163–#169 failed on `compileDebugUnitTestKotlin`:** `AskGuard.apply` is generic and a test passed a bare `emptyList()`, so `T` could not be inferred. Main sources compiled cleanly throughout; the bare `$` in `AlarmGuard` was never the cause. Removing `--stacktrace` from CI (`3d41cf8`) is what made the error legible — it turned three failed diagnoses into one successful one.
 > **First real device session against the current build.** User-confirmed working: type-vs-send, no spoken steps, below-fold chats, mic yielding to playback, learned memory, PDF creation.
 
@@ -202,6 +202,16 @@ Worth knowing: **Groq's limits are per account, not per user.** This is the sing
 - **Claude can't test live LLM replies** — Groq is egress-blocked (403) in the build environment, and the key is a build secret. Reply quality is verified on-device by the user; Claude verifies everything mechanical.
 - **CI status API lags 2–5 hours** right now — the **presence of the `jarvis-debug-apk` artifact is the reliable "green" signal** (not the job status).
 
+## ✅ Playbook — remembering the routes that worked (build pending CI)
+`4ef0a7f`. A screen sequence that runs clean is stored; a matching request replays it **without calling the model** — instant, no tokens against the per-minute limit, and the sequence that demonstrably worked rather than a fresh guess.
+
+- **The slot is what makes it useful.** "play Beat It on YouTube" is stored as `play * on youtube`, so "play Thriller on YouTube" matches and replays with the new text. A literal cache would never fire; nobody says the same sentence twice.
+- **The variable part is found, not guessed** — whatever the sequence TYPED is by definition what varies, and only if that text also appeared in what the user said. Otherwise the route is stored literally.
+- **Steps are stored as marker strings**, so replay round-trips through `ScreenActions.parse` — the tested parser, not a second format. Consequence found in pre-flight: `<<PICK>>` descriptions template too, so asking for Thriller picks *the first Thriller video*.
+- **Safety.** Replay acts *without* the model, on a fuzzy match, so routes containing anything irreversible (send, buy, order, pay, call, delete) are **never learned**, and a slot value that is itself such an instruction refuses the match. Only clean runs are stored — a sequence that needed recovery is exactly the one whose steps were wrong. Routes are per-install and never leave the phone.
+
+Still open: the routes are not yet visible or deletable in the UI.
+
 ## Feature status table
 | Feature | Status | Build | Notes |
 |---|---|---|---|
@@ -241,6 +251,7 @@ Worth knowing: **Groq's limits are per account, not per user.** This is the sing
 | Files tab (PDFs + notes) | 🔬 | pending | app-private, no new permission |
 | Recovers from a failed step | 🔬 | pending | replans from the live screen, max 2 tries |
 | No spoken thought process | 🔬 | pending | narration clauses stripped, not tidied |
+| Playbook: replay routes that worked | 🔬 | pending | slot templating; irreversible routes never learned |
 | Six themes, orb built in 3D | 🔬 | pending | tilted rings, depth-shaded, additive |
 | Artwork shipped as the orb | 🔬 | pending | exact replicas; 641 KB for six |
 | Animated overlay round the art | 🔬 | pending | rings, travelling arc, dust, flares |

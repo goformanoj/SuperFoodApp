@@ -1807,3 +1807,82 @@ Lesson: I had guessed the remedy in advance and written it into the handoff.
 The guess was cheap and wrong in proportion — it would have cut roughly a third
 of the draw calls and none of the allocations, so the lag would have survived.
 Measuring took one script and found all three.
+
+### 2026-07-30 — The playbook: remembering routes that worked (4ef0a7f)
+User: "add a feature which lets it remember paths which worked, specific to the
+user, and next time there is the same task given, he just refers to his memory
+instead of trying to figure out again."
+
+The evidence was already in their traces. "play Beat It" took eleven turns and
+four failed plans to reach a playing song. The eleventh attempt was a perfectly
+good route — open, tap search, type, enter, pick the first result — and JARVIS
+threw it away. Next request, it started from nothing.
+
+Now a sequence that runs clean is stored, and a matching request replays it
+without calling the model at all. Three benefits, and the second was not the
+point but may matter more: it is instant, it costs no tokens against Groq's
+per-minute limit (the cause of the 429 flood), and it is the sequence that
+demonstrably worked rather than a fresh guess.
+
+**The slot is the whole design.** A literal cache would never fire, because
+nobody says the same sentence twice. So a route learned from "play Beat It on
+YouTube" is stored as "play * on youtube" and matches "play Thriller on
+YouTube". The variable part is FOUND rather than guessed: whatever the sequence
+TYPED is, by definition, the part that varies — and only if that text also
+appears in what the user said, otherwise it is a one-off and gets stored
+literally.
+
+Steps are stored as marker strings, the same syntax the model emits, so replay
+round-trips through ScreenActions.parse rather than inventing a second format
+that would need its own parser and its own tests. Pre-flight surfaced a
+consequence I had not designed for and kept: the PICK description templates too,
+so asking for Thriller picks "the first Thriller video" instead of hunting for
+the song the route was learned from.
+
+**The safety position is the part worth remembering.** Replay is an action taken
+WITHOUT asking the model, on the strength of a fuzzy string match. Opening an app
+or typing in a box is recoverable; sending a message, placing an order or making
+a call is not, and a near-miss match would do it to the wrong person or with the
+wrong content. So routes containing anything irreversible are never learned at
+all, and a slot value that is itself such an instruction refuses the match. Those
+requests keep going to the model every time, where SendGuard still applies. This
+is the same principle as SendGuard and AlarmGuard: put the irreversible-action
+rule in code, not in prompt wording.
+
+Only clean runs are stored. A sequence that needed recovery is precisely the one
+whose steps were wrong.
+
+Two pre-flight findings, both fixed before pushing: the slot came back lowercased
+(matching happens in normalised text, so the original casing is recovered from
+the utterance), and my test expected PICK to keep the old song, which was the
+test being wrong rather than the code.
+
+12 tests, including that "Send"/"Place order"/"Pay" routes are refused while
+"Sender name" and "Recall" are not mistaken for them.
+
+### 2026-07-30 — Why untrained tasks fail, and what would fix it (no code yet)
+User: "how do we go on about fixing the issue that, if I tell it something, it
+can't think on its own and act… can it do tasks which he hasn't been trained
+for?"
+
+Worth writing down because the obvious diagnosis is wrong. Nothing about Blinkit,
+or any unseen app, is the obstacle. The marker protocol is already generic —
+open/tap/type/pick/back/home work anywhere — and <<PICK>> exists precisely so a
+layout need not be known in advance.
+
+The obstacle is the shape of the loop. JARVIS emits a whole plan up front, from
+the screen it can see at that moment. Every step past the first is therefore
+planned against a screen that does not exist yet. Every failure in the device
+traces is step 2 or later, and that is not a coincidence.
+
+Step recovery is a patch on this rather than a fix: capped at two, it re-plans
+the entire sequence instead of taking one step, and in one trace it recovered
+into Open(app=Open), which is not an app.
+
+The fix is a real agent loop: emit ONE action, observe the resulting screen,
+decide the next, with the goal held across steps and a budget to stop runaway.
+That subsumes recovery — a failed step becomes just another observation — and it
+composes with the playbook: the loop discovers a route the hard way once, and the
+playbook makes every repeat instant and free.
+
+Not started. Offered to the user as the next piece.
