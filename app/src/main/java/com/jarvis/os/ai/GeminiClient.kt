@@ -29,7 +29,11 @@ object GeminiClient {
 
     fun hasKey(): Boolean = BuildConfig.GEMINI_API_KEY.isNotBlank()
 
-    suspend fun generate(messages: List<ChatTurn>, context: String): String =
+    suspend fun generate(
+        messages: List<ChatTurn>,
+        context: String,
+        systemOverride: String? = null,
+    ): String =
         withContext(Dispatchers.IO) {
             val key = BuildConfig.GEMINI_API_KEY
             if (key.isBlank()) throw GeminiException("No API key set")
@@ -91,7 +95,8 @@ object GeminiClient {
     }
 
     private fun buildPayload(messages: List<ChatTurn>, context: String): String {
-        val system = if (context.isBlank()) SYSTEM_PROMPT else "$SYSTEM_PROMPT\n\n$context"
+        val base = systemOverride ?: SYSTEM_PROMPT
+        val system = if (context.isBlank()) base else "$base\n\n$context"
         val contents = JSONArray()
         for (m in messages) {
             val role = if (m.role == ChatTurn.ASSISTANT) "model" else "user"

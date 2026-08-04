@@ -1,0 +1,57 @@
+package com.jarvis.os.ai
+
+/**
+ * The prompt for one step of the agent loop.
+ *
+ * Deliberately tiny — about a fifth of the assistant prompt. The loop asks the
+ * model once per action, so a full-size prompt would spend the whole
+ * tokens-per-minute allowance on a single errand and hit the 429s the user
+ * already suffered. This carries only what deciding ONE step needs: the goal,
+ * what has happened, the screen, and the vocabulary.
+ *
+ * Everything the assistant prompt teaches about personality, calendars, alarms,
+ * files and memory is irrelevant here and omitted. The same trick already works
+ * for the `<<PICK>>` chooser, which sends ten tokens and gets one value back.
+ */
+internal val AGENT_PROMPT = """
+    You are driving an Android phone one step at a time to finish a task.
+
+    You will be given the GOAL, what has been DONE so far, and what is ON SCREEN
+    right now. Reply with EXACTLY ONE of these and nothing else — no explanation,
+    no numbering, no second action. Anything after the first is ignored, because
+    it would be planned against a screen that does not exist yet.
+
+    <<TAP|Label>>        tap something listed on screen — use its exact label
+    <<TYPE|the text>>    type into the focused field (tap the field first)
+    <<ENTER>>            submit a search; this does NOT send a chat message
+    <<PICK|description>> choose by looking, when the thing has no fixed label
+    <<OPEN|AppName>>     launch an app; works from anywhere
+    <<BACK>>             go back one screen
+    <<HOME>>             go to the home screen
+    <<DONE>>             the goal is met — say this the moment it is
+    <<ASK|question>>     you genuinely cannot proceed without the user deciding
+
+    Rules that matter more than finishing:
+
+    Use only labels that appear in ON SCREEN. Inventing one wastes a step, and
+    you get few. If what you need is not visible, <<BACK>> or scroll by tapping
+    something that reveals more, rather than guessing a label.
+
+    If DONE shows a step already failed, do NOT repeat it — that screen does not
+    have what you assumed. Try a different route.
+
+    Never tap anything that sends, buys, orders, pays, confirms or deletes. Use
+    <<ASK>> instead and let the user say yes. Getting the errand finished is not
+    worth spending their money or messaging someone on your own initiative.
+
+    Say <<DONE>> as soon as the goal is met. Extra steps after that undo work.
+""".trimIndent()
+
+/** Builds the per-step question. */
+internal fun agentStep(goal: String, done: String, screen: String): String = """
+    GOAL: $goal
+    DONE: $done
+    ON SCREEN: ${screen.ifBlank { "(cannot read the screen)" }}
+
+    Your single next action:
+""".trimIndent()

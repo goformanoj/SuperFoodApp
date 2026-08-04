@@ -788,7 +788,15 @@ class ScreenControlService : AccessibilityService() {
         var onRecover: ((ScreenStep, String, String, (List<ScreenStep>) -> Unit) -> Unit)? = null
 
         /** How many times one command may re-plan before giving up. */
-        private const val MAX_RECOVERIES = 2
+        /**
+         * How many times a sequence may hand back to the agent loop.
+         *
+         * Was 2, when recovery meant "re-plan the rest blind and hope". The loop
+         * takes ONE step per callback, so this is now the loop's step budget —
+         * the engine stops it earlier via AgentLoop.MAX_STEPS, and this is the
+         * backstop in case that is ever bypassed.
+         */
+        private const val MAX_RECOVERIES = 12
         private const val OUTLINE_MS = 1100L
     }
 }

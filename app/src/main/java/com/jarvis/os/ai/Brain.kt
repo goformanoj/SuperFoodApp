@@ -17,15 +17,23 @@ object Brain {
         else -> "none"
     }
 
+    /**
+     * [systemOverride] replaces the assistant prompt entirely for callers that
+     * need a small, single-purpose one — the `<<PICK>>` chooser and the agent
+     * loop. The loop asks once per action, so sending the full ~1,500-token
+     * assistant prompt each time would spend a whole minute's allowance on one
+     * errand.
+     */
     suspend fun generate(
         messages: List<ChatTurn>,
         context: String,
         tier: Tier = Tier.SMART,
+        systemOverride: String? = null,
     ): String =
         if (GroqClient.hasKey()) {
-            GroqClient.generate(messages, context, tier = tier)
+            GroqClient.generate(messages, context, systemOverride = systemOverride, tier = tier)
         } else {
-            GeminiClient.generate(messages, context)
+            GeminiClient.generate(messages, context, systemOverride = systemOverride)
         }
 
 

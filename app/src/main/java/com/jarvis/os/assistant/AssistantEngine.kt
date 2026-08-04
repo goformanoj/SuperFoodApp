@@ -9,6 +9,8 @@ import android.provider.Settings
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import com.jarvis.os.ai.Brain
+import com.jarvis.os.ai.agentStep
+import com.jarvis.os.ai.AGENT_PROMPT
 import com.jarvis.os.ai.ModelRouter
 import com.jarvis.os.ai.Tier
 import com.jarvis.os.alarm.AlarmActions
@@ -71,6 +73,8 @@ class AssistantEngine(context: Context) {
     private val playbook = PlaybookStore(appContext)
     /** What the user asked for, kept so a sequence that works can be remembered. */
     private var pendingGoal: String = ""
+    /** Steps the agent loop has taken for the current goal, for its history line. */
+    private var stepsTaken: List<ScreenStep> = emptyList()
     private val conversation: MutableList<ChatTurn> = store.load()
 
     private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
@@ -123,33 +127,72 @@ class AssistantEngine(context: Context) {
                 reply(choice)
             }
         }
-        // A step failed. Rather than giving up, look at the screen and work out
-        // another way — the original label was guessed before this screen
-        // existed, so what is needed is usually visible right now.
+        // A step failed, which means the screen is not what the plan assumed.
+        // Rather than re-planning the rest blind — which is how the original
+        // sequence got it wrong in the first place — hand over to the agent
+        // loop: decide ONE action from what is actually on screen, run it, look
+        // again. A failure stops being a special case and becomes the next
+        // observation.
         ScreenControlService.onRecover = { failedStep, reason, screen, reply ->
             scope.launch {
-                val steps = try {
+                val move = try {
                     val answer = Brain.generate(
                         messages = listOf(
                             ChatTurn(
                                 ChatTurn.USER,
-                                "I asked you to: \"$currentGoal\".\n" +
-                                    "The step $failedStep failed because $reason.\n\n" +
-                                    "$screen\n\n" +
-                                    "Give ONLY the markers for what to do from here to finish the " +
-                                    "task, using labels that appear on the screen above. If the task " +
-                                    "cannot be done from this screen, reply with nothing.",
+                                agentStep(
+                                    goal = currentGoal,
+                                    done = AgentLoop.historyOf(stepsTaken) +
+                                        "; then $failedStep FAILED ($reason)",
+                                    screen = screen,
+                                ),
                             ),
                         ),
                         context = "",
+                        systemOverride = AGENT_PROMPT,
                         tier = Tier.SMART,
                     )
-                    ScreenActions.parse(answer).steps
+                    AgentLoop.parseMove(answer)
                 } catch (e: Exception) {
-                    DebugLog.log(DebugLog.Stage.ERROR, "recovery failed: ${e.message ?: e.javaClass.simpleName}")
-                    emptyList()
+                    DebugLog.log(DebugLog.Stage.ERROR, "agent step failed: ${e.message ?: e.javaClass.simpleName}")
+                    AgentMove.Blocked(e.message ?: "no answer")
                 }
-                reply(steps)
+
+                when (move) {
+                    is AgentMove.Act -> {
+                        if (AgentLoop.exhausted(stepsTaken.size)) {
+                            // Stop and say where it got to. A loop that quietly
+                            // gives up looks identical to one still working.
+                            DebugLog.log(DebugLog.Stage.SCREEN, "agent budget spent")
+                            reply(emptyList())
+                            main.post { say(AgentLoop.exhaustedMessage(currentGoal)) }
+                            return@launch
+                        }
+                        stepsTaken = stepsTaken + move.step
+                        DebugLog.log(
+                            DebugLog.Stage.SCREEN,
+                            "agent step ${stepsTaken.size}/${AgentLoop.MAX_STEPS}: ${move.step}",
+                        )
+                        // One step, not a plan. The service calls back here again
+                        // if it fails, which is the loop.
+                        reply(listOf(move.step))
+                    }
+                    AgentMove.Done -> {
+                        DebugLog.log(DebugLog.Stage.SCREEN, "agent says the goal is met")
+                        reply(emptyList())
+                    }
+                    is AgentMove.Ask -> {
+                        // The loop acts without asking between steps, so anything
+                        // irreversible stops here and the user decides.
+                        DebugLog.log(DebugLog.Stage.SCREEN, "agent stopped to ask: ${move.question}")
+                        reply(emptyList())
+                        main.post { say(move.question) }
+                    }
+                    is AgentMove.Blocked -> {
+                        DebugLog.log(DebugLog.Stage.SCREEN, "agent is stuck: ${move.reason}")
+                        reply(emptyList())
+                    }
+                }
             }
         }
         // Tapping Talk while audio plays claims the mic for one turn.
@@ -539,7 +582,10 @@ class AssistantEngine(context: Context) {
                     else -> reply
                 }
                 pendingScreen = if (plan.hasAction) plan else null
-                if (plan.hasAction) pendingGoal = userText
+                if (plan.hasAction) {
+                    pendingGoal = userText
+                    stepsTaken = plan.steps
+                }
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
                 DebugLog.log(DebugLog.Stage.SPOKE, spoken)
                 set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = spoken) }
@@ -722,6 +768,20 @@ class AssistantEngine(context: Context) {
             // pretending the alarm is now loud.
             DebugLog.log(DebugLog.Stage.ALARM, "could not raise alarm volume: ${e.message}")
         }
+    }
+
+    /**
+     * Speaks one line outside the normal think-reply cycle.
+     *
+     * Used when the agent loop stops mid-errand — to ask before something
+     * irreversible, or to report that it ran out of steps. Those are not answers
+     * to a question the user just asked, but they still have to be heard.
+     */
+    private fun say(line: String) {
+        addTurn(ChatTurn(ChatTurn.ASSISTANT, line))
+        DebugLog.log(DebugLog.Stage.SPOKE, line)
+        set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = line) }
+        speaker.speak(line)
     }
 
     private fun set(block: (VoiceUiState) -> VoiceUiState) {
