@@ -1937,3 +1937,46 @@ under 300 characters across thirty steps.
 Untested on a device. The two open questions are honest ones: a network
 round-trip per step may make it feel slow, and 10 steps may not be enough for a
 real errand. Both are single-constant changes once there is evidence.
+
+### 2026-08-04 — A parameter added where it was declared, not where it was read (0d51d40)
+The agent loop needed its compact prompt to reach the model, so `Brain.generate`
+gained a `systemOverride` that each client forwards. Groq took it correctly.
+Gemini did not, and builds #179 and #180 produced no artifact.
+
+The mistake is worth recording because it is a shape, not a typo. The parameter
+went onto `GeminiClient.generate()`'s public signature, and separately the line
+that *reads* it — `val base = systemOverride ?: SYSTEM_PROMPT` — went into
+`buildPayload`, a private helper two calls below. Between them sat `requestModel`,
+which knew nothing about it. Declaring a value and consuming it are two different
+places, and an edit that touches only the first compiles in the author's head and
+nowhere else.
+
+`GroqClient` had already solved this exact problem, and had done it the obvious
+way: `generate → requestModel → buildPayload`, each hop taking the parameter and
+passing it on. The fix was to copy that shape rather than invent a second one, so
+the two clients still read line for line against each other — which is the whole
+reason the discrepancy was findable in seconds once the error was legible.
+
+The evidence story matters more than the fix. `--stacktrace` came out of the
+workflow last week after six red builds (#163–#169) were misdiagnosed three times
+from logs where 120 lines of Gradle frames buried the one `e:` line that said what
+was wrong. This failure took a single log fetch: the `e:` line named the file,
+the line, and the unresolved symbol. The earlier investment paid for itself on its
+first use, and it confirms the rule — make the evidence legible BEFORE guessing,
+not after the third wrong guess.
+
+Also worth noting what did NOT go wrong. The failing task was `compileDebugKotlin`,
+not `compileDebugUnitTestKotlin`, so main sources were at fault and the tests never
+ran. Last time it was the reverse and the task name — visible the whole time —
+would have narrowed it immediately. Reading the failing task name first is now
+cheap and twice-proven.
+
+`main` stayed at `6b57cb7` throughout. Nothing red was merged, which is the
+one thing Rule 2 exists to guarantee.
+
+Found by reading rather than by CI, and still open: `AgentMove.Blocked` logs and
+returns an empty step list without speaking. A model that cannot find a way
+forward mid-errand therefore leaves the user hearing nothing — indistinguishable
+from JARVIS still working, which is precisely the failure the exhausted-path
+message was written to avoid. Queued as its own commit so a red build cannot be
+ambiguous between it and the compile fix.
