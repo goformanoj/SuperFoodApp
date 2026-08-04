@@ -2015,3 +2015,45 @@ Five tests, and the first one is the one that matters: every possible reason —
 placeholder, empty, whitespace, fragment, real sentence — must produce non-blank
 speech that ends by handing control back to the user. Expectations were
 pre-flighted in Python before pushing, per Rule 5, and the Python was thrown away.
+
+### 2026-08-04 — The launcher icon, and what a mask does to a square badge
+The user supplied a finished JARVIS badge: a rounded-square frame, circuit traces,
+a HUD ring assembly around a glossy orb carrying a "J", and the wordmark "JARVIS"
+across the bottom. "Make this the app icon."
+
+It cannot be shipped as-is, and the reason is structural rather than aesthetic.
+`minSdk` is 26, so `mipmap-anydpi-v26` is *always* the launcher icon — legacy
+square PNGs are never read, and the project has none. An adaptive icon is two
+108dp layers of which the launcher masks the centre 72dp, guaranteeing only the
+inner 66dp circle. Dropping the badge in whole means a circular mask eats the
+frame, the corners and most of the wordmark.
+
+So the badge was decomposed rather than resized. Measured from the source: ring
+assembly centred at (627, 546) with an outer radius of 390px, wordmark starting at
+y=976. A crop of 860px centred on the rings therefore excludes the wordmark
+exactly. The assembly is placed at **64dp** of the 108dp layer, which puts content
+at radius 140px against a 144px mask edge at xxxhdpi — verified numerically, not
+by eye.
+
+**The wordmark is deliberately absent.** It is about three pixels tall at launcher
+size, the launcher already draws the app label underneath the icon, and every mask
+except a full square clips it. The full badge is kept at
+`store/ic_launcher-playstore.png` for the Play listing, which is shown at 512 and
+never masked.
+
+The monochrome layer for Android 13+ themed icons is where the interesting failure
+was. Thresholding luminance to make a silhouette produced a blobby smear, because
+**a glow render has no edges** — the same lesson the orb work taught four times:
+when a medium cannot express the thing, change the approach rather than the
+parameters. So the rings were *measured* instead: a radial profile of cyan chroma
+put the two bright rings at r=252 and r=312 and the ticks at r=384, and those were
+drawn as clean arcs. The "J" was kept from the render, where it genuinely is crisp.
+
+That left the orb's specular highlight leaking in above the glyph. Luminance could
+not separate them — both are near-white. The red channel could: the glyph is white
+(R≈170) while the specular is blue-white (R≈62). One measurement replaced three
+threshold guesses.
+
+Every stage was rendered and looked at under circle, squircle and rounded masks at
+192/96/48px, and the monochrome against dark, light and black theme backgrounds.
+That is what caught the 149px overshoot at the first attempt and both smears.

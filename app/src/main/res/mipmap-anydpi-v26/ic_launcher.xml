@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    minSdk is 26, so this adaptive icon is ALWAYS the launcher icon — legacy
+    square PNGs would never be read, and there are none.
+
+    The layers are 108dp; launchers mask the centre 72dp and guarantee only the
+    inner 66dp circle. The ring assembly is therefore drawn at 64dp so a circular
+    mask clips nothing, and the source badge's outer frame and "JARVIS" wordmark
+    are deliberately absent: both sit outside the mask, and the wordmark is about
+    three pixels tall at launcher size while the launcher already draws the app
+    label underneath the icon.
+
+    <monochrome> is Android 13+ themed icons; older platforms ignore the tag.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@mipmap/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
 </adaptive-icon>
