@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Shadow
 import com.jarvis.os.ui.theme.JarvisPalette
 import com.jarvis.os.ui.theme.LocalPalette
-import com.jarvis.os.ui.theme.Orbitron
+import com.jarvis.os.ui.theme.Michroma
 
 /**
  * The "JARVIS / SYSTEM" wordmark that anchors every one of the reference
@@ -34,8 +34,10 @@ import com.jarvis.os.ui.theme.Orbitron
  * right and read as off-centre. Here it is centred by construction, nothing
  * clips it, and renaming the app is a code change rather than new art.
  *
- * Orbitron is the family already shipped with the app and is the same squared
- * techno face the designs use, so no new font was needed.
+ * Michroma is the display face, chosen to match the badge's lettering. It has a
+ * single weight, so the emphasis that used FontWeight(900) here now comes from
+ * the gradient brush and the glow instead — asking a static font for 900 only
+ * gets a synthesised faux-bold, which smears a face this geometric.
  */
 @Composable
 fun JarvisWordmark(
@@ -59,8 +61,8 @@ fun JarvisWordmark(
             text = "JARVIS",
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.displayLarge.copy(
-                fontFamily = Orbitron,
-                fontWeight = FontWeight(900),
+                fontFamily = Michroma,
+                fontWeight = FontWeight.Normal,
                 fontSize = (38 * scale).sp,
                 letterSpacing = (2 * scale).sp,
                 brush = brush,
@@ -77,8 +79,8 @@ fun JarvisWordmark(
                 text = "SYSTEM",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.titleLarge.copy(
-                    fontFamily = Orbitron,
-                    fontWeight = FontWeight(600),
+                    fontFamily = Michroma,
+                    fontWeight = FontWeight.Normal,
                     fontSize = (15 * scale).sp,
                     // Wide tracking is what makes it read as a subtitle rather
                     // than a second word.

@@ -2095,3 +2095,41 @@ a design whose clipped edges were already gone by then — I was looking at the
 output of the bug, not at the source next to the boundary. Looking is necessary
 and was not sufficient; the annotated overlay of candidate radii on the ORIGINAL
 is what made it obvious.
+
+### 2026-08-04 — The badge's font does not exist
+The user asked for the app's headings and main labels to be set in the font from
+the badge image, and for the logo to carry no "JARVIS" text at all.
+
+The wordmark removal was easy: the launcher icon already excluded it, so only the
+Play Store asset still carried it, and that is now logo-only too.
+
+The font was more interesting. Enlarging the badge's wordmark shows thin monoline
+strokes, very wide tracking, squared terminals, a straight-legged R — and an "A"
+with **no crossbar**. Seventeen candidate faces were downloaded from Google Fonts
+and rendered against it, and not one had a barless A. That is not a gap in the
+search: essentially no text typeface omits the A crossbar, because it would
+collide with Λ. The badge is an AI render, and its lettering only imitates type.
+So "the font in the image" cannot be bought, downloaded or matched exactly, and
+saying so is more useful than shipping a near-miss and calling it the font.
+
+Michroma was chosen on the traits that actually carry the look — squared geometry,
+flat terminals, straight-legged R, wide proportions — after measuring each
+candidate against the app's longest real string ("Custom instructions" at
+headlineSmall) on a 320dp screen. Syncopate overflowed at 342dp and was dropped on
+that evidence rather than on taste.
+
+Two things worth keeping:
+
+**Michroma is a static, single-weight font.** The styles it replaced asked for 600,
+700 and 900. A static face given those weights gets a synthesised faux-bold, which
+smears a geometric design badly. Every Michroma style is therefore FontWeight.Normal
+and earns hierarchy from size, tracking and colour. The home-screen wordmark lost
+its FontWeight(900) the same way — its emphasis already came from the gradient
+brush and the glow.
+
+**It is much wider than Orbitron**, so adopting it meant bringing every size down
+(headlineSmall 22 to 19sp, displayLarge 44 to 34sp). Sizes were not guessed: the
+rendered width of each real string was computed against the available 280dp of a
+320dp screen before anything was written.
+
+Orbitron stays defined and bundled, so reverting is one line.
