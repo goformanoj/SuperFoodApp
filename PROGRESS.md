@@ -1,8 +1,8 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `6b57cb7` · last green build **#177** (artifact `jarvis-debug-apk`, 18.65 MB, confirmed) · updated 2026-08-04
-> **Awaiting CI: `0d51d40`** — the **agent loop** (`1816508`) plus its compile fix. The playbook is merged and green at `6b57cb7`; nothing red has been merged.
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `0d51d40` · last green build **#181** (artifact `jarvis-debug-apk`, 18.66 MB, confirmed) · updated 2026-08-04
+> **The agent loop is merged** (`0d51d40`, build #181 green, artifact confirmed). **Awaiting CI:** the `Blocked` silence fix — a dead end mid-errand used to log and say nothing, which sounds exactly like JARVIS still working.
 > **Builds #179–#180 failed on `compileDebugKotlin`** — a *main*-source error this time, not tests. `systemOverride` was added to `GeminiClient.generate()`'s signature while the line that reads it sits in `buildPayload`, a private helper two calls down, so it referenced a parameter not in scope. Fixed in `0d51d40` by threading it `generate → requestModel → buildPayload`, which is exactly the shape `GroqClient` already had. One log fetch found it, because `--stacktrace` is out of the workflow now.
 > **Builds #163–#169 failed on `compileDebugUnitTestKotlin`:** `AskGuard.apply` is generic and a test passed a bare `emptyList()`, so `T` could not be inferred. Main sources compiled cleanly throughout; the bare `$` in `AlarmGuard` was never the cause. Removing `--stacktrace` from CI (`3d41cf8`) is what made the error legible — it turned three failed diagnoses into one successful one.
 > **First real device session against the current build.** User-confirmed working: type-vs-send, no spoken steps, below-fold chats, mic yielding to playback, learned memory, PDF creation.

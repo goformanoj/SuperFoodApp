@@ -189,8 +189,12 @@ class AssistantEngine(context: Context) {
                         main.post { say(move.question) }
                     }
                     is AgentMove.Blocked -> {
+                        // Say so. Logging alone leaves the user listening to
+                        // silence that looks exactly like work still in
+                        // progress — the same failure the step budget reports.
                         DebugLog.log(DebugLog.Stage.SCREEN, "agent is stuck: ${move.reason}")
                         reply(emptyList())
+                        main.post { say(AgentLoop.blockedMessage(currentGoal, move.reason)) }
                     }
                 }
             }

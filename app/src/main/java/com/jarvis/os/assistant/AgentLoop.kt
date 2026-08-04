@@ -57,6 +57,13 @@ object AgentLoop {
      */
     const val MAX_STEPS = 10
 
+    /**
+     * Stand-in reason when the reply carried no words at all.
+     *
+     * Internal, and deliberately never spoken — see [blockedMessage].
+     */
+    const val NO_STEP = "no next step"
+
     /** The model says the goal is met. */
     private val DONE = Regex("""<<\s*DONE\s*>{1,2}""", RegexOption.IGNORE_CASE)
 
@@ -86,7 +93,7 @@ object AgentLoop {
             return if (DONE.containsMatchIn(reply)) {
                 AgentMove.Done
             } else {
-                AgentMove.Blocked(ScreenActions.parse(reply).clean.ifBlank { "no next step" })
+                AgentMove.Blocked(ScreenActions.parse(reply).clean.ifBlank { NO_STEP })
             }
         }
 
@@ -123,6 +130,33 @@ object AgentLoop {
     fun exhaustedMessage(goal: String): String =
         "I've taken $MAX_STEPS steps towards \"$goal\" and I'm not there yet, so I've " +
             "stopped rather than keep guessing. Tell me what to do next."
+
+    /**
+     * What to say when the loop cannot find a next step.
+     *
+     * Always returns something speakable, which is the whole point. A dead end
+     * that only writes to the log is indistinguishable from JARVIS still
+     * working: the user waits, hears nothing, and eventually asks again. That is
+     * precisely the "look how many tries it took me" complaint the loop exists
+     * to fix, so failing quietly here would reintroduce it at the last step.
+     *
+     * The model's own words are preferred when it actually explained itself —
+     * "I can't see a cart on this screen" tells the user something a generic
+     * line cannot. Fragments and the internal [NO_STEP] placeholder are not
+     * spoken; a stray word read aloud is worse than a plain admission.
+     */
+    fun blockedMessage(goal: String, reason: String): String {
+        val explanation = reason.trim()
+        val speakable = explanation.length >= 12 &&
+            !explanation.equals(NO_STEP, ignoreCase = true) &&
+            explanation.split(Regex("\\s+")).count { it.isNotBlank() } >= 3
+        if (!speakable) {
+            return "I got stuck trying to \"$goal\" — I can't see what to do from this " +
+                "screen, so I've stopped rather than guess. What next?"
+        }
+        val ended = if (explanation.last() in ".!?") explanation else "$explanation."
+        return "$ended I've stopped there rather than guess. What next?"
+    }
 
     /**
      * A compact history line for the next prompt: what has already been done.

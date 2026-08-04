@@ -1980,3 +1980,38 @@ forward mid-errand therefore leaves the user hearing nothing — indistinguishab
 from JARVIS still working, which is precisely the failure the exhausted-path
 message was written to avoid. Queued as its own commit so a red build cannot be
 ambiguous between it and the compile fix.
+
+### 2026-08-04 — The loop's last silent exit (Blocked)
+The agent loop merged green at `0d51d40` (build #181, artifact confirmed). Reading
+it afterwards — not CI, which cannot see this class of fault — turned up the one
+path that still failed quietly.
+
+`AgentMove.Blocked` is what the loop returns when the model's reply contains no
+usable action: it could not see a way forward from this screen. The engine logged
+it and called `reply(emptyList())`, and that was all. Nothing was spoken.
+
+That is the same defect the loop was built to remove, surviving at its last step.
+The user's complaint about the old executor was "look how many tries it took me to
+achieve the final result", and the reason it took many tries is that a failure and
+ongoing work sound identical from the outside: JARVIS goes quiet either way, so the
+only way to find out is to wait and then ask again. The step budget already had a
+spoken message for exactly this reason. Blocked did not, and it is the *more*
+common exit — running out of steps needs ten failures, while one confused reply
+gets here immediately.
+
+`AgentLoop.blockedMessage(goal, reason)` now always returns something speakable.
+Where possible it uses the model's own words, because "I can't see a cart on this
+screen" is genuinely useful and a generic line is not. It refuses to speak two
+things: the internal `NO_STEP` placeholder, and fragments under twelve characters
+or three words — a stray "Hmm" read aloud is worse than a plain admission, so
+those fall back to naming the goal.
+
+The general shape, worth keeping: **every terminal branch of an autonomous loop
+needs an exit that the user can hear.** Act continues, Done is self-evident, Ask
+speaks, Exhausted speaks — Blocked was the one branch written as a log line, and
+log lines are invisible on a phone.
+
+Five tests, and the first one is the one that matters: every possible reason —
+placeholder, empty, whitespace, fragment, real sentence — must produce non-blank
+speech that ends by handing control back to the user. Expectations were
+pre-flighted in Python before pushing, per Rule 5, and the Python was thrown away.

@@ -93,6 +93,45 @@ class AgentLoopTest {
     }
 
     @Test
+    fun `a dead end is always spoken, never just logged`() {
+        // Silence is the failure being fixed here: a loop that gives up quietly
+        // is indistinguishable from one still working, so the user waits and
+        // then asks again. Every reason, however useless, must yield speech.
+        listOf(AgentLoop.NO_STEP, "", "   ", "Hmm", "?", "I can't see a cart on this screen")
+            .forEach { reason ->
+                val message = AgentLoop.blockedMessage("add milk to my basket", reason)
+                assertTrue("nothing to say for reason '$reason'", message.isNotBlank())
+                assertTrue("must hand back to the user", message.endsWith("What next?"))
+                assertFalse(
+                    "the internal placeholder must never be spoken",
+                    message.contains(AgentLoop.NO_STEP),
+                )
+            }
+    }
+
+    @Test
+    fun `the model's own explanation is preferred when it gave one`() {
+        // "I can't see a cart on this screen" tells the user something a
+        // generic line cannot.
+        val message = AgentLoop.blockedMessage("add milk", "I can't see a cart on this screen")
+        assertTrue(message.startsWith("I can't see a cart on this screen."))
+    }
+
+    @Test
+    fun `a fragment is not read aloud, the goal is named instead`() {
+        // A stray word spoken back is worse than a plain admission.
+        val message = AgentLoop.blockedMessage("add milk to my basket", "Hmm")
+        assertFalse(message.startsWith("Hmm"))
+        assertTrue("the user needs to know which errand stopped", message.contains("add milk to my basket"))
+    }
+
+    @Test
+    fun `an explanation that already ends in punctuation is not double-stopped`() {
+        val message = AgentLoop.blockedMessage("add milk", "There is no Add button here!")
+        assertTrue(message.startsWith("There is no Add button here! I've stopped"))
+    }
+
+    @Test
     fun `history stays short however long the errand runs`() {
         // It rides on every step's prompt. An unbounded transcript is what makes a
         // long errand hit the per-minute token limit halfway through.
