@@ -40,7 +40,7 @@ object GeminiClient {
 
             var lastReason = "No response"
             for (model in MODELS) {
-                val outcome = requestModel(model, messages, context, key)
+                val outcome = requestModel(model, messages, context, key, systemOverride)
                 if (outcome.text != null) return@withContext outcome.text
                 lastReason = outcome.reason ?: "Unknown error"
                 if (!outcome.retryable) throw GeminiException(lastReason)
@@ -55,6 +55,7 @@ object GeminiClient {
         messages: List<ChatTurn>,
         context: String,
         key: String,
+        systemOverride: String?,
     ): Outcome {
         val conn = try {
             URL("$ENDPOINT/$model:generateContent?key=$key").openConnection() as HttpURLConnection
@@ -69,7 +70,7 @@ object GeminiClient {
 
         return try {
             conn.outputStream.use {
-                it.write(buildPayload(messages, context).toByteArray(Charsets.UTF_8))
+                it.write(buildPayload(messages, context, systemOverride).toByteArray(Charsets.UTF_8))
             }
             val code = conn.responseCode
             val ok = code in 200..299
@@ -94,7 +95,11 @@ object GeminiClient {
         }
     }
 
-    private fun buildPayload(messages: List<ChatTurn>, context: String): String {
+    private fun buildPayload(
+        messages: List<ChatTurn>,
+        context: String,
+        systemOverride: String?,
+    ): String {
         val base = systemOverride ?: SYSTEM_PROMPT
         val system = if (context.isBlank()) base else "$base\n\n$context"
         val contents = JSONArray()
