@@ -2133,3 +2133,74 @@ rendered width of each real string was computed against the available 280dp of a
 320dp screen before anything was written.
 
 Orbitron stays defined and bundled, so reverting is one line.
+
+### 2026-08-04 — "Are you hardcoding too many things?" Mostly the wrong things, yes
+A Blinkit session achieved nothing. The user asked "can you go to blinkit and add
+some bread", watched JARVIS poke the same control repeatedly, and said: "it
+actually did nothing on my screen… how is our app going to become smart, its not
+able to do basic tasks itself… are u hardcoding too many things".
+
+The question deserves a straight answer, and the answer is that the criticism
+lands on the architecture rather than on the guards.
+
+The guards — SendGuard, AlarmGuard, AskGuard, and now SpendGuard — are hardcoded
+deliberately and I would keep them. They only ever SUBTRACT actions that spend
+money or message people, they are a short bounded list, and each exists because a
+prompt rule was tried first and still failed on a device. But they do not make
+anything smart, and adding them one at a time had become a substitute for fixing
+the thing that was actually broken.
+
+**The real defect: the agent loop was built as a fallback.** It looks at the
+screen before each action, which is exactly right — and it only ran after a step
+had already failed. The ordinary path still guessed an entire sequence before the
+app was even open. The trace proves how hopeless that is: the plan aimed at a
+control called "Search", and Blinkit's search box is labelled "Search for atta,
+dal, coke and more". No amount of model quality fixes that, because the
+information did not exist when the plan was written.
+
+So the loop is now the primary path for errands. `AgentLoop.isErrand` recognises
+"open something, then interact twice or more", runs only the app launch, and
+decides every later action from what is on screen. One-shot commands and
+follow-ups inside the app already open keep the fast path — those genuinely are
+planned against the screen the user is looking at, they work today, and a network
+round trip per action would only make them slower. Knowing which case is which is
+the whole point.
+
+Four more defects, each visible in the same log:
+
+**Tap(Checkout) was queued** by a request that said "add some bread". It only
+failed to run because typing broke first. AgentLoop guarded this, Playbook refused
+to learn it, and the path that runs on almost every command had no check at all.
+
+**The agent's budget was spent before it began** — `stepsTaken` was seeded with
+the whole plan, so a nine-step plan failing at step two logged its first agent
+move as "step 10/10". The budget is meant to bound how long the loop may keep
+guessing; counting the plan against it defeated the feature entirely. Raised to 18
+as well, because the user's own errand is nine steps before a single wrong turn.
+
+**It repeated the step that had just failed, three times.** The prompt forbids
+this explicitly. Prompts are probabilistic — the fifth time this lesson has been
+paid for.
+
+**Typing failed on a field that was demonstrably ready.** The user's photo shows
+the search screen open, the caret visible, the keyboard up — and the log says "no
+editable field appeared". Two causes: only `rootInActiveWindow` was searched, and
+once the keyboard shows, the active window can be the IME, which contains keys and
+not fields; and a node had to report `isEditable`, which Blinkit does not set.
+Now every application window is searched, the IME is skipped, and anything
+accepting ACTION_SET_TEXT counts. **This is a diagnosis, not a confirmed fix** —
+so the failure path now logs the window kinds and the focused node's class and
+flags. The previous trace said only that it failed, which is what made it cost a
+round trip.
+
+**And the playbook learned three routes from runs that had all failed** — "did you
+are", "search box", "the search box is right ya just type". `ok` from runSteps
+meant "the sequence finished", including after recovery rescued it, so the
+original wrong steps were stored as though they had worked. It now reports `ok`
+and `clean` separately. The routes already on the user's device are poisoned and
+should be cleared.
+
+The lesson worth keeping is the one the user supplied: **when the complaint is
+"it isn't smart", check whether the intelligent component is actually on the
+critical path.** It was written, tested, documented and merged — and it only ran
+after something had already gone wrong.

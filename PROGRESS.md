@@ -2,7 +2,8 @@
 
 > Living status. Update this whenever something ships.
 > Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `0d51d40` · last green build **#181** (artifact `jarvis-debug-apk`, 18.66 MB, confirmed) · updated 2026-08-04
-> **The agent loop is merged** (`0d51d40`, build #181 green, artifact confirmed). **Awaiting CI:** the `Blocked` silence fix — a dead end mid-errand used to log and say nothing, which sounds exactly like JARVIS still working — and the **new launcher icon** built from the user's JARVIS badge.
+> **The agent loop is merged** (`0d51d40`, build #181 green, artifact confirmed). **Awaiting CI:** the `Blocked` silence fix, the **new launcher icon** (wing bars no longer clipped), the **Michroma display font**, and — most importantly — **errands are now driven by looking at the screen instead of planned blind**.
+> **A second device session (Blinkit) achieved nothing, and proved five separate defects.** The user's words: "it actually did nothing on my screen… how is our app going to become smart, are u hardcoding too many things". They were right about the architecture: the agent loop existed but was wired as a *fallback on failure*, so the ordinary path still guessed a whole sequence before the app was open. It is now the primary path for errands.
 > **Builds #179–#180 failed on `compileDebugKotlin`** — a *main*-source error this time, not tests. `systemOverride` was added to `GeminiClient.generate()`'s signature while the line that reads it sits in `buildPayload`, a private helper two calls down, so it referenced a parameter not in scope. Fixed in `0d51d40` by threading it `generate → requestModel → buildPayload`, which is exactly the shape `GroqClient` already had. One log fetch found it, because `--stacktrace` is out of the workflow now.
 > **Builds #163–#169 failed on `compileDebugUnitTestKotlin`:** `AskGuard.apply` is generic and a test passed a bare `emptyList()`, so `T` could not be inferred. Main sources compiled cleanly throughout; the bare `$` in `AlarmGuard` was never the cause. Removing `--stacktrace` from CI (`3d41cf8`) is what made the error legible — it turned three failed diagnoses into one successful one.
 > **First real device session against the current build.** User-confirmed working: type-vs-send, no spoken steps, below-fold chats, mic yielding to playback, learned memory, PDF creation.
@@ -23,6 +24,18 @@ Still open from the same session:
 - **No way to open its own artifact.** The prompt stops the damage, but there is no marker for "show me the PDF you just made". That is the natural next piece.
 - **`<<OPEN|unknown>>` fails silently** — the trace shows `running Open(app=jao)` and then nothing at all. Open should report failure like taps do.
 - **Execution is still not smooth.** The user's words: "look how many tries it took me to achieve the final result." Step recovery fires, but produced `Open(app=Open)` — a non-existent app name — and hunted blindly.
+
+## 🔨 Second device session (Blinkit) — five defects, all from one trace
+"can you go to blinkit and add some bread" ended with nothing done. Every fix below quotes the log line that caused it.
+
+- **The plan was guessed before the app existed.** It aimed at `Tap(Search)`; Blinkit's box is labelled "Search for atta, dal, coke and more". Unknowable at planning time. **`AgentLoop.isErrand`** now routes open-then-interact errands through look → decide → act → look. Simple commands and follow-ups in the current app keep the fast path.
+- **`Tap(Checkout)` was queued** by a request that only said "add some bread". Nothing in code would have stopped it; only an earlier failure did. **`SpendGuard`** truncates at the first irreversible tap unless the user's own words asked, and says what it withheld. Strict where `AlarmGuard` is generous — here a loose reading is what *permits* the purchase.
+- **The agent budget was spent before it began** — `stepsTaken` was seeded with the whole plan, so a nine-step plan failing at step two logged `agent step 10/10`. Now counts only agent moves; budget 10 → 18.
+- **It repeated the step that just failed, three times**, while the user watched. `parseMove(reply, avoid)` refuses it in code; the prompt already forbade it.
+- **Typing failed on a focused field.** The user's photo shows the search screen open, a visible caret and the keyboard up, yet `no editable field appeared`. Only `rootInActiveWindow` was searched (which can be the IME once the keyboard shows) and a node had to report `isEditable` (Blinkit evidently does not set it). Now every application window is searched, the IME skipped, and anything accepting `ACTION_SET_TEXT` counts. **Unconfirmed — this is a diagnosis, not a verified fix**, so the failure now logs window kinds and the focused node's class rather than just failing.
+- **The playbook learned three routes from failed runs** — "did you are", "search box". `runSteps` now reports `ok` and `clean` separately; learning requires `clean`. **Routes already learned on the device are poisoned and should be cleared.**
+
+Still open: **the agent cannot deliberately scroll.** Tapping a label scrolls to find it, but a product list cannot be browsed. Next piece, deliberately not stacked on top of an unverified typing fix.
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started
