@@ -55,7 +55,31 @@ object AgentLoop {
      * room for a couple of wrong turns. Small enough that a confused model costs
      * the user seconds and a handful of tokens rather than a rampage.
      */
-    const val MAX_STEPS = 10
+    const val MAX_STEPS = 18
+
+    /**
+     * True when [steps] describe an errand inside an app rather than one action.
+     *
+     * This is the shape that cannot be planned up front: open something, then
+     * interact with whatever it shows. A device trace has the model planning
+     * `Tap(Search)` for Blinkit, whose search control is actually labelled
+     * "Search for atta, dal, coke and more" — unknowable before the app opened.
+     * Everything after the first step was guessed against a screen that did not
+     * exist, so those plans are treated as a suggestion and the loop drives
+     * instead, looking before each action.
+     *
+     * One-step commands and follow-ups in the app already open are left alone:
+     * they are planned against the screen the user is actually looking at, they
+     * work today, and routing them through a round-trip per action would make
+     * them slower for nothing.
+     */
+    fun isErrand(steps: List<ScreenStep>): Boolean {
+        if (steps.firstOrNull() !is ScreenStep.Open) return false
+        return steps.drop(1).count { it !is ScreenStep.Open } >= 2
+    }
+
+    /** The leading app launches, which are safe to run before looking. */
+    fun opensIn(steps: List<ScreenStep>): List<ScreenStep> = steps.takeWhile { it is ScreenStep.Open }
 
     /**
      * Stand-in reason when the reply carried no words at all.
@@ -78,7 +102,7 @@ object AgentLoop {
      * does not exist yet. The model is told to send one; this makes it true
      * whether or not it complied.
      */
-    fun parseMove(reply: String): AgentMove {
+    fun parseMove(reply: String, avoid: ScreenStep? = null): AgentMove {
         ASK.find(reply)?.let { match ->
             val question = match.groupValues[1].trim()
             if (question.isNotEmpty()) return AgentMove.Ask(question)
@@ -86,6 +110,16 @@ object AgentLoop {
 
         val steps = ScreenActions.parse(reply).steps
         val first = steps.firstOrNull()
+
+        // Never re-run the step that just failed. The prompt asks for this and a
+        // device trace shows the model doing it anyway: told that
+        // Tap("Search for atta, dal, coke and more") had failed, it answered with
+        // that exact tap, three times running, and the user watched JARVIS poke
+        // the same control until they gave up. Prompts are probabilistic; this is
+        // the same reason SendGuard exists.
+        if (first != null && avoid != null && first == avoid) {
+            return AgentMove.Blocked("that step has already failed here")
+        }
 
         // DONE only counts when there is no action alongside it — a reply that
         // says "done" while still tapping has not finished.

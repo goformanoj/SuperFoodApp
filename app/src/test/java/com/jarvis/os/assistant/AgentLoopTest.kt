@@ -78,6 +78,74 @@ class AgentLoopTest {
     }
 
     @Test
+    fun `the step that just failed is never repeated`() {
+        // From a device trace: told Tap("Search for atta, dal, coke and more")
+        // had failed, the model answered with that exact tap three times running
+        // while the user watched. The prompt already forbids it; this makes it
+        // true regardless.
+        val failed = ScreenStep.Tap("Search for atta, dal, coke and more")
+        val move = AgentLoop.parseMove("<<TAP|Search for atta, dal, coke and more>>", avoid = failed)
+        assertTrue("must not repeat the failed step, got $move", move is AgentMove.Blocked)
+    }
+
+    @Test
+    fun `a different step after a failure is allowed`() {
+        val failed = ScreenStep.Tap("Search")
+        assertEquals(
+            AgentMove.Act(ScreenStep.Type("bread")),
+            AgentLoop.parseMove("<<TYPE|bread>>", avoid = failed),
+        )
+    }
+
+    @Test
+    fun `an errand is open-then-interact, and is driven rather than planned`() {
+        // The shape that cannot be planned up front: the second action depends on
+        // what the first one revealed.
+        assertTrue(
+            AgentLoop.isErrand(
+                listOf(
+                    ScreenStep.Open("Blinkit"),
+                    ScreenStep.Tap("Search"),
+                    ScreenStep.Type("bread"),
+                    ScreenStep.Enter,
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `simple commands are left on the fast path`() {
+        // These are planned against the screen the user is actually looking at,
+        // they work today, and a round-trip per action would only slow them down.
+        assertFalse("just opening an app", AgentLoop.isErrand(listOf(ScreenStep.Open("YouTube"))))
+        assertFalse(
+            "open and one action",
+            AgentLoop.isErrand(listOf(ScreenStep.Open("YouTube"), ScreenStep.Tap("Search"))),
+        )
+        assertFalse(
+            "a follow-up in the app already open",
+            AgentLoop.isErrand(listOf(ScreenStep.Tap("Search"), ScreenStep.Type("bread"), ScreenStep.Enter)),
+        )
+    }
+
+    @Test
+    fun `only the leading opens run before the first look`() {
+        val steps = listOf(
+            ScreenStep.Open("Blinkit"),
+            ScreenStep.Tap("Search"),
+            ScreenStep.Type("bread"),
+        )
+        assertEquals(listOf(ScreenStep.Open("Blinkit")), AgentLoop.opensIn(steps))
+    }
+
+    @Test
+    fun `the budget covers a real errand`() {
+        // The user's own example — open, search, type, submit, add, search, type,
+        // submit, add — is nine steps before a single wrong turn.
+        assertTrue("a real shopping errand must fit", AgentLoop.MAX_STEPS >= 14)
+    }
+
+    @Test
     fun `the budget stops the loop`() {
         assertFalse(AgentLoop.exhausted(0))
         assertFalse(AgentLoop.exhausted(AgentLoop.MAX_STEPS - 1))

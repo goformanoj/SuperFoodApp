@@ -73,8 +73,17 @@ class AssistantEngine(context: Context) {
     private val playbook = PlaybookStore(appContext)
     /** What the user asked for, kept so a sequence that works can be remembered. */
     private var pendingGoal: String = ""
-    /** Steps the agent loop has taken for the current goal, for its history line. */
+    /** Everything done for the current goal — planned and agent — for the history line. */
     private var stepsTaken: List<ScreenStep> = emptyList()
+
+    /**
+     * How many steps the AGENT has chosen for the current goal.
+     *
+     * Separate from [stepsTaken] on purpose. The budget is about how long the
+     * loop may keep guessing, so counting the original plan against it spends
+     * the allowance before the loop starts.
+     */
+    private var agentSteps: Int = 0
     private val conversation: MutableList<ChatTurn> = store.load()
 
     private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
@@ -152,7 +161,7 @@ class AssistantEngine(context: Context) {
                         systemOverride = AGENT_PROMPT,
                         tier = Tier.SMART,
                     )
-                    AgentLoop.parseMove(answer)
+                    AgentLoop.parseMove(answer, avoid = failedStep)
                 } catch (e: Exception) {
                     DebugLog.log(DebugLog.Stage.ERROR, "agent step failed: ${e.message ?: e.javaClass.simpleName}")
                     AgentMove.Blocked(e.message ?: "no answer")
@@ -160,7 +169,12 @@ class AssistantEngine(context: Context) {
 
                 when (move) {
                     is AgentMove.Act -> {
-                        if (AgentLoop.exhausted(stepsTaken.size)) {
+                        // Counts what the AGENT has done, not what was planned.
+                        // Seeding this from the plan spent the whole budget
+                        // before the loop began: a trace shows a nine-step plan
+                        // fail at step two and the very first agent move logged
+                        // as "step 10/10", leaving no room to recover at all.
+                        if (AgentLoop.exhausted(agentSteps)) {
                             // Stop and say where it got to. A loop that quietly
                             // gives up looks identical to one still working.
                             DebugLog.log(DebugLog.Stage.SCREEN, "agent budget spent")
@@ -168,10 +182,11 @@ class AssistantEngine(context: Context) {
                             main.post { say(AgentLoop.exhaustedMessage(currentGoal)) }
                             return@launch
                         }
+                        agentSteps += 1
                         stepsTaken = stepsTaken + move.step
                         DebugLog.log(
                             DebugLog.Stage.SCREEN,
-                            "agent step ${stepsTaken.size}/${AgentLoop.MAX_STEPS}: ${move.step}",
+                            "agent step $agentSteps/${AgentLoop.MAX_STEPS}: ${move.step}",
                         )
                         // One step, not a plan. The service calls back here again
                         // if it fails, which is the loop.
@@ -539,7 +554,20 @@ class AssistantEngine(context: Context) {
                             "${asked.drop(guarded.size).joinToString(", ")}",
                     )
                 }
-                val plan = parsed.copy(steps = guarded)
+                // Nobody asked to check out. A trace of "add some bread" produced
+                // a plan ending in Tap(Checkout), and only a typing failure
+                // earlier in the sequence stopped it running.
+                val spendStop = SpendGuard.stopsAt(userText, guarded)
+                val safe = SpendGuard.apply(userText, guarded)
+                if (spendStop != null) {
+                    DebugLog.log(
+                        DebugLog.Stage.MARKERS,
+                        "spend suppressed: user did not ask to $spendStop — dropped " +
+                            "${guarded.drop(safe.size).joinToString(", ")}",
+                    )
+                }
+                val spendNote = spendStop?.let { SpendGuard.explain(it) }
+                val plan = parsed.copy(steps = safe)
                 val clean = plan.clean
                 DebugLog.log(
                     DebugLog.Stage.MARKERS,
@@ -575,20 +603,22 @@ class AssistantEngine(context: Context) {
                 val spoken = when {
                     needsPerm ->
                         "To control the screen, open Accessibility settings, go to Downloaded apps, and switch on JARVIS Screen Control, then ask me again."
-                    clean.isNotBlank() -> listOfNotNull(clean, volumeNote).joinToString(" ")
+                    clean.isNotBlank() -> listOfNotNull(clean, spendNote, volumeNote).joinToString(" ")
                     filesMade > 0 && clean.isBlank() -> "Done — it's in your Files."
                     alarmsSet > 0 && clean.isBlank() ->
                         listOfNotNull("Done, that's set.", volumeNote).joinToString(" ")
                     added > 0 && deleted > 0 -> "Done, I've rescheduled it."
                     added > 0 -> "Okay, I've added it to your calendar."
                     deleted > 0 -> "Done, I've removed it from your calendar."
-                    plan.hasAction -> "On it."
+                    plan.hasAction -> listOfNotNull("On it.", spendNote).joinToString(" ")
+                    spendNote != null -> spendNote
                     else -> reply
                 }
                 pendingScreen = if (plan.hasAction) plan else null
                 if (plan.hasAction) {
                     pendingGoal = userText
                     stepsTaken = plan.steps
+                    agentSteps = 0
                 }
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
                 DebugLog.log(DebugLog.Stage.SPOKE, spoken)
@@ -703,13 +733,36 @@ class AssistantEngine(context: Context) {
             if (session.needsForegroundService) WorkSessionService.start(appContext)
             main.post { applyMicOwner() }
         }
+        if (plan.needsAccessibility && AgentLoop.isErrand(plan.steps)) {
+            // An errand inside an app is not planned, it is driven. Everything
+            // after the first step was guessed against a screen that did not
+            // exist yet — which is why a Blinkit trace kept tapping a control
+            // called "Search" in an app whose search box is labelled "Search for
+            // atta, dal, coke and more". Open the app, then look before each move.
+            val goal = pendingGoal
+            val opens = AgentLoop.opensIn(plan.steps)
+            DebugLog.log(
+                DebugLog.Stage.SCREEN,
+                "errand: opening, then deciding each step from the screen " +
+                    "(the planned ${plan.steps.size} steps are only a suggestion)",
+            )
+            ScreenControlService.instance?.runSteps(opens, recover = false) { _, _ ->
+                main.post { driveErrand(goal, lastFailed = null) }
+            }
+            return ScreenOutcome.DISPATCHED
+        }
         if (plan.needsAccessibility) {
             // Run the whole ordered sequence (open -> tap -> type -> enter) via the service.
             val goal = pendingGoal
-            ScreenControlService.instance?.runSteps(plan.steps) { ok ->
+            ScreenControlService.instance?.runSteps(plan.steps) { ok, ranClean ->
                 // Only a sequence that ran clean is worth keeping. Routes that
                 // needed recovery are exactly the ones whose steps were wrong.
-                if (ok && goal.isNotBlank()) {
+                //
+                // `ok` alone was not that test: recovery rescues a run and then
+                // reports success, so a trace shows three routes learned in one
+                // session — "did you are", "search box" — each stored from a
+                // sequence whose typing step had just failed.
+                if (ok && ranClean && goal.isNotBlank()) {
                     Playbook.learn(goal, plan.steps)?.let {
                         playbook.remember(it, System.currentTimeMillis())
                         DebugLog.log(
@@ -771,6 +824,83 @@ class AssistantEngine(context: Context) {
             // Do Not Disturb can refuse the change. Report it rather than
             // pretending the alarm is now loud.
             DebugLog.log(DebugLog.Stage.ALARM, "could not raise alarm volume: ${e.message}")
+        }
+    }
+
+    /**
+     * Drives an errand one action at a time: look, decide, act, look again.
+     *
+     * This is the ordinary path for "open Blinkit and add some bread", not a
+     * fallback. The old path planned the whole sequence before the app was even
+     * open and then hoped; a trace of that shows it typing into a screen with no
+     * text field, tapping a control whose real label it could not have known, and
+     * doing nothing the user asked for.
+     *
+     * [lastFailed] is the step that just failed, if any — it is passed to the
+     * parser so the model cannot answer with the same move again.
+     */
+    private fun driveErrand(goal: String, lastFailed: ScreenStep?) {
+        val service = ScreenControlService.instance
+        if (service == null || goal.isBlank()) return
+        if (AgentLoop.exhausted(agentSteps)) {
+            DebugLog.log(DebugLog.Stage.SCREEN, "agent budget spent")
+            say(AgentLoop.exhaustedMessage(goal))
+            return
+        }
+        val screen = service.describeScreen()
+        scope.launch {
+            val move = try {
+                val answer = Brain.generate(
+                    messages = listOf(
+                        ChatTurn(
+                            ChatTurn.USER,
+                            agentStep(
+                                goal = goal,
+                                done = AgentLoop.historyOf(stepsTaken) +
+                                    (lastFailed?.let { "; then $it FAILED" } ?: ""),
+                                screen = screen,
+                            ),
+                        ),
+                    ),
+                    context = "",
+                    systemOverride = AGENT_PROMPT,
+                    tier = Tier.SMART,
+                )
+                AgentLoop.parseMove(answer, avoid = lastFailed)
+            } catch (e: Exception) {
+                DebugLog.log(DebugLog.Stage.ERROR, "agent step failed: ${e.message ?: e.javaClass.simpleName}")
+                AgentMove.Blocked(e.message ?: "no answer")
+            }
+
+            main.post {
+                when (move) {
+                    is AgentMove.Act -> {
+                        agentSteps += 1
+                        stepsTaken = stepsTaken + move.step
+                        DebugLog.log(
+                            DebugLog.Stage.SCREEN,
+                            "errand step $agentSteps/${AgentLoop.MAX_STEPS}: ${move.step}",
+                        )
+                        // recover = false: this loop IS the recovery, and two of
+                        // them on one screen would fight.
+                        service.runSteps(listOf(move.step), recover = false) { ok, _ ->
+                            main.post { driveErrand(goal, lastFailed = if (ok) null else move.step) }
+                        }
+                    }
+                    AgentMove.Done -> {
+                        DebugLog.log(DebugLog.Stage.SCREEN, "errand done after $agentSteps steps")
+                        say("That's done.")
+                    }
+                    is AgentMove.Ask -> {
+                        DebugLog.log(DebugLog.Stage.SCREEN, "errand stopped to ask: ${move.question}")
+                        say(move.question)
+                    }
+                    is AgentMove.Blocked -> {
+                        DebugLog.log(DebugLog.Stage.SCREEN, "errand stuck: ${move.reason}")
+                        say(AgentLoop.blockedMessage(goal, move.reason))
+                    }
+                }
+            }
         }
     }
 

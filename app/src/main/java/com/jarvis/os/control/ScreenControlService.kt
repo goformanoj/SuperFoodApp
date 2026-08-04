@@ -95,8 +95,18 @@ class ScreenControlService : AccessibilityService() {
      * another. A new sequence SUPERSEDES one still in flight: without that, two
      * chains interleave and fight over the same screen — seen on a device as one
      * sequence typing while another was tapping Voice search.
+     *
+     * [onDone] reports `ok` — the sequence finished — and `clean`, meaning it
+     * finished WITHOUT any step failing into recovery. The two are not the same,
+     * and conflating them is why the playbook learned three broken routes in one
+     * session: recovery rescued each run, the run reported success, and the
+     * original wrong steps were stored as if they had worked.
      */
-    fun runSteps(steps: List<ScreenStep>, onDone: (Boolean) -> Unit = {}) {
+    fun runSteps(
+        steps: List<ScreenStep>,
+        recover: Boolean = true,
+        onDone: (ok: Boolean, clean: Boolean) -> Unit = { _, _ -> },
+    ) {
         if (sequenceRunning) {
             DebugLog.log(DebugLog.Stage.SCREEN, "new command superseded the sequence still running")
         }
@@ -105,21 +115,31 @@ class ScreenControlService : AccessibilityService() {
         // Bounded: recovery that can re-plan forever would loop on an app that
         // simply cannot do what was asked.
         recoveriesLeft = MAX_RECOVERIES
+        recoveredThisRun = false
+        // The errand loop drives one step at a time and decides the next itself.
+        // Leaving recovery on there would put two loops on the same screen.
+        recoverEnabled = recover
         runStep(steps, 0, null, ++runToken, onDone)
     }
+
+    /** True once any step in the current run has failed and been recovered. */
+    private var recoveredThisRun = false
+
+    /** False when the caller is driving the loop and will handle failure itself. */
+    private var recoverEnabled = true
 
     private fun runStep(
         steps: List<ScreenStep>,
         index: Int,
         expectedPackage: String?,
         token: Int,
-        onDone: (Boolean) -> Unit,
+        onDone: (ok: Boolean, clean: Boolean) -> Unit,
     ) {
         // A later command has taken over; abandon this chain silently.
         if (token != runToken) return
         if (index >= steps.size) {
             sequenceRunning = false
-            onDone(true)
+            onDone(true, !recoveredThisRun)
             return
         }
         val advance = { pkg: String? ->
@@ -135,15 +155,16 @@ class ScreenControlService : AccessibilityService() {
             // for a fresh plan: the label was guessed before this screen existed,
             // so the answer is usually visible right now (Amazon Music's search
             // is simply not labelled "Search").
-            if (recover != null && recoveriesLeft > 0) {
+            if (recover != null && recoverEnabled && recoveriesLeft > 0) {
                 recoveriesLeft--
+                recoveredThisRun = true
                 DebugLog.log(DebugLog.Stage.SCREEN, "recovering — asking what to do from this screen")
                 recover(steps[index], reason, describeScreen()) { replacement ->
                     if (token != runToken) return@recover
                     if (replacement.isEmpty()) {
                         sequenceRunning = false
                         DebugLog.log(DebugLog.Stage.SCREEN, "recovery found nothing to try")
-                        onDone(false)
+                        onDone(false, false)
                     } else {
                         DebugLog.log(DebugLog.Stage.SCREEN, "recovery plan: ${replacement.joinToString(", ")}")
                         runStep(replacement, 0, expectedPackage, token, onDone)
@@ -151,7 +172,7 @@ class ScreenControlService : AccessibilityService() {
                 }
             } else {
                 sequenceRunning = false
-                onDone(false)
+                onDone(false, false)
             }
         }
         DebugLog.log(DebugLog.Stage.SCREEN, "$position ${steps[index]}")
@@ -431,8 +452,35 @@ class ScreenControlService : AccessibilityService() {
         if (tries < FIELD_WAIT_TRIES) {
             handler.postDelayed({ typeWhenReady(text, tries + 1, onDone) }, STEP_MS)
         } else {
+            // Say WHY, not just that it failed. The last trace showed a focused
+            // field with the keyboard up and still reported "no editable field",
+            // which left nothing to diagnose from and cost a round trip.
+            DebugLog.log(DebugLog.Stage.SCREEN, "no field found — ${fieldHunt()}")
             onDone(false)
         }
+    }
+
+    /** A one-line account of what the field hunt actually saw. */
+    private fun fieldHunt(): String {
+        val root = rootInActiveWindow ?: return "no active window at all"
+        val wins = try {
+            windows.orEmpty()
+        } catch (e: Exception) {
+            emptyList<AccessibilityWindowInfo>()
+        }
+        val kinds = wins.joinToString("/") { w ->
+            when (w.type) {
+                AccessibilityWindowInfo.TYPE_INPUT_METHOD -> "ime"
+                AccessibilityWindowInfo.TYPE_APPLICATION -> "app"
+                else -> "w${w.type}"
+            }
+        }.ifEmpty { "none listed" }
+        val focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        val focusDesc = focus?.let {
+            "focus=${it.className ?: "?"} editable=${it.isEditable} " +
+                "setText=${it.actionList.any { a -> a.id == AccessibilityNodeInfo.ACTION_SET_TEXT }}"
+        } ?: "no input focus"
+        return "active=${root.packageName ?: "?"} windows=[$kinds] $focusDesc"
     }
 
     /**
@@ -456,19 +504,66 @@ class ScreenControlService : AccessibilityService() {
     }
 
     /** The focused input field, or the first editable field on screen. */
+    /**
+     * Finds a text field to type into, across every application window.
+     *
+     * A device trace has Blinkit's search screen open, the field focused with a
+     * visible caret and the keyboard up — and typing still failed with "no
+     * editable field appeared". Two things were wrong here.
+     *
+     * It only looked at [rootInActiveWindow]. Once the keyboard is showing, the
+     * active window can be the IME rather than the app, and the IME has keys in
+     * it, not text fields. So every application window is searched now, and the
+     * input-method window is skipped explicitly.
+     *
+     * And it required `isEditable`, which not every app sets. A node that accepts
+     * ACTION_SET_TEXT is a field whatever it calls itself, so that counts too.
+     */
     private fun findEditable(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { if (it.isEditable) return it }
-        val queue = ArrayDeque<AccessibilityNodeInfo>()
-        queue.add(root)
-        while (queue.isNotEmpty()) {
-            val node = queue.removeFirst()
-            if (node.isEditable) return node
-            for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { queue.add(it) }
+        rootsToSearch(root).forEach { start ->
+            start.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { if (acceptsText(it)) return it }
+            val queue = ArrayDeque<AccessibilityNodeInfo>()
+            queue.add(start)
+            var seen = 0
+            while (queue.isNotEmpty() && seen < NODE_SCAN_LIMIT) {
+                val node = queue.removeFirst()
+                seen++
+                if (acceptsText(node)) return node
+                for (i in 0 until node.childCount) {
+                    node.getChild(i)?.let { queue.add(it) }
+                }
             }
         }
         return null
     }
+
+    /**
+     * Every window worth searching for a field, the active one first.
+     *
+     * `windows` needs FLAG_RETRIEVE_INTERACTIVE_WINDOWS and can be empty; the
+     * active root is always included so this degrades to the old behaviour rather
+     * than finding nothing.
+     */
+    private fun rootsToSearch(active: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val roots = mutableListOf(active)
+        val others = try {
+            windows.orEmpty()
+        } catch (e: Exception) {
+            emptyList<AccessibilityWindowInfo>()
+        }
+        for (w in others) {
+            // The keyboard has keys, not fields, and searching it wastes the budget.
+            if (w.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) continue
+            w.root?.let { if (it != active) roots.add(it) }
+        }
+        return roots
+    }
+
+    /** A field, whether or not the app bothered to say so. */
+    private fun acceptsText(node: AccessibilityNodeInfo): Boolean =
+        node.isEditable ||
+            node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT } ||
+            node.className?.toString()?.contains("EditText") == true
 
     private fun awaitApp(targetPackage: String?, label: String, tries: Int, onDone: (Boolean) -> Unit) {
         val root = rootInActiveWindow
@@ -728,6 +823,9 @@ class ScreenControlService : AccessibilityService() {
         private const val STEP_SETTLE_MS = 700L
         private const val APP_OPEN_MS = 1200L
         private const val FIELD_WAIT_TRIES = 15
+
+        /** Bounds the field hunt per window, so a deep tree cannot stall a step. */
+        private const val NODE_SCAN_LIMIT = 600
         // Scrolling to hunt for an off-screen target.
         private const val MAX_SCROLLS = 8
         private const val SCROLL_SETTLE_MS = 550L
