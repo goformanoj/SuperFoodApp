@@ -2057,3 +2057,41 @@ threshold guesses.
 Every stage was rendered and looked at under circle, squircle and rounded masks at
 192/96/48px, and the monochrome against dark, light and black theme backgrounds.
 That is what caught the 149px overshoot at the first attempt and both smears.
+
+### 2026-08-04 — The icon's wings were cut, and one radius is not a shape
+The user installed the new icon, sent a home-screen photo and asked whether there
+was any issue. There was, and it was mine.
+
+The left and right elements of the HUD assembly were sliced off flat against the
+mask edge. The cause is a single bad assumption: I measured the assembly's radius
+as 390px from its **vertical** extent and treated it as circular. It is not. The
+design has horizontal wing bars reaching r≈460 while the ring is r=390, so a crop
+sized at half-width 430 cut straight through them, and my circular alpha at 428
+finished the job. The measurement that would have caught it takes one line —
+outermost solid pixel along each of the four axes — and returned 459 right, 461
+left, 391 down.
+
+Fixed by measuring the boundary properly rather than nudging the number. A radial
+scan showed the wings run solid to r=458 then fall to black by r=464, while the
+badge frame's glow only ramps up past r≈480 — so r=462 opaque with a feather to
+474 takes the whole assembly and none of the frame. The crop grew to half-width
+500, the wordmark band is blacked out explicitly rather than excluded by luck of
+the crop size, and the widest content is now mapped to 64dp: content radius ≤132px
+against a 144px mask edge, inside the 66dp safe zone on every axis.
+
+The icon is about 16% smaller as a result, because the thing being fitted to the
+mask is now the assembly's true width rather than its ring. That is the correct
+trade: intact and slightly smaller beats large and visibly clipped.
+
+The lesson is narrow and worth keeping: **one radius is not a shape.** I had
+already verified content radius 140 against a 144px mask and reported it as
+checked — the number was right and the model behind it was wrong, because a single
+max-radius figure cannot show that content is anisotropic. Verifying per-axis
+costs nothing and is what the earlier check should have been.
+
+Also worth noting: I rendered and inspected this icon under three masks at three
+sizes before shipping and still missed it. The previews were of a circular crop of
+a design whose clipped edges were already gone by then — I was looking at the
+output of the bug, not at the source next to the boundary. Looking is necessary
+and was not sufficient; the annotated overlay of candidate radii on the ORIGINAL
+is what made it obvious.
