@@ -1,8 +1,8 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `a7a19ee` · last green build **#174** (artifact `jarvis-debug-apk`, 18.64 MB, confirmed) · updated 2026-07-30
-> **Awaiting CI: `4ef0a7f`** — the playbook (routes that worked are remembered and replayed). The Settings lag fix is merged and green at `a7a19ee`.
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `6b57cb7` · last green build **#177** (artifact `jarvis-debug-apk`, 18.65 MB, confirmed) · updated 2026-08-03
+> **Awaiting CI: `1816508`** — the **agent loop**: one action at a time, looking at the screen between each. The playbook is merged and green at `6b57cb7`.
 > **Builds #163–#169 failed on `compileDebugUnitTestKotlin`:** `AskGuard.apply` is generic and a test passed a bare `emptyList()`, so `T` could not be inferred. Main sources compiled cleanly throughout; the bare `$` in `AlarmGuard` was never the cause. Removing `--stacktrace` from CI (`3d41cf8`) is what made the error legible — it turned three failed diagnoses into one successful one.
 > **First real device session against the current build.** User-confirmed working: type-vs-send, no spoken steps, below-fold chats, mic yielding to playback, learned memory, PDF creation.
 
@@ -248,6 +248,8 @@ Still open: the routes are not yet visible or deletable in the UI.
 | Key out of the APK (proxy + BYOK) | ⏸️ | — | Part E1 |
 | Play compliance + release AAB | ⏸️ | — | Part E2–E3 |
 | Subscription billing | ⏸️ | — | Part E5 |
+| Playbook — replay routes that worked | 🔬 | #177 | slot templating; never learns irreversible routes |
+| Agent loop — one step at a time | 🔬 | pending | replaces blind recovery; budget 10; stops before irreversible |
 | Files tab (PDFs + notes) | 🔬 | pending | app-private, no new permission |
 | Recovers from a failed step | 🔬 | pending | replans from the live screen, max 2 tries |
 | No spoken thought process | 🔬 | pending | narration clauses stripped, not tidied |

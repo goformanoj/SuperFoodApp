@@ -1886,3 +1886,54 @@ composes with the playbook: the loop discovers a route the hard way once, and th
 playbook makes every repeat instant and free.
 
 Not started. Offered to the user as the next piece.
+
+### 2026-08-03 — The agent loop: one step at a time (1816508)
+The user asked directly: can JARVIS do a task it was never built for — "open
+Blinkit and add some items"? Built it, and the diagnosis written down three days
+earlier held up.
+
+Nothing about Blinkit was ever the obstacle. The marker protocol is generic and
+<<PICK>> removes the need to know a layout. The obstacle was the SHAPE of the
+loop: the executor emitted a whole plan up front, from the screen it could see at
+the moment of asking. Step one runs against a real screen; every step after it
+was planned against a screen that did not exist yet. That is why every failure in
+the device traces is at step two or later, and it is why "add some items" could
+not work — the second tap depends on what the first one revealed.
+
+So a failed step no longer triggers a blind re-plan of the remainder. That was
+the same mistake that produced the bad plan in the first place, and one trace
+shows exactly where it leads: a recovery that emitted Open(app=Open), which is
+not an app. Now it hands to AgentLoop — one action from the live screen, run it,
+look again. Failure stops being a special case and becomes the next observation,
+which is also why MAX_RECOVERIES could go from 2 to 12: it is no longer counting
+re-plans, it is counting observations.
+
+The per-step prompt is about a fifth of the assistant prompt. This is the part
+that makes the loop affordable rather than a rate-limit disaster: it asks once
+per action, so at ~1,500 tokens a turn a six-step errand would eat half the
+per-minute allowance on prompt alone and reproduce the 429 flood. AGENT_PROMPT
+carries only the goal, the history, the screen and the vocabulary. Brain.generate
+now forwards systemOverride, which the <<PICK>> chooser had already proven works.
+
+Two limits, and they matter more than finishing. A 10-step budget, because a
+model that cannot find what it wants would otherwise tap around someone's phone
+indefinitely — and when it runs out JARVIS says where it got to, because a loop
+that quietly gives up looks identical to one still working. And a hard stop
+before anything irreversible: the loop acts without asking between steps, so
+"shop something for me" must not be able to place the order. Same position
+SendGuard takes for one-shot plans and Playbook takes for replay. Only taps are
+checked — typing "pay rent" into a search box spends nothing.
+
+The history line is capped deliberately. It rides on every step's prompt, so an
+unbounded transcript is precisely what would make a long errand hit the
+per-minute limit halfway through.
+
+12 tests, and every one is a refusal or a limit rather than a success path: only
+the first action is taken however many the model sends, "done" alongside an
+action is not done, six irreversible labels ask first while "Sender name" does
+not, an unusable reply is Blocked rather than guessed at, and the history stays
+under 300 characters across thirty steps.
+
+Untested on a device. The two open questions are honest ones: a network
+round-trip per step may make it feel slow, and 10 steps may not be enough for a
+real errand. Both are single-constant changes once there is evidence.
