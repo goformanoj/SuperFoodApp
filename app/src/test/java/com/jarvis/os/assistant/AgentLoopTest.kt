@@ -139,10 +139,56 @@ class AgentLoopTest {
     }
 
     @Test
-    fun `the budget covers a real errand`() {
-        // The user's own example — open, search, type, submit, add, search, type,
-        // submit, add — is nine steps before a single wrong turn.
-        assertTrue("a real shopping errand must fit", AgentLoop.MAX_STEPS >= 14)
+    fun `the budget is small, because a big one just buys more wrong taps`() {
+        // This test used to assert MAX_STEPS >= 14, and that was the mistake: a
+        // device session spent all eighteen on one shopping app — "Use my
+        // Current Location" four times, "Search for" five times — and the user's
+        // verdict was "it just clicked sooo many random buttons". Stopping when
+        // nothing changes is the fix; a bigger allowance is the opposite of it.
+        assertTrue("a confused loop must be cheap", AgentLoop.MAX_STEPS <= 10)
+    }
+
+    @Test
+    fun `a step that just succeeded is not chosen again`() {
+        // The thrashing was NOT failed steps. Open(Zepto) "succeeded" three times
+        // running, each logged "already in Zepto — not relaunching". Success is
+        // not progress.
+        val taken = listOf(ScreenStep.Open("Zepto"))
+        val move = AgentLoop.parseMove("<<OPEN|Zepto>>", taken = taken)
+        assertTrue("must not reopen what is already open, got $move", move is AgentMove.Blocked)
+    }
+
+    @Test
+    fun `a step tried twice already is refused`() {
+        val taken = listOf(
+            ScreenStep.Tap("Use my Current Location"),
+            ScreenStep.Back,
+            ScreenStep.Tap("Use my Current Location"),
+            ScreenStep.Back,
+        )
+        assertTrue(AgentLoop.repeats(ScreenStep.Tap("Use my Current Location"), taken))
+        val move = AgentLoop.parseMove("<<TAP|Use my Current Location>>", taken = taken)
+        assertTrue(move is AgentMove.Blocked)
+    }
+
+    @Test
+    fun `a fresh step is still allowed after other steps have been tried`() {
+        val taken = listOf(ScreenStep.Open("Zepto"), ScreenStep.Tap("Search"))
+        assertEquals(
+            AgentMove.Act(ScreenStep.Type("bread")),
+            AgentLoop.parseMove("<<TYPE|bread>>", taken = taken),
+        )
+    }
+
+    @Test
+    fun `internal reasons are never read aloud`() {
+        // A trace has JARVIS saying "that step has already failed here. I've
+        // stopped there rather than guess." to someone who cannot see the log.
+        AgentLoop.INTERNAL_REASONS.forEach { reason ->
+            val message = AgentLoop.blockedMessage("add bread", reason)
+            assertFalse("'$reason' must not be spoken", message.contains(reason))
+            assertTrue(message.contains("add bread"))
+        }
     }
 
     @Test

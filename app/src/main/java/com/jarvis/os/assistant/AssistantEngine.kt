@@ -84,6 +84,18 @@ class AssistantEngine(context: Context) {
      * the allowance before the loop starts.
      */
     private var agentSteps: Int = 0
+
+    /** What this errand has already tried, so the loop can refuse to repeat itself. */
+    private var errandSteps: List<ScreenStep> = emptyList()
+
+    /**
+     * Identifies the errand allowed to drive the screen.
+     *
+     * Bumped by every new utterance. A callback holding an older token stops
+     * instead of acting — otherwise an abandoned errand keeps choosing steps
+     * underneath the new one, which a trace shows happening for a full minute.
+     */
+    private var errandToken: Int = 0
     private val conversation: MutableList<ChatTurn> = store.load()
 
     private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
@@ -448,6 +460,11 @@ class AssistantEngine(context: Context) {
 
         DebugLog.log(DebugLog.Stage.HEARD, "($source) $userText")
         currentGoal = userText
+        // Any new utterance abandons the errand in flight. Without this, an old
+        // loop kept choosing steps while a new command ran — a trace shows the
+        // user asking a question at 15:48:32 and the previous errand still
+        // tapping at 15:48:37, two loops fighting over one screen.
+        errandToken++
 
         // "Thank you Jarvis" ends the work session. Handled here, before the model
         // is called, so it always works even if the network is down.
@@ -746,8 +763,13 @@ class AssistantEngine(context: Context) {
                 "errand: opening, then deciding each step from the screen " +
                     "(the planned ${plan.steps.size} steps are only a suggestion)",
             )
+            // Seeded with the launches already performed, so the loop cannot
+            // decide to open an app that is already in front — which it did
+            // three times running before stalling out.
+            errandSteps = opens
+            val token = errandToken
             ScreenControlService.instance?.runSteps(opens, recover = false) { _, _ ->
-                main.post { driveErrand(goal, lastFailed = null) }
+                main.post { driveErrand(goal, token, lastFailed = null) }
             }
             return ScreenOutcome.DISPATCHED
         }
@@ -839,7 +861,20 @@ class AssistantEngine(context: Context) {
      * [lastFailed] is the step that just failed, if any — it is passed to the
      * parser so the model cannot answer with the same move again.
      */
-    private fun driveErrand(goal: String, lastFailed: ScreenStep?) {
+    private fun driveErrand(
+        goal: String,
+        token: Int,
+        lastFailed: ScreenStep?,
+        stalls: Int = 0,
+        lastScreen: String = "",
+        nudges: Int = 0,
+    ) {
+        // A newer command has taken over. Without this the old loop kept picking
+        // steps while the new one ran, and two loops fought over one screen.
+        if (token != errandToken) {
+            DebugLog.log(DebugLog.Stage.SCREEN, "errand abandoned — a newer command took over")
+            return
+        }
         val service = ScreenControlService.instance
         if (service == null || goal.isBlank()) return
         if (AgentLoop.exhausted(agentSteps)) {
@@ -848,6 +883,14 @@ class AssistantEngine(context: Context) {
             return
         }
         val screen = service.describeScreen()
+        // Nothing moved. Acting again from an identical screen is how the loop
+        // produced eighteen taps that changed nothing.
+        val stalled = if (screen == lastScreen) stalls + 1 else 0
+        if (stalled >= AgentLoop.STALL_LIMIT) {
+            DebugLog.log(DebugLog.Stage.SCREEN, "errand stopped — the screen stopped changing")
+            say(AgentLoop.blockedMessage(goal, AgentLoop.NO_STEP))
+            return
+        }
         scope.launch {
             val move = try {
                 val answer = Brain.generate(
@@ -866,16 +909,18 @@ class AssistantEngine(context: Context) {
                     systemOverride = AGENT_PROMPT,
                     tier = Tier.SMART,
                 )
-                AgentLoop.parseMove(answer, avoid = lastFailed)
+                AgentLoop.parseMove(answer, avoid = lastFailed, taken = errandSteps)
             } catch (e: Exception) {
                 DebugLog.log(DebugLog.Stage.ERROR, "agent step failed: ${e.message ?: e.javaClass.simpleName}")
                 AgentMove.Blocked(e.message ?: "no answer")
             }
 
             main.post {
+                if (token != errandToken) return@post
                 when (move) {
                     is AgentMove.Act -> {
                         agentSteps += 1
+                        errandSteps = errandSteps + move.step
                         stepsTaken = stepsTaken + move.step
                         DebugLog.log(
                             DebugLog.Stage.SCREEN,
@@ -884,7 +929,15 @@ class AssistantEngine(context: Context) {
                         // recover = false: this loop IS the recovery, and two of
                         // them on one screen would fight.
                         service.runSteps(listOf(move.step), recover = false) { ok, _ ->
-                            main.post { driveErrand(goal, lastFailed = if (ok) null else move.step) }
+                            main.post {
+                                driveErrand(
+                                    goal = goal,
+                                    token = token,
+                                    lastFailed = if (ok) null else move.step,
+                                    stalls = stalled,
+                                    lastScreen = screen,
+                                )
+                            }
                         }
                     }
                     AgentMove.Done -> {
@@ -896,8 +949,18 @@ class AssistantEngine(context: Context) {
                         say(move.question)
                     }
                     is AgentMove.Blocked -> {
-                        DebugLog.log(DebugLog.Stage.SCREEN, "errand stuck: ${move.reason}")
-                        say(AgentLoop.blockedMessage(goal, move.reason))
+                        // Choosing a step it has already taken is usually a
+                        // harmless habit — re-opening an app that is already in
+                        // front, say — so it gets ONE more chance to pick
+                        // something else before the errand ends. It costs a
+                        // round trip and no taps.
+                        if (move.reason == AgentLoop.GOING_IN_CIRCLES && nudges == 0) {
+                            DebugLog.log(DebugLog.Stage.SCREEN, "errand: repeated itself — asking once more")
+                            driveErrand(goal, token, lastFailed, stalled, lastScreen, nudges = 1)
+                        } else {
+                            DebugLog.log(DebugLog.Stage.SCREEN, "errand stuck: ${move.reason}")
+                            say(AgentLoop.blockedMessage(goal, move.reason))
+                        }
                     }
                 }
             }

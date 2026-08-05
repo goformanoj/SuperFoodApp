@@ -2204,3 +2204,49 @@ The lesson worth keeping is the one the user supplied: **when the complaint is
 "it isn't smart", check whether the intelligent component is actually on the
 critical path.** It was written, tested, documented and merged — and it only ran
 after something had already gone wrong.
+
+### 2026-08-04 — I shipped a regression, and the trace says so plainly
+The errand loop went out as the primary path and made things markedly worse. A
+Zepto session: eighteen taps that changed nothing, then eighteen more on the next
+command. "Use my Current Location" four times. "Search for" five times. "Shop for
+₹99" three times. The user's verdict — "it did anything it liked, it just clicked
+sooo many random buttons" — is accurate, and the previous behaviour, which merely
+failed, was better than this.
+
+Four things were missing, and the first two are the ones that matter.
+
+**The repeat guard only covered failure.** `parseMove(reply, avoid)` refused the
+step that had just FAILED. Almost none of the thrashing was failures: `Open(Zepto)`
+was chosen three times running and each attempt logged "already in Zepto — not
+relaunching" — reported as success. **Success is not progress**, and a loop that
+only notices failure is blind to the common case. `AgentLoop.repeats` now refuses
+any step already taken this errand.
+
+**The loop could not be cancelled.** `driveErrand` recursed through service
+callbacks with no token. At 15:48:32 the user asks a question, gets an answer —
+and the abandoned errand is still tapping at 15:48:37, 15:48:38, 15:48:46. Two
+loops on one screen, one of them working towards a goal the user had moved on
+from. Every utterance now bumps `errandToken` and a stale callback stops.
+
+**No stall detection.** Acting again from a screen identical to the last one
+cannot help. Two no-change moves now end the errand.
+
+**And the budget was raised when it should have been cut.** I set it to 18 the
+previous session, reasoning that a real errand needs nine steps plus room for
+mistakes. That reasoning was wrong in a specific way worth remembering: **a step
+budget does not buy correctness, it only bounds damage.** Eighteen was simply
+permission for eighteen wrong taps. It is 8 now, and the test that asserted
+`MAX_STEPS >= 14` — which I wrote — has been inverted to assert `<= 10`, because
+it encoded exactly the mistake.
+
+Also: JARVIS said "that step has already failed here. I've stopped there rather
+than guess." out loud. That string is a diagnostic I wrote for the log. Internal
+reasons are now a named set that `blockedMessage` refuses to speak.
+
+The wider lesson, and it is uncomfortable: **I gave an unproven change the whole
+critical path.** The loop had never once driven a real errand end to end, and I
+routed every multi-step command through it. The bounds above should have been
+there before it ran anything, not after a user watched it tap forty times. If the
+next trace still shows nonsense, the correct move is to put plan-first execution
+back as the default and let the loop handle only failures, which is what it was
+built for.

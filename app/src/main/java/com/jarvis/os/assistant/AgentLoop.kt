@@ -51,11 +51,51 @@ object AgentLoop {
     /**
      * How many actions the loop may take for one goal.
      *
-     * Enough for a real errand — open, search, type, submit, pick, add — with
-     * room for a couple of wrong turns. Small enough that a confused model costs
-     * the user seconds and a handful of tokens rather than a rampage.
+     * Small on purpose. A budget of 18 was tried and it is far too much rope: a
+     * trace shows eighteen consecutive taps on a stranger's shopping app —
+     * "Use my Current Location" four times, "Search for" five times, "Shop for
+     * ₹99" three times — none of which advanced the errand. The user's verdict
+     * was "it just clicked sooo many random buttons", and they were right.
+     *
+     * The fix is not a bigger allowance, it is stopping when nothing is
+     * changing: see [repeats] and [STALL_LIMIT]. With those, most real errands
+     * finish inside this, and a confused one costs a handful of taps rather than
+     * a rampage.
      */
-    const val MAX_STEPS = 18
+    const val MAX_STEPS = 8
+
+    /** How many no-progress moves are tolerated before the loop gives up. */
+    const val STALL_LIMIT = 2
+
+    /** A step may not be chosen more than this many times in one errand. */
+    const val REPEAT_LIMIT = 2
+
+    /**
+     * Stand-in reason when the reply carried no words at all.
+     *
+     * Internal, and deliberately never spoken — see [blockedMessage].
+     */
+    const val NO_STEP = "no next step"
+
+    /** Reason given when the model picks a step it has already taken. */
+    const val GOING_IN_CIRCLES = "going in circles"
+
+    /** Reason given when the model re-picks the step that just failed. */
+    const val ALREADY_FAILED = "that step has already failed here"
+
+    /** Blocked reasons JARVIS produced itself, which must never be read aloud. */
+    val INTERNAL_REASONS = setOf(NO_STEP, ALREADY_FAILED, GOING_IN_CIRCLES)
+
+    /**
+     * True when [step] has been chosen too often already.
+     *
+     * The `avoid` check only ever caught the step that FAILED. Most of the
+     * thrashing in the trace was steps that "succeeded" and changed nothing —
+     * `Open(Zepto)` three times running, each logged "already in Zepto — not
+     * relaunching". Success is not progress.
+     */
+    fun repeats(step: ScreenStep, taken: List<ScreenStep>): Boolean =
+        taken.lastOrNull() == step || taken.count { it == step } >= REPEAT_LIMIT
 
     /**
      * True when [steps] describe an errand inside an app rather than one action.
@@ -81,13 +121,6 @@ object AgentLoop {
     /** The leading app launches, which are safe to run before looking. */
     fun opensIn(steps: List<ScreenStep>): List<ScreenStep> = steps.takeWhile { it is ScreenStep.Open }
 
-    /**
-     * Stand-in reason when the reply carried no words at all.
-     *
-     * Internal, and deliberately never spoken — see [blockedMessage].
-     */
-    const val NO_STEP = "no next step"
-
     /** The model says the goal is met. */
     private val DONE = Regex("""<<\s*DONE\s*>{1,2}""", RegexOption.IGNORE_CASE)
 
@@ -102,7 +135,11 @@ object AgentLoop {
      * does not exist yet. The model is told to send one; this makes it true
      * whether or not it complied.
      */
-    fun parseMove(reply: String, avoid: ScreenStep? = null): AgentMove {
+    fun parseMove(
+        reply: String,
+        avoid: ScreenStep? = null,
+        taken: List<ScreenStep> = emptyList(),
+    ): AgentMove {
         ASK.find(reply)?.let { match ->
             val question = match.groupValues[1].trim()
             if (question.isNotEmpty()) return AgentMove.Ask(question)
@@ -118,7 +155,14 @@ object AgentLoop {
         // the same control until they gave up. Prompts are probabilistic; this is
         // the same reason SendGuard exists.
         if (first != null && avoid != null && first == avoid) {
-            return AgentMove.Blocked("that step has already failed here")
+            return AgentMove.Blocked(ALREADY_FAILED)
+        }
+
+        // And never keep doing what is not working. This catches the far more
+        // common case in the trace: steps that reported success and moved
+        // nothing.
+        if (first != null && repeats(first, taken)) {
+            return AgentMove.Blocked(GOING_IN_CIRCLES)
         }
 
         // DONE only counts when there is no action alongside it — a reply that
@@ -181,8 +225,12 @@ object AgentLoop {
      */
     fun blockedMessage(goal: String, reason: String): String {
         val explanation = reason.trim()
+        // Reasons JARVIS wrote for itself are diagnostics, not speech. A trace
+        // has it saying "that step has already failed here. I've stopped there
+        // rather than guess." straight to the user, which explains nothing to
+        // someone who cannot see the log.
         val speakable = explanation.length >= 12 &&
-            !explanation.equals(NO_STEP, ignoreCase = true) &&
+            INTERNAL_REASONS.none { explanation.equals(it, ignoreCase = true) } &&
             explanation.split(Regex("\\s+")).count { it.isNotBlank() } >= 3
         if (!speakable) {
             return "I got stuck trying to \"$goal\" — I can't see what to do from this " +
