@@ -89,7 +89,9 @@ privacy policy must disclose.
 2. **Stateless requests, no leakage.** Each call carries its own history from the device;
    conversation history stays in on-device SharedPreferences. The server stores nothing but a
    usage counter — cheaper, and a much better privacy story.
-3. **Small DB only for `user_id → plan, requests_today, reset_at`** — Cloudflare KV or D1, free.
+3. **Small DB only for `user_id → plan, usage, reset_at`** — free tier. ⚠️ **Superseded by §1d:**
+   meter **tokens, not requests** (a screen-control turn costs many times a chat turn), and use
+   **D1, not KV** (KV is eventually consistent, so concurrent turns both read the stale total).
 
 ### Authentication
 | Approach | Friction | Problem |
