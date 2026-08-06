@@ -6,7 +6,13 @@
 ## Current position + immediate next
 
 **`main` @ `37fb8c0`** — green build **#190**, artifact `jarvis-debug-apk` 18.99 MB confirmed.
-Branch `claude/root-file-context-ko322w` is level with it. Nothing is unmerged.
+Branch `claude/project-onboarding-lcnvi7` carries **unmerged** work: speech now keeps the
+recogniser's n-best alternatives and hands the near misses to the model (`voice/Transcript`,
+JUnit-tested), and the custom-instructions screen was rebuilt. **Build pending CI — not
+device-confirmed, no artifact seen.** Recognition quality can only be judged from a real trace
+(Rule 5). New gotcha surfaced by the same trace: memory can hold a *typed* fact ("peak") that
+contradicts an *auto-learned* one ("Pic") born from a mishearing — the learned one is deletable
+on the redesigned instructions screen.
 
 ### ⚠️ Read this first: the screen-control loop is NOT working on a device
 Two device sessions (2026-08-04 Blinkit, 2026-08-05 Zepto) both ended with the errand

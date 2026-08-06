@@ -37,6 +37,7 @@ import com.jarvis.os.files.ArtifactStore
 import com.jarvis.os.files.ArtifactWriter
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
+import com.jarvis.os.voice.Transcript
 import com.jarvis.os.voice.VoiceController
 import com.jarvis.os.voice.VoiceUiState
 import kotlinx.coroutines.CoroutineScope
@@ -132,7 +133,10 @@ class AssistantEngine(context: Context) {
         voice.onAmplitude = { amp -> if (!busy) set { it.copy(amplitude = amp) } }
         voice.onNoInput = { restartSoon() }
         voice.onFatal = { msg -> set { it.copy(orb = OrbState.Error, status = msg, amplitude = 0f) } }
-        voice.onFinal = { text -> ask(text) }
+        voice.onFinal = { hypotheses ->
+            val best = hypotheses.firstOrNull().orEmpty()
+            if (best.isNotBlank()) ask(best, heard = hypotheses)
+        }
         speaker.onDone = { onSpokenDone() }
         // The executor asks the model which on-screen option a <<PICK>> means. It
         // lives here because the engine owns the AI clients; the service only
@@ -452,13 +456,21 @@ class AssistantEngine(context: Context) {
         main.postDelayed({ if (!busy && session.owner != MicOwner.NONE) voice.startListening() }, RESTART_MS)
     }
 
-    private fun ask(userText: String, source: String = "voice") {
+    private fun ask(userText: String, source: String = "voice", heard: List<String> = emptyList()) {
         busy = true
         pendingScreen = null
         voice.stopListening()
         main.removeCallbacksAndMessages(null)
 
         DebugLog.log(DebugLog.Stage.HEARD, "($source) $userText")
+        // The recogniser's near misses, if any — handed to the model as context so
+        // it can recover a mis-heard word ("pic" for "peak") from the conversation
+        // and the user's known names. Kept out of the stored turn and the guards,
+        // which must match on what the user actually meant, not on a maybe-word.
+        val heardHint = Transcript.disambiguationHint(heard)
+        if (heardHint != null) {
+            DebugLog.log(DebugLog.Stage.HEARD, "unsure of a word — also heard: $heardHint")
+        }
         currentGoal = userText
         // Any new utterance abandons the errand in flight. Without this, an old
         // loop kept choosing steps while a new command ran — a trace shows the
@@ -522,7 +534,7 @@ class AssistantEngine(context: Context) {
                 // goes to the big one. Groq's quotas are per model, so this keeps
                 // the 70b allowance for the turns that actually need it.
                 val tier = ModelRouter.tierFor(userText)
-                val prompt = buildContext()
+                val prompt = buildContext(heardHint)
                 val raw = Brain.generate(history, prompt, tier)
                 DebugLog.log(DebugLog.Stage.REPLY, "${Brain.providerName()}/${tier.name}: $raw")
 
@@ -674,7 +686,7 @@ class AssistantEngine(context: Context) {
         set { it.copy(messages = conversation.toList()) }
     }
 
-    private suspend fun buildContext(): String = withContext(Dispatchers.IO) {
+    private suspend fun buildContext(heardHint: String? = null): String = withContext(Dispatchers.IO) {
         val now = SimpleDateFormat("EEEE, d MMMM yyyy, HH:mm", Locale.getDefault()).format(Date())
         val events = CalendarReader.upcomingEvents(appContext)
         val schedule = when {
@@ -714,11 +726,21 @@ class AssistantEngine(context: Context) {
         // length is capped where they are entered.
         val standing = formatMemory(userPrefs.customInstructions, userPrefs.learnedFacts())
 
-        listOf(
+        // Speech-to-text is imperfect. When the recogniser was unsure of a word,
+        // its near misses are offered here so the model can prefer the reading
+        // that fits — rather than acting on a word that was plainly mis-heard.
+        val misheard = heardHint?.let {
+            "Speech-to-text is imperfect: for the user's latest message the recogniser also " +
+                "heard $it. If a word seems out of place, prefer the alternative that fits the " +
+                "conversation and the user's known names. Never read these alternatives aloud."
+        }
+
+        listOfNotNull(
             "Current date/time: $now. $schedule When asked about the schedule, use ONLY this " +
                 "real calendar data and do not invent events. When rescheduling or deleting, " +
                 "identify the exact event from this list.",
             screenContext,
+            misheard,
             standing,
         ).filter { it.isNotBlank() }.joinToString("\n\n")
     }

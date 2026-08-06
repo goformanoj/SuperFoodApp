@@ -25,6 +25,10 @@ sessions (the build container is ephemeral).
 - `assistant/AssistantEngine` — orchestrates the loop: listen → think → speak →
   listen. Owns the single `VoiceUiState` the UI observes.
 - `voice/VoiceController` — callback wrapper over Android `SpeechRecognizer`.
+  Returns the whole ranked n-best list (not just the top guess) via `onFinal`.
+- `voice/Transcript` — pure-Kotlin helper that turns the recogniser's near
+  misses into a short "also heard: …" hint for the model, so a mis-heard word
+  can be recovered from context. Unit-tested.
 - `voice/Speaker` — Android `TextToSpeech` wrapper.
 - `ai/GeminiClient` — minimal Gemini REST client (no SDK), key from BuildConfig.
 - `ui/home/HomeScreen` (`VoiceHome`) — menu drawer (top-left) with module
@@ -2294,3 +2298,60 @@ version describes what is broken, what is unverified, and what the next session
 should refuse to trust — so this one opens with all three, and states plainly that
 if the next trace still shows nonsense the right move is to revert the loop to a
 fallback rather than defend it further.
+
+### 2026-08-06 — "It kept registering pic": keeping the recogniser's near misses
+
+The user tried, four times, to play a playlist called **Peak**. The recogniser
+heard "pic" every time, the model dutifully acted on "pic", and it even stored
+`the user's playlist is called "Pic"` as a learned fact — a wrong memory born
+purely from a mishearing. The user's question was the right one: *"it doesn't
+recognise the words properly, can we add some kind of tool to make the voice to
+text instruction more clear?"*
+
+**What was actually wrong.** Android's `SpeechRecognizer` never returns one
+answer — it returns a ranked n-best list ("pic", "peak", "pick", "pique") for the
+same audio. `VoiceController.onResults` took `.firstOrNull()` and dropped the
+rest, and it never even asked for alternatives (`EXTRA_MAX_RESULTS` was unset). So
+the brain — which had every scrap of context needed to know "play my playlist
+called ___" wants **peak** — only ever saw the single wrong word. The information
+that would have fixed it was thrown away one function above.
+
+**The fix, and why this shape.** Not on-device vocabulary biasing (no stable API
+across OEMs) and not a spell-correcting layer that guesses for the user. The
+recogniser already produces acoustically plausible candidates; the model already
+has the conversation and the user's known names. So: ask for `EXTRA_MAX_RESULTS`,
+pass the whole n-best list through `onFinal`, and hand the model the near misses
+as *context* — `also heard: "peak", "pick"` — to prefer the reading that fits.
+The chosen scope was explicitly the low-friction one: let the brain resolve it,
+never interrogate the user with "did you say peak or pic?".
+
+`voice/Transcript` (pure Kotlin, real JUnit tests per Rule 5) decides what is
+worth surfacing: only whole different words from an **equal-length** hypothesis
+differing by one or two tokens. A lower-ranked guess with a different word count
+is a different *sentence*, not a swapped word, and surfacing it is just noise —
+so it is dropped. The hint rides only on the model request; it is deliberately
+kept **out** of the stored turn and out of `SendGuard`/`SpendGuard`/`AlarmGuard`,
+which must match on what the user meant, not on a maybe-word.
+
+**Two things the same trace exposed that are not speech bugs:**
+- The reason "play me a song" offered *Zepto or Blinkit* is the user's own
+  custom instruction — `The apps i frequently mention are: zepto, blinkit` — so
+  the model reached for them as the "music app". Working as coded, misleading as
+  written. Left for the user to edit; the n-best fix does not touch it.
+- Memory now holds a contradiction: the typed instruction says "peak", the
+  auto-learned fact says "Pic". The new context note plus the known name should
+  let the brain pick "peak"; the wrong learned fact is on-device state the user
+  can delete from the (now redesigned) instructions screen.
+
+**Second ask, same turn: the instructions screen "looks bad, it's all over the
+place".** It was three visually identical stacks of bordered grey boxes — you
+could not tell the editor from a learned fact from a tappable suggestion, and the
+whole learned-fact row was clickable-to-forget (an easy accidental delete). Rebuilt
+into three blocks that read as what they are: the editor with a full-width primary
+Save that turns green on save; learned facts with a cyan dot and an explicit,
+red-edged **Forget** pill (only the pill is tappable now); and example chips with a
+leading cyan **+** so they read as *add* actions, not more facts.
+
+Build pending CI — no `jarvis-debug-apk` seen yet, and none of this is
+device-confirmed. Speech accuracy in particular can only be judged from a real
+trace (Rule 5): the logic is tested, the recognition is not.

@@ -21,7 +21,10 @@ class VoiceController(private val context: Context) {
 
     var onReady: () -> Unit = {}
     var onPartial: (String) -> Unit = {}
-    var onFinal: (String) -> Unit = {}
+    // The recogniser's ranked guesses, best first. The caller gets the whole
+    // n-best list — not just the top guess — so a mishearing can be recovered
+    // from the alternatives ("pic" when the user said "peak").
+    var onFinal: (List<String>) -> Unit = {}
     var onAmplitude: (Float) -> Unit = {}
     var onNoInput: () -> Unit = {}     // no-match / timeout — caller may retry
     var onFatal: (String) -> Unit = {} // e.g. permission missing
@@ -53,6 +56,9 @@ class VoiceController(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+            // Ask for the near misses too, not just the single best guess — they
+            // are what lets the assistant recover a mis-heard word from context.
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, MAX_HYPOTHESES)
         }
         try {
             recognizer?.startListening(intent)
@@ -116,11 +122,13 @@ class VoiceController(private val context: Context) {
         }
 
         override fun onResults(results: Bundle?) {
-            val text = results
+            val hypotheses = results
                 ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                ?.firstOrNull()
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                ?.distinct()
                 .orEmpty()
-            if (text.isNotBlank()) onFinal(text) else onNoInput()
+            if (hypotheses.isNotEmpty()) onFinal(hypotheses) else onNoInput()
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
@@ -132,5 +140,11 @@ class VoiceController(private val context: Context) {
         }
 
         override fun onEvent(eventType: Int, params: Bundle?) {}
+    }
+
+    private companion object {
+        // How many ranked guesses to ask the recogniser for. A handful is plenty
+        // to surface the real word behind a near-homophone mishearing.
+        const val MAX_HYPOTHESES = 5
     }
 }

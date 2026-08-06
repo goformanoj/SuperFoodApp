@@ -1,10 +1,21 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `37fb8c0` · last green build **#190** (artifact `jarvis-debug-apk`, 18.99 MB, confirmed) · updated 2026-08-05
+> Snapshot: session branch `claude/project-onboarding-lcnvi7` · `main` @ `37fb8c0` · last green build **#190** (artifact `jarvis-debug-apk`, 18.99 MB, confirmed) · updated 2026-08-06
+> **This branch (build pending CI, not device-confirmed):** speech now keeps the recogniser's n-best alternatives and hands the near misses to the model to recover a mis-heard word ("peak" heard as "pic"); the custom-instructions screen was rebuilt. See the first section below and the 2026-08-06 memory entry.
 > **Everything is merged — branch and `main` are level, nothing red, nothing unmerged.**
 > **⚠️ Screen control does NOT work on a device yet.** Two sessions (Blinkit 2026-08-04, Zepto 2026-08-05) both ended with the errand unfinished, and the second was a regression: 18 useless taps per command. That is bounded now (repeat guard, stall guard, cancellation token, budget 8) but **nothing about the loop is device-confirmed**. See [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) — read it before building on the loop.
 > **Next up: the backend.** Full implementation brief in [`COMMERCIALIZATION.md` §1d](COMMERCIALIZATION.md) — Cloudflare Worker + D1, Firebase Auth, per-user *token* metering. Start with the Worker: it is plain JS and the first part of this project that can be genuinely tested inside a Claude session.
+
+## 🎙️ Speech disambiguation + instructions UI (this branch, build pending CI)
+From a trace where the user said "peak" and the recogniser heard "pic" four times running — even storing a wrong learned fact, `the user's playlist is called "Pic"`.
+
+- **The n-best list was being thrown away.** `VoiceController.onResults` kept `.firstOrNull()` and never set `EXTRA_MAX_RESULTS`, so the brain only ever saw the single top guess. It now asks for up to 5 hypotheses and passes the whole ranked list through `onFinal`.
+- **`voice/Transcript`** (pure Kotlin, JUnit-tested) turns the near misses into a terse `also heard: "peak", "pick"` hint — only whole different words from an equal-length hypothesis differing by one or two tokens; a different-length guess is a different sentence and is dropped. `AssistantEngine` folds the hint into the model **context** only. It stays out of the stored turn and the guards, which must match on intent, not on a maybe-word. Chosen scope was the low-friction one: the model resolves it, the user is never interrogated.
+- **Instructions screen rebuilt.** Was three identical stacks of grey boxes; now three distinct blocks — editor with a full-width Save that goes green on save, learned facts with a red-edged **Forget** pill (only the pill taps now, no accidental deletes), and example chips with a leading cyan **+**.
+- **Not a speech bug, noted for the user:** "play a song" offered *Zepto/Blinkit* because the user's own instruction lists them as frequent apps. And memory holds a "peak" (typed) vs "Pic" (learned) contradiction — the wrong learned fact is deletable on the new screen.
+
+**Unverified:** recognition quality can only be judged from a device trace (Rule 5). The logic is tested; nothing here is device-confirmed and no artifact seen yet.
 
 ## 🔨 Part C tail — what a real device session found (build pending CI)
 The user ran a full session and shared three traces. Six things were confirmed working; five were broken, and every fix below quotes the trace line that caused it.
