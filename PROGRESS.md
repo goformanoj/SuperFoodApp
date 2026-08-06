@@ -1,13 +1,10 @@
 # JARVIS OS — Progress
 
 > Living status. Update this whenever something ships.
-> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `0d51d40` · last green build **#181** (artifact `jarvis-debug-apk`, 18.66 MB, confirmed) · updated 2026-08-04
-> **The agent loop is merged** (`0d51d40`, build #181 green, artifact confirmed). **Awaiting CI:** the `Blocked` silence fix, the **new launcher icon** (wing bars no longer clipped), the **Michroma display font**, and — most importantly — **errands are now driven by looking at the screen instead of planned blind**.
-> **⚠️ The errand loop as shipped was a REGRESSION.** A Zepto session produced eighteen taps that changed nothing — "Use my Current Location" ×4, "Search for" ×5, "Shop for ₹99" ×3 — twice over. The user: "it just clicked sooo many random buttons". Cause: the only repeat guard was on steps that FAILED, and almost all the thrashing was steps that SUCCEEDED and moved nothing; plus the loop had no cancellation, so an abandoned errand kept tapping underneath the next command. Now bounded by a repeat guard, a stall guard, a cancellation token and a budget of 8 (was 18).
-> **A second device session (Blinkit) achieved nothing, and proved five separate defects.** The user's words: "it actually did nothing on my screen… how is our app going to become smart, are u hardcoding too many things". They were right about the architecture: the agent loop existed but was wired as a *fallback on failure*, so the ordinary path still guessed a whole sequence before the app was open. It is now the primary path for errands.
-> **Builds #179–#180 failed on `compileDebugKotlin`** — a *main*-source error this time, not tests. `systemOverride` was added to `GeminiClient.generate()`'s signature while the line that reads it sits in `buildPayload`, a private helper two calls down, so it referenced a parameter not in scope. Fixed in `0d51d40` by threading it `generate → requestModel → buildPayload`, which is exactly the shape `GroqClient` already had. One log fetch found it, because `--stacktrace` is out of the workflow now.
-> **Builds #163–#169 failed on `compileDebugUnitTestKotlin`:** `AskGuard.apply` is generic and a test passed a bare `emptyList()`, so `T` could not be inferred. Main sources compiled cleanly throughout; the bare `$` in `AlarmGuard` was never the cause. Removing `--stacktrace` from CI (`3d41cf8`) is what made the error legible — it turned three failed diagnoses into one successful one.
-> **First real device session against the current build.** User-confirmed working: type-vs-send, no spoken steps, below-fold chats, mic yielding to playback, learned memory, PDF creation.
+> Snapshot: session branch `claude/root-file-context-ko322w` · `main` @ `37fb8c0` · last green build **#190** (artifact `jarvis-debug-apk`, 18.99 MB, confirmed) · updated 2026-08-05
+> **Everything is merged — branch and `main` are level, nothing red, nothing unmerged.**
+> **⚠️ Screen control does NOT work on a device yet.** Two sessions (Blinkit 2026-08-04, Zepto 2026-08-05) both ended with the errand unfinished, and the second was a regression: 18 useless taps per command. That is bounded now (repeat guard, stall guard, cancellation token, budget 8) but **nothing about the loop is device-confirmed**. See [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) — read it before building on the loop.
+> **Next up: the backend.** Full implementation brief in [`COMMERCIALIZATION.md` §1d](COMMERCIALIZATION.md) — Cloudflare Worker + D1, Firebase Auth, per-user *token* metering. Start with the Worker: it is plain JS and the first part of this project that can be genuinely tested inside a Claude session.
 
 ## 🔨 Part C tail — what a real device session found (build pending CI)
 The user ran a full session and shared three traces. Six things were confirmed working; five were broken, and every fix below quotes the trace line that caused it.
@@ -37,6 +34,21 @@ Still open from the same session:
 - **The playbook learned three routes from failed runs** — "did you are", "search box". `runSteps` now reports `ok` and `clean` separately; learning requires `clean`. **Routes already learned on the device are poisoned and should be cleared.**
 
 Still open: **the agent cannot deliberately scroll.** Tapping a label scrolls to find it, but a product list cannot be browsed. Next piece, deliberately not stacked on top of an unverified typing fix.
+
+## ⏸️ Part E — Commercial foundation (next; nothing built yet)
+Decided in [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md); §1d is the build brief.
+
+| Piece | Status | Note |
+|---|---|---|
+| Cloudflare Worker `/chat` proxy | ⏸️ | Holds the key; free tier ≈100k req/day. **Testable in a Claude session** |
+| D1 schema + per-user token accounting | ⏸️ | Meter **tokens, not requests** — a screen-control turn costs many times a chat turn |
+| Firebase Auth (anonymous → Google) | ⏸️ | Admin SDK is Node-only and does **not** run on Workers; verify the RS256 JWT by hand |
+| Android `ProxyClient` | ⏸️ | Slots in beside Groq/Gemini behind the single `Brain.generate()` |
+| Play Integrity | ⏸️ | Auth answers *who*; Integrity answers *genuine install* |
+| Play Billing + entitlement | ⏸️ | Purchase token verified server-side; RTDN keeps it current |
+
+Owed by the user: a Cloudflare account, a Firebase project, and the free-tier cap
+(recommended ~60k tokens/day on `llama-3.1-8b-instant`).
 
 ## Status legend
 ✅ done & (usually) confirmed · 🔬 shipped, awaiting on-device confirmation · ⏸️ queued, not started

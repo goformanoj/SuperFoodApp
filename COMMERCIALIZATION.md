@@ -112,6 +112,146 @@ it against the Google Play Developer API → sets `plan = pro`. Google pushes re
 
 ---
 
+## 1d. How to actually build it — implementation guide (2026-08-05)
+
+> Everything below is decided and ready to build. Nothing here exists in the repo yet:
+> there is no `backend/` directory, and no Firebase, Billing or Play dependency in
+> `app/build.gradle.kts`. This section is the brief a fresh session can start from.
+
+### The shape
+
+```
+Phone ──Bearer <Firebase ID token>──▶ Worker ──server-held key──▶ Groq
+         + Play Integrity token         │
+                                        └──▶ D1: check quota, record tokens
+```
+
+### Storage: D1, not KV
+
+Cloudflare Worker for compute (free tier ≈100k req/day), **D1** (SQLite) for counters.
+**Not KV** — KV is eventually consistent, so two concurrent turns can both read the old
+total and the quota becomes a suggestion. D1 does atomic `SET x = x + n`. (If per-user
+counters ever need strict serialisation under real load, Durable Objects are the upgrade;
+D1 is right to start.)
+
+```sql
+CREATE TABLE users (
+  uid        TEXT PRIMARY KEY,
+  plan       TEXT NOT NULL DEFAULT 'free',
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE usage_daily (
+  uid           TEXT NOT NULL,
+  day           TEXT NOT NULL,               -- '2026-08-05', UTC
+  input_tokens  INTEGER NOT NULL DEFAULT 0,
+  output_tokens INTEGER NOT NULL DEFAULT 0,
+  requests      INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (uid, day)
+);
+```
+
+### `POST /chat` — the whole flow
+
+1. Verify the Firebase ID token → `uid`.
+2. Verify the Play Integrity token (can be added after step 1 works).
+3. Load `plan` and today's `usage_daily` row.
+4. Over cap → `429` with a JSON body the app can speak aloud.
+5. Choose the model from the plan — free on `llama-3.1-8b-instant`, pro on `llama-3.3-70b-versatile`.
+6. Call Groq with the server-held key.
+7. Read `usage` from the response and UPSERT it.
+8. Return the reply, plus remaining quota so the app can show it.
+
+### Login: Firebase Auth, and the one real gotcha
+
+Anonymous on first launch (zero friction); upgrade to Google sign-in to subscribe, so
+entitlement survives a new phone.
+
+**The Firebase Admin SDK is Node-only and does NOT run on Cloudflare Workers.** Verify the
+ID token by hand — it is a standard RS256 JWT and this is about 60 lines with no dependencies:
+
+1. Fetch Google's public keys from
+   `https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com`
+   and cache them (honour `Cache-Control`).
+2. Verify the signature with WebCrypto, then check
+   `iss = https://securetoken.google.com/<project-id>`, `aud = <project-id>`, and `exp`.
+3. `sub` is the `uid`.
+
+**Auth answers *who*. Play Integrity answers *is this a genuine unmodified install*** — that
+is what stops someone extracting the endpoint from the APK and hammering it with curl. They
+are not substitutes for each other.
+
+### Token accounting — meter tokens, NOT requests
+
+Groq is OpenAI-compatible, so every response carries the real numbers. Record these, never
+an estimate of our own:
+
+```json
+"usage": { "prompt_tokens": 1613, "completion_tokens": 84, "total_tokens": 1697 }
+```
+
+**Correction to §1b, which specified `requests_today`: for this app that is the wrong meter.**
+An ordinary chat turn is ~1,600 input tokens; a turn carrying a screen description is far
+larger. Counting requests would let a heavy screen-control user cost several times another
+user on the same "20/day" allowance. Cap on **tokens**; keep `requests` only as a cheap abuse
+signal.
+
+Store input and output separately — they are priced differently ($0.59 vs $0.79 per M).
+
+```sql
+INSERT INTO usage_daily (uid, day, input_tokens, output_tokens, requests)
+VALUES (?1, ?2, ?3, ?4, 1)
+ON CONFLICT(uid, day) DO UPDATE SET
+  input_tokens  = input_tokens  + excluded.input_tokens,
+  output_tokens = output_tokens + excluded.output_tokens,
+  requests      = requests + 1;
+```
+
+Two honest caveats:
+- The cap is checked **before** the call and the true cost is known **after**, so a user can
+  overshoot by one turn. Set the cap slightly under and accept it.
+- If streaming is ever added, `usage` only arrives when the request passes
+  `stream_options: {include_usage: true}`.
+
+### A benefit worth more than it sounds: move the system prompt server-side
+
+Every prompt fix shipped this month required a new APK and a reinstall by the user. Once the
+proxy owns the prompt, a prompt fix is a deploy. Given how much of this project's debugging
+is prompt wording, this may be the single biggest practical win of the backend.
+
+### Android side — small, because there is one choke point
+
+`Brain.generate()` (`app/src/main/java/com/jarvis/os/ai/Brain.kt`) is the only place the app
+talks to a model. A new `ProxyClient` mirroring `GroqClient`'s shape slots in beside the
+existing two with no call-site churn, plus the Firebase Auth dependency for a cached ID token
+(refresh ≈1h). `BuildConfig` keys come out once the proxy is the default path.
+
+### Build order
+
+| # | Step | Verifiable in a Claude session? |
+|---|---|---|
+| 1 | Worker: quota + token accounting against a **fake** provider, with real unit tests | **Yes** — plain JS, fully testable here |
+| 2 | Real Groq call behind the same interface | Partly (needs a key + deploy) |
+| 3 | Firebase project + ID-token verification | Logic yes, end-to-end no |
+| 4 | Android `ProxyClient` behind a flag | No — device only |
+| 5 | Play Integrity | No |
+| 6 | Play Billing + entitlement webhook (Real-time Developer Notifications) | No |
+
+**Start at 1.** The Worker is the first part of this project that can be genuinely tested in a
+Claude session — it is pure JavaScript logic, unlike every Android change, which can only be
+reasoned about and handed to the user to try. After the device sessions of 2026-08-04/05 that
+distinction is worth using deliberately.
+
+### Open decisions for the user
+
+- **Free-tier cap.** Recommended **~60k tokens/day** (≈30 ordinary turns, fewer with screen
+  control) on `llama-3.1-8b-instant`. 1,000 free users at 20 turns/day on the 70B model would
+  cost ≈$600/month, which is what kills indie AI apps.
+- **Cloudflare account** — needs creating; Worker + D1 are free tier.
+- **Firebase project** — needs creating; Auth is free.
+- Paid-tier price (₹199/~$2.30 assumed in §1c) and the paid-tier fair-use hard cap.
+
+---
+
 ## 1c. Unit economics (why freemium works here)
 
 Groq `llama-3.3-70b-versatile`: **$0.59 / M input tokens, $0.79 / M output** (verify before

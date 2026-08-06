@@ -75,9 +75,24 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
 ### Part D — polish ⏸️
 - Tap-to-talk toggle (always-on vs press-to-talk); clear idle transcript/reply; first-run permission onboarding (mic/calendar/accessibility incl. the Realme "Downloaded apps" path).
 
-### Part E — commercialization ⏸️ (full detail in [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md))
-Ordered phases, after the features land:
-- **E1 — key security:** BYOK settings screen (`EncryptedSharedPreferences`), then the backend proxy (Cloudflare Worker) as a third client behind `Brain.generate()`; add Play Integrity / App Check attestation and server-side quota.
+### Part E — commercialization ⏸️ **← NEXT, by the user's request (2026-08-05)**
+Build brief with schema, endpoint flow and gotchas: **[`COMMERCIALIZATION.md` §1d](COMMERCIALIZATION.md)**.
+Sequencing changed: the backend now comes **before** the remaining feature work, because the
+user asked for it directly and because it is the only part of this project that can be tested
+inside a Claude session rather than only on a device.
+
+- **E0 — the Worker, in this order:** (1) `/chat` with quota + **token** accounting against a
+  *fake* provider, with real unit tests; (2) the real Groq call; (3) Firebase ID-token
+  verification (**the Admin SDK is Node-only and does NOT run on Workers** — verify the RS256
+  JWT with WebCrypto against Google's x509 keys); (4) Android `ProxyClient` behind
+  `Brain.generate()`; (5) Play Integrity; (6) Billing.
+  **Meter tokens, not requests** — a screen-control turn costs many times an ordinary chat turn,
+  so a request cap would be wildly unfair. Storage is **D1, not KV**: KV is eventually consistent
+  and two concurrent turns would both read the stale total.
+  Bonus worth taking early: **move the system prompt server-side**, so a prompt fix becomes a
+  deploy instead of a new APK and a reinstall.
+- **E1 — key security:** BYOK settings screen (`EncryptedSharedPreferences`) *after* the proxy;
+  add Play Integrity / App Check attestation and server-side quota.
 - **E2 — compliance cleanups:** drop `QUERY_ALL_PACKAGES` for a `<queries>` MAIN/LAUNCHER block; in-app accessibility disclosure + consent; Data safety inputs.
 - **E3 — release engineering:** release keystore + Play App Signing, `release.yml` building an AAB, `isMinifyEnabled = true` with proguard keep rules, CI-derived `versionCode`.
 - **E4 — name & identity gate:** final public name + `applicationId` (⚠️ immutable after the first publish; "JARVIS" is a Marvel trademark).

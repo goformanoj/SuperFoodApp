@@ -2250,3 +2250,47 @@ there before it ran anything, not after a user watched it tap forty times. If th
 next trace still shows nonsense, the correct move is to put plan-first execution
 back as the default and let the loop handle only failures, which is what it was
 built for.
+
+### 2026-08-05 — Backend design, and a handoff written for a stranger
+The user asked how to build the backend, the login system, and per-user token
+tracking, then asked for every file to be updated because they are starting a
+fresh session. Both halves mattered.
+
+**The design** is now `COMMERCIALIZATION.md` §1d in full. Three decisions in it
+are worth repeating because each one is a trap avoided:
+
+**D1, not KV.** KV is eventually consistent, so two concurrent turns both read the
+stale total and the quota becomes a suggestion rather than a limit.
+
+**The Firebase Admin SDK is Node-only and does not run on Cloudflare Workers.**
+This is the single thing most likely to derail an afternoon. The ID token is a
+standard RS256 JWT: fetch Google's x509 keys, verify with WebCrypto, check iss /
+aud / exp, take `sub` as the uid. About sixty lines, no dependencies.
+
+**Meter tokens, not requests** — and this is a correction to §1b, which had
+specified `requests_today`. An ordinary chat turn is ~1,600 input tokens; a turn
+carrying a screen description is far larger. A request cap would let a heavy
+screen-control user cost several times another user on the same allowance. The
+numbers come back in the response's `usage` object, so they are measured rather
+than estimated. Input and output are stored separately because they are priced
+differently.
+
+One benefit I had not previously weighed properly: **the proxy lets the system
+prompt live server-side.** Nearly every fix this project has shipped was a prompt
+change, and each needed a new APK and a reinstall by the user. On the proxy it is
+a deploy. For this codebase that may be the backend's biggest practical win.
+
+**The handoff** was the other half, and rewriting it turned up a real hazard: the
+"Current position" section had accumulated contradictory entries. It said both
+"budget raised 10 → 18" and "budget 8, not 18", because I had appended to it three
+sessions running instead of correcting it. A fresh session reading that would have
+had no way to tell which was current. Appending is safe for a dated log like this
+file; for a *state* document it silently rots. That section is now rewritten
+rather than extended, and leads with what is actually true: **screen control does
+not work on a device, two sessions have failed, and the second was my regression.**
+
+The temptation when writing a handoff is to describe what was built. The useful
+version describes what is broken, what is unverified, and what the next session
+should refuse to trust — so this one opens with all three, and states plainly that
+if the next trace still shows nonsense the right move is to revert the loop to a
+fallback rather than defend it further.

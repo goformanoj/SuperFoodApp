@@ -4,25 +4,106 @@
 > Companion: [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md) · [`PROGRESS.md`](PROGRESS.md) · [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) · [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) · [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)
 
 ## Current position + immediate next
-- **Shipped:** Part A, the testing rig, **Part B** (work session), **Part C** (screen awareness, state memory, send guard, `<<PICK>>`, `<<BACK>>`/`<<HOME>>`, step recovery), the navigation restructure, learned memory, custom instructions, alarms, the voice picker, **Part F — Files**, and **the six themes** (`dd7bf2c`) — six orb geometries, each animated, with theme-driven backgrounds, a backdrop and a mic-driven waveform.
-- **Device-confirmed (2026-07-29 session):** type vs send, no spoken thought process, chats below the fold, the mic yielding while audio plays, `<<REMEMBER>>`, PDF creation, and `<<PICK>>` choosing "Beat It Michael Jackson" from 15 real options.
-- **`main` @ `0d51d40`** (green build **#181**, artifact `jarvis-debug-apk` 18.66 MB confirmed) — **the agent loop is merged.** Builds #179–#180 had been red on `compileDebugKotlin`: `GeminiClient.generate()` gained a `systemOverride` parameter while the line reading it lived in `buildPayload`, a private helper two calls down. Threading it `generate → requestModel → buildPayload` — the shape `GroqClient` already used — fixed it.
-- **Awaiting CI:** the **`Blocked` silence fix**. `AgentMove.Blocked` logged and returned an empty step list without speaking, so a dead end mid-errand left the user hearing nothing — indistinguishable from JARVIS still working, which is the very complaint the loop exists to fix. `AgentLoop.blockedMessage` now always returns a spoken line: the model's own explanation when it gave one, the goal named when it did not.
-- **Display font is now Michroma** (OFL, bundled at `res/font/michroma.ttf`), replacing Orbitron for display/headline/title/label styles; Inter still carries body text. **The badge's own lettering is not a real typeface** — it is an AI render whose "A" has no crossbar, which essentially no text font does. So an exact match cannot be obtained; Michroma is the closest real face on squared geometry, flat terminals, a straight-legged R and wide proportions. It is STATIC (one weight): never ask it for 600/700 or the renderer synthesises a faux-bold that smears it — hierarchy comes from size, tracking and colour. It is much wider than Orbitron, so every size came down and each was checked against "Custom instructions" at headlineSmall on a 320dp screen. Orbitron is still defined and bundled, so reverting is a one-line change.
-- **⚠️ Hard-won: the errand loop needs FOUR bounds, not one.** Shipping it with only a step budget produced 18 useless taps per command on Zepto. (1) **Cancellation** — `errandToken` bumped on every utterance; without it an abandoned errand kept choosing steps while the next command ran, two loops on one screen. (2) **Repeat guard** — `AgentLoop.repeats`; the original `avoid` only caught FAILED steps, and the thrashing was `Open(Zepto)` ×3 each logging "already in Zepto — not relaunching". **Success is not progress.** (3) **Stall guard** — stop after 2 moves that leave `describeScreen()` unchanged. (4) **Budget 8, not 18** — a bigger allowance just buys more wrong taps. Also: internal Blocked reasons must never be spoken ("that step has already failed here" was read aloud to the user).
-- **The agent loop is now the PRIMARY path for app errands, not a fallback** — this is the architectural answer to "it can't do basic tasks itself". `AgentLoop.isErrand` (Open followed by 2+ interactions) routes "open Blinkit and add bread" through open → look → decide → act → look, instead of executing a sequence guessed before the app was open. Single actions and follow-ups in the current app keep the fast path: they are planned against the screen the user is actually looking at and work today. Budget raised 10 → 18, since the user's own example is 9 steps before a single wrong turn.
-- **New launcher icon** from the user's supplied JARVIS badge. `minSdk 26` means `mipmap-anydpi-v26` is *always* used, so this had to be an adaptive icon: 108dp layers, mask takes the centre 72dp, only the inner 66dp circle guaranteed. The **widest** content is drawn at **64dp** (content radius ≤132px against a 144px mask edge at xxxhdpi, inside the 66dp safe zone). **The gotcha:** the assembly is NOT circular — it has horizontal wing bars reaching r≈460 in the source while the ring is only r=390. Sizing from the vertical radius sliced them off flat, which the user spotted on the home screen. Measure the widest axis, never one radius. **The outer frame and the "JARVIS" wordmark are gone on purpose** — both sit outside the mask, and the wordmark is ~3px tall at launcher size while the launcher draws the app label underneath anyway. The full badge is kept at `store/ic_launcher-playstore.png` (512²) for the Play listing, which is never masked. A `<monochrome>` layer ships for Android 13+ themed icons.
-- **The agent loop is built** (`1816508`) and replaces blind recovery. A failed step now hands to `AgentLoop`: decide ONE action from the live screen, run it, look again. The per-step prompt is ~1/5 the assistant prompt (`AGENT_PROMPT`), because the loop asks once per action and a full-size prompt would spend a minute's token allowance on one errand. `Brain.generate` forwards `systemOverride` for it. Two limits carry the safety: a 10-step budget that reports where it stopped, and a hard stop before any irreversible tap (send/buy/pay/confirm/delete) which asks the user instead. **Untested on a device** — the open questions are whether it feels too slow (a round-trip per step) and whether 10 steps is enough for a real errand.
-- **Also from the traces:** a marker for "open the PDF you just made" (the prompt now prevents damage but the capability is missing), and `<<OPEN|unknown>>` reporting failure instead of silence.
-- **Next:** flow charts for Files (specced, no new provider needed), then **Part G — Automation** (specced, security shape fixed, not started). Still owed by the user: a decision on a paid provider for image generation. *(Theme designs are no longer owed — the user supplied six and all six are built.)*
-- **The framerate risk was real and is fixed** (`2166dd9`). The user hit it in Settings, not on the home screen: six live orbs at full detail, each rebuilding ring geometry into fresh Lists every frame — ~14,600 allocations/frame across the picker. Now `OrbQuality` scales detail to size, `Orb3D.ringInto` writes into buffers held across frames, and the picker is a `LazyColumn`. **If anything ever stutters again, measure before changing:** the numbers are in `PROGRESS.md` and were what identified all three causes.
-- **The theme brief is now bounded.** Five rewrites established that 100% resemblance to a photorealistic render, without shipping that render, is not achievable: it needs the source 3D scene, which a 2D image does not contain. Do not attempt a sixth hand-drawn pass. The one untried option is texture-mapping the renders onto the 3D rings via `drawVertices` — genuine 3D motion with the source's own pixels, at the cost of shipping the images as textures. Offered to the user, awaiting their call.
-- **Unfixable from here, worth adding:** the app has no build stamp (`versionCode 1`, `versionName "1.0"`, shown nowhere), so neither the user nor Claude can tell which build a device is running. Every shared trace is unidentified. Deriving the version from the CI run number and showing it in Diagnostics was offered and not yet built.
-- **Highest-value action:** the user is well behind on-device — **11 commits changed app code since build #117**, the last point `main` was green before this session. One fresh install carries every fix they reported and could not retest.
-- **The system-prompt diet is done** (`4ad64b8`) — ~2,299 → ~1,355 tokens, one shared `SystemPrompt.kt` instead of a copy in each client, and the literal `\n` bug both copies carried is gone. Next cheap win on the same axis: **step recovery re-sends the whole prompt** when it only needs the SCREEN section — a `systemOverride` there would roughly halve a recovery's cost.
-- **Open bug:** tapping a YouTube album row did nothing while reporting success four times. Now reported honestly, and step recovery should now replan around it; cause still unknown (the outline overlay was ruled out — `FLAG_NOT_TOUCHABLE` is set).
+
+**`main` @ `37fb8c0`** — green build **#190**, artifact `jarvis-debug-apk` 18.99 MB confirmed.
+Branch `claude/root-file-context-ko322w` is level with it. Nothing is unmerged.
+
+### ⚠️ Read this first: the screen-control loop is NOT working on a device
+Two device sessions (2026-08-04 Blinkit, 2026-08-05 Zepto) both ended with the errand
+unfinished. The second was **worse than the first** — the user's words: *"it did anything it
+liked, it just clicked sooo many random buttons… what trash have you built"*. That regression
+is bounded now, but **nothing about the loop has been confirmed working on a device.** Do not
+build on top of it until a trace says it behaves.
+
+Three things are still open, in priority order:
+
+1. **The typing fix is an unconfirmed diagnosis.** Blinkit's search screen had a focused field,
+   a visible caret and the keyboard up, and `Type` still failed with "no editable field
+   appeared". Two candidate causes were addressed — only `rootInActiveWindow` was searched (which
+   can be the IME once the keyboard shows) and a node had to report `isEditable` (Blinkit
+   evidently does not set it). Now every application window is searched, the IME is skipped, and
+   anything accepting `ACTION_SET_TEXT` counts. **The failure path now logs what it saw**
+   (`no field found — active=… windows=[…] focus=… editable=… setText=…`), so the next trace
+   should name the cause outright. One line from the last trace already shows the diagnostic
+   working: `active=com.jarvis.os windows=[w3/w3/app] no input focus` — JARVIS's own window was
+   in front, which is a *different* bug worth chasing.
+2. **The errand loop may still need reverting.** If the next trace still shows nonsense, the
+   correct move is to **put plan-first execution back as the default** and let the loop handle
+   only failures, which is what it was originally built for. This was offered to the user and
+   they have not yet said. Do not defend the design further — the evidence is two bad sessions.
+3. **Learned playbook routes on the user's device are poisoned.** Three were stored from runs
+   that had failed into recovery — `"did you are"`, `"search box"`, `"the search box is right ya
+   just type"`. The learning bug is fixed (`runSteps` now reports `ok` and `clean` separately and
+   learning requires `clean`) but the bad entries already on the phone are not. They should be
+   cleared, or a similar phrase will replay broken steps **without asking the model at all** and
+   look exactly like the bug persisting.
+
+### What the user asked for next: the backend
+The user's last request was the **backend, login system, and per-user token tracking**, and then
+to write everything down because they are starting a fresh session. The full implementation brief
+is **[`COMMERCIALIZATION.md` §1d](COMMERCIALIZATION.md)** — Worker + D1 schema, the Firebase
+Admin-SDK-does-not-run-on-Workers gotcha, the token-metering design, and a six-step build order.
+
+**Start at step 1: the Cloudflare Worker with quota + token accounting against a fake provider.**
+It is plain JavaScript and therefore **the first part of this project that can actually be tested
+inside a Claude session** — every Android change so far could only be reasoned about and handed
+to the user to try, which is how two bad device sessions happened. Use that.
+
+Nothing exists yet: there is no `backend/` directory and no Firebase/Billing/Play dependency in
+`app/build.gradle.kts`.
+
+**Owed by the user before step 3:** a Cloudflare account, a Firebase project, and a decision on
+the free-tier cap (recommended ~60k tokens/day on `llama-3.1-8b-instant`).
+
+### Shipped and device-confirmed
+Part A, the testing rig, **Part B** (work session), **Part C** (screen awareness, state memory,
+send guard, `<<PICK>>`, `<<BACK>>`/`<<HOME>>`), the navigation restructure, learned memory,
+custom instructions, alarms, the voice picker, **Part F — Files**, and **the six themes**.
+Device-confirmed 2026-07-29: type vs send, no spoken thought process, chats below the fold, the
+mic yielding while audio plays, `<<REMEMBER>>`, PDF creation, and `<<PICK>>` choosing "Beat It
+Michael Jackson" from 15 real options.
+
+### Also shipped this session, unconfirmed on device
+- **Launcher icon** from the user's badge (adaptive, `minSdk 26` so `mipmap-anydpi-v26` is always
+  used). **Gotcha: the assembly is NOT circular** — horizontal wing bars reach r≈460 in the source
+  while the ring is r=390, so sizing from the vertical radius sliced them off flat and the user
+  spotted it. **Measure the widest axis, never one radius.** Widest content is 64dp of the 108dp
+  layer (≤132px against a 144px mask edge). Frame and wordmark deliberately absent — both sit
+  outside the mask. Full badge kept at `store/ic_launcher-playstore.png` for the Play listing.
+  `<monochrome>` layer ships for Android 13+.
+- **Michroma is the display face** (OFL, `res/font/michroma.ttf`). **The badge's lettering is not
+  a real typeface** — an AI render whose "A" has no crossbar, which essentially no text font does,
+  so an exact match cannot be obtained. Michroma is **static, one weight**: never ask it for
+  600/700 or the renderer synthesises a faux-bold that smears it. It is much wider than Orbitron,
+  so every size came down and each was checked against "Custom instructions" at headlineSmall on a
+  320dp screen. Orbitron is still bundled — reverting is one line.
+- **`SpendGuard`** — a plan for "add some bread" ended in `Tap(Checkout)`. Truncates at the first
+  irreversible tap unless the user's own words asked. **Strict where `AlarmGuard` is generous**,
+  because here a loose reading is what *permits* the purchase.
+
+### Known-missing capabilities
+- **The agent cannot deliberately scroll.** Tapping a label scrolls to find it, but a product list
+  cannot be browsed. Next feature once the loop is trusted.
+- **No marker to open JARVIS's own artifact** ("show me the PDF you just made").
+- **`<<OPEN|unknown>>` fails silently** — it should report failure like taps do.
+- **No build stamp.** `versionCode 1`, `versionName "1.0"`, shown nowhere, so neither the user nor
+  Claude can tell which build a device is running. Every shared trace is unidentified. Deriving it
+  from the CI run number and showing it in Diagnostics was offered and never built. **This keeps
+  costing real diagnostic time — build it early.**
+- Flow charts for Files (specced), **Part G — Automation** (specced, not started).
+- **The theme brief is bounded** — five rewrites established that 100% resemblance to a
+  photorealistic render without shipping that render is not achievable. Do not attempt a sixth
+  hand-drawn pass. The one untried option is `drawVertices` texture-mapping; offered, awaiting the
+  user's call. Also owed by the user: a decision on a paid provider for image generation.
 
 ## Rules that keep being re-learned
+- **Do not give an unproven change the whole critical path.** The agent loop had never once driven a real errand end to end, and every multi-step command was routed through it. The result was 18 useless taps per command on a stranger's shopping app. Ship a new mechanism behind the old one, or bounded, until a trace says it works.
+- **A step budget does not buy correctness — it only bounds damage.** The loop's allowance was raised 10 → 18 reasoning that a real errand needs nine steps plus room for mistakes. That was simply permission for eighteen wrong taps. It is 8 now, and the test asserting `MAX_STEPS >= 14` was inverted to `<= 10` because it had encoded the mistake.
+- **Success is not progress.** The loop's repeat guard only caught steps that FAILED. Almost all the thrashing was steps that SUCCEEDED and moved nothing — `Open(Zepto)` three times running, each logging "already in Zepto — not relaunching". Guard against *repetition*, not just failure, and detect a screen that has stopped changing.
+- **Anything that loops needs a cancellation token.** `driveErrand` recursed through service callbacks with no token, so an abandoned errand kept choosing steps underneath the next command — the user asked a question at 15:48:32 and the old loop was still tapping at 15:48:46.
+- **Diagnostic strings must never reach the user's ears.** "that step has already failed here" was written for the log and got spoken aloud. Internal reasons are now a named set that `blockedMessage` refuses to speak.
+- **Measure the widest axis, not one radius.** The icon's assembly was sized from its vertical radius and treated as circular; its horizontal wing bars reach r≈460 against a ring of r=390, so they were sliced off flat and the user saw it on the home screen. A single max-radius figure cannot show that content is anisotropic — and I had reported that figure as "verified".
+- **Rendering a preview is not the same as looking at the source.** The icon was inspected under three masks at three sizes and the clipping was still missed, because those previews showed a circular crop whose clipped edges were already gone. Overlaying candidate boundaries on the ORIGINAL is what made it obvious.
 - **Do not name a cause you have not seen.** The bare `$` in `AlarmGuard` was a genuine hazard, was reported to the user as the fix, and fixed nothing — `compileDebugKotlin` had succeeded in every run, and the failure was in TEST sources all along. A plausible defect found while searching is not evidence that it is THE defect.
 - **When the evidence is unreadable, fix that first.** Six red builds (#163–#169) went by while `--stacktrace` buried the `e:` lines under 120 lines of Gradle frames. Removing it turned three failed diagnoses into one successful fetch. Making the evidence legible is cheaper than guessing at it, and should have been the FIRST move, not the fourth. The failing task name (`compileDebugUnitTestKotlin`, not `compileDebugKotlin`) was on screen the whole time and would have narrowed it to test sources immediately.
 - **Add a parameter where it is READ, not only where it is declared.** `systemOverride` was threaded into `GeminiClient.generate()`'s public signature, but the line consuming it was in a private helper two calls down — a main-source compile error that cost builds #179–#180. `GroqClient` had already solved the identical problem by passing it down each hop; the fix was to copy that, not to invent a second shape. This is the same lesson as the entry below, hit from the other direction: not "a fresh regex where a plain string would do", but "a fresh signature where an existing call chain already carried the value".
