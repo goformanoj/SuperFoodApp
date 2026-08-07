@@ -49,6 +49,8 @@ jobs:
           # Injected from repository secrets; empty if a secret is unset.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Empty when the secret is unset; the app then falls back to the in-app wake gate.
+          PICOVOICE_ACCESS_KEY: ${{ secrets.PICOVOICE_ACCESS_KEY }}
         run: ./gradlew assembleDebug
 
       - name: Upload debug APK

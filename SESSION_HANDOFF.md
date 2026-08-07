@@ -21,11 +21,20 @@ without repeating the 2026-07-26 failures: NO second recogniser (avoids `RECOGNI
 the engine ignores everything but "Hey JARVIS"; on wake it says "Yes?" or runs the trailing
 command, stays awake 18s, then sleeps. A work session counts as engaged; "thank you Jarvis" and
 the notification Stop sleep it. The orb is tap-to-wake while idle. **This is NOT a true mic-off
-hotword** — stock Android keeps the recogniser running while asleep, it just won't act. The
-mic-hardware-off version is still the Porcupine/openWakeWord upgrade (Porcupine ships a built-in
-"Jarvis" keyword, needs a Picovoice AccessKey). Do NOT reintroduce a background second recogniser
-— that is the reverted design. On-device listening behaviour is unconfirmed (Rule 5); the matcher
-is unit-tested.
+hotword** — stock Android keeps the recogniser running while asleep, it just won't act. Do NOT
+reintroduce a background second recogniser — that is the reverted design.
+
+**Porcupine mic-off hotword is now BUILT (opt-in, fallback-safe).** `voice/HotwordController` wraps
+`PorcupineManager` on the built-in "Jarvis" keyword; the recogniser is OFF while it listens.
+`applyMicOwner` routes the mic: asleep + `hotword.available` → Porcupine holds the mic (`awake`
+false); `onHotword` → `disarm()` + `speakAck("Yes?")` → recogniser takes the command; `goToSleep`
+re-arms via `applyMicOwner`; `MicOwner.NONE` disarms both. `hotword.available` = `PICOVOICE_ACCESS_KEY`
+present AND no init failure (latches off on first throw) — so **no key = the exact old in-app-gate
+behaviour**, CI included. Key wiring mirrors `GROQ_API_KEY` (build.gradle.kts + build.yml). Dependency
+`ai.picovoice:porcupine-android:3.0.2`. **Scope: foreground+asleep only this cut** — background-
+anywhere needs Porcupine in a mic foreground service (low-risk now: no second recogniser). **User
+owes a `PICOVOICE_ACCESS_KEY` secret** (console.picovoice.ai, free). The mic handoff is unconfirmed
+on device (Rule 5) — trace lines "hotword armed/heard Jarvis/disarmed" exist to diagnose it.
 
 ### ⚠️ Read this first: the screen-control loop is NOT working on a device
 Two device sessions (2026-08-04 Blinkit, 2026-08-05 Zepto) both ended with the errand

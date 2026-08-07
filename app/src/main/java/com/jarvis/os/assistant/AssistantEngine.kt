@@ -36,6 +36,7 @@ import com.jarvis.os.files.ArtifactActions
 import com.jarvis.os.files.ArtifactStore
 import com.jarvis.os.files.ArtifactWriter
 import com.jarvis.os.voice.OrbState
+import com.jarvis.os.voice.HotwordController
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.Transcript
 import com.jarvis.os.voice.VoiceController
@@ -110,6 +111,10 @@ class AssistantEngine(context: Context) {
 
     private val voice = VoiceController(appContext)
     private val speaker = Speaker(appContext)
+    // Real mic-off wake word. When it has a key it holds the mic WHILE ASLEEP and
+    // the recogniser stays off; on "Jarvis" it hands the mic back for the command.
+    // With no key it is inert and the in-app wake gate is used instead.
+    private val hotword = HotwordController(appContext)
 
     // Decides who may hold the microphone. Every listen/stop decision below goes
     // through this one object, so a second listener cannot come into existence.
@@ -319,6 +324,9 @@ class AssistantEngine(context: Context) {
 
         when (session.owner) {
             MicOwner.NONE -> {
+                // Nobody may hold the mic — release both listeners so neither the
+                // recogniser nor the hotword pins it (e.g. while media plays).
+                hotword.disarm()
                 voice.stopListening()
                 set {
                     it.copy(
@@ -332,7 +340,47 @@ class AssistantEngine(context: Context) {
                     )
                 }
             }
-            MicOwner.ENGINE, MicOwner.SESSION -> listen()
+            MicOwner.ENGINE, MicOwner.SESSION ->
+                if (isEngaged() || !hotword.available) {
+                    // Mid-conversation, or no hotword engine: the recogniser listens.
+                    hotword.disarm()
+                    listen()
+                } else {
+                    // Asleep with a real hotword: recogniser off, Porcupine listens
+                    // for "Jarvis" over its own tiny model — no transcription.
+                    armHotwordAsleep()
+                }
+        }
+    }
+
+    /**
+     * Hand the microphone to the hotword engine while asleep. If it cannot start,
+     * fall back to the recogniser + in-app wake gate so JARVIS is never left deaf.
+     */
+    private fun armHotwordAsleep() {
+        busy = false
+        main.removeCallbacks(sleepTimer)
+        voice.stopListening()
+        if (hotword.arm { onHotword() }) {
+            set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, amplitude = 0f, transcript = "") }
+        } else {
+            // Engine refused (bad key, mic busy, unsupported device) — fall back.
+            listen()
+        }
+    }
+
+    /**
+     * Porcupine heard "Jarvis". Runs off its audio thread, so hop to main. Wake up,
+     * release the hotword's mic, and acknowledge — [speakAck] then listens for the
+     * command through the ordinary recogniser path.
+     */
+    private fun onHotword() {
+        main.post {
+            if (busy || isEngaged() || session.owner == MicOwner.NONE) return@post
+            DebugLog.log(DebugLog.Stage.THINK, "hotword — heard “Jarvis”")
+            awake = true
+            hotword.disarm()
+            speakAck("Yes?")
         }
     }
 
@@ -377,6 +425,7 @@ class AssistantEngine(context: Context) {
         WorkSessionService.onStopRequested = null
         WorkSessionService.onTalkRequested = null
         WorkSessionService.stop(appContext)
+        hotword.destroy()
         voice.destroy()
         speaker.shutdown()
         scope.cancel()
@@ -550,7 +599,12 @@ class AssistantEngine(context: Context) {
         awake = false
         main.removeCallbacks(sleepTimer)
         DebugLog.log(DebugLog.Stage.THINK, "back to sleep — waiting for the wake word")
-        if (!busy) set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, transcript = "", reply = "") }
+        // Re-evaluate the mic so it switches from the recogniser back to the
+        // hotword (when one is available); applyMicOwner sets the asleep UI too.
+        if (!busy) {
+            set { it.copy(transcript = "", reply = "") }
+            applyMicOwner()
+        }
     }
 
     /**

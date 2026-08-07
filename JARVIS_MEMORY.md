@@ -2443,3 +2443,45 @@ That remains the upgrade path if the user wants the mic hardware truly gated.
 Device-unconfirmed as ever (Rule 5) — the matcher is tested; the on-device
 listening behaviour needs a real trace, precisely because this is where it broke
 before.
+
+### 2026-08-06 — A true mic-off wake word: Porcupine (opt-in, fallback-safe)
+
+The user chose Porcupine for the real hotword — the upgrade the files kept
+flagging. The point is the one thing stock Android cannot do: be summoned by
+voice WITHOUT the heavy `SpeechRecognizer` transcribing continuously. Porcupine
+runs a tiny on-device model over its own audio stream and fires on the built-in
+"Jarvis" keyword (no custom `.ppn`, no training); only then does the recogniser
+spin up for the command.
+
+**How it slots in without repeating the mic-conflict.** The 2026-07-26 failure was
+two `SpeechRecognizer`s on one mic. Porcupine is a different pipeline, but the
+rule is unchanged: one owner at a time. `HotwordController` arms/disarms only —
+the engine's existing single-owner `applyMicOwner` decides *when*. Asleep with a
+key present: recogniser OFF, Porcupine holds the mic. On "Jarvis": hop to main,
+`disarm()`, `speakAck("Yes?")`, and the command comes through the ordinary
+recogniser path. Back to sleep (18s idle) → `applyMicOwner` re-arms Porcupine.
+`MicOwner.NONE` (media/paused/no-perm) disarms both, so nothing pins the mic.
+
+**Cannot break the app or the build.** The key rides the exact `GROQ_API_KEY`
+pattern (`build.gradle.kts` property/env → `BuildConfig.PICOVOICE_ACCESS_KEY`,
+empty when unset; passed through in `build.yml`). No key, or any Porcupine
+init/start throw, latches `HotwordController.available = false` and the engine
+keeps the in-app wake gate. So CI with no secret builds byte-for-byte the same
+behaviour as before, just with the dependency compiled in.
+
+**Scope of this cut, stated honestly.** The hotword runs while JARVIS is the
+foreground app and asleep — which already delivers the ask ("without the mic
+always transcribing"). Background-anywhere ("Jarvis" from any app) needs Porcupine
+kept alive in a microphone foreground service; that is the natural next step and
+is now low-risk because there is no second recogniser to conflict — but it is NOT
+in this commit.
+
+**Owed by the user:** a free Picovoice AccessKey (console.picovoice.ai) added as a
+`PICOVOICE_ACCESS_KEY` GitHub Actions secret, exactly like `GROQ_API_KEY`. Until
+then the app silently uses the in-app "Hey JARVIS" gate.
+
+Device-unconfirmed, and this is the fragile part (mic handoff) — the `.aar`
+compiles in CI, but whether Porcupine acquires the mic cleanly, hands it to the
+recogniser, and takes it back can only be seen on a device. Needs a trace: the
+DebugLog lines "hotword armed", "hotword — heard Jarvis", "hotword disarmed" are
+there precisely to make that legible.
