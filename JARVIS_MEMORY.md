@@ -2398,3 +2398,48 @@ key + licensing decision (Porcupine ships a built-in "Jarvis" keyword but needs 
 Picovoice AccessKey; openWakeWord needs no key but more integration and is
 cleaner for commercial use), so it was put back to the user rather than guessed —
 and it must respect the one-mic-owner rule that the earlier failure earned.
+
+### 2026-08-06 — The wake word, rebuilt the safe way (in-app asleep/awake)
+
+The user pointed back at these very files ("you'll find mention of the wake up
+call") and asked for it. The files record it failing **twice** on 2026-07-26, so
+the point was to rebuild it without repeating either failure. Re-reading exactly
+why they failed is what made it safe:
+
+1. **Background service = two recognisers** fighting the mic → `RECOGNIZER_BUSY`.
+   → So this does NOT add a second recogniser. It is one gate on the existing
+   single always-on recogniser, and the `WorkSession` single-owner rule is
+   untouched.
+2. **Reused recogniser after `cancel()`** returned only partials, so the command
+   never finalised. → The current speak→listen loop already works turn after turn
+   on device, and the "Yes?" acknowledgement goes through that *same* path
+   (`speakAck` → `onSpokenDone` → `listen`) rather than a bespoke one.
+3. **Custom silence-timeout hints never finalised.** → `VoiceController` already
+   uses the recogniser's default timing (that lesson stuck); the wake word adds no
+   timing hints at all.
+
+**What it does.** `voice/WakeWord` (pure Kotlin, unit-tested) matches "Hey JARVIS"
+at the start of a transcript — tolerant of the recogniser's mishears (jervis,
+javis, travis, even "service") and an optional leading filler — and splits off any
+trailing command. Anchored to the start after one filler so "thank you Jarvis"
+(the stop phrase) is not a wake. The engine holds an `awake` flag: asleep it
+ignores everything that is not the wake word (no think, no speak, no act — the
+exact opposite of the always-on build that talked to itself for a minute); on wake
+it says "Yes?" (bare) or runs the trailing command, stays awake for follow-ups,
+and after `SLEEP_AFTER_MS` (18s) of silence returns to sleep. A work session
+counts as engaged, so mid-errand follow-ups need no wake word; "thank you Jarvis"
+and the notification Stop both return it to sleep.
+
+**Tap-to-wake too.** The orb is now tappable while asleep (`engine.wake()`), a
+no-voice summons for when saying it aloud is awkward — enabled only when idle so a
+live turn is never interrupted.
+
+**The honest limit, stated plainly for the user.** This is stock Android: the mic
+recogniser is still *running* while asleep, it just refuses to act on anything but
+the wake word. It is NOT a true mic-off hotword — that still needs a dedicated DSP
+engine (Porcupine has a built-in "Jarvis" keyword but wants a Picovoice AccessKey;
+openWakeWord is key-free but more work), started only after the hotword fires.
+That remains the upgrade path if the user wants the mic hardware truly gated.
+Device-unconfirmed as ever (Rule 5) — the matcher is tested; the on-device
+listening behaviour needs a real trace, precisely because this is where it broke
+before.

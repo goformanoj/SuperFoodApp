@@ -113,6 +113,7 @@ private fun taskAccents(): List<Color> =
 fun JarvisApp(
     state: VoiceUiState,
     onClearChat: () -> Unit,
+    onWake: () -> Unit = {},
     onSubmitCommand: (String) -> Unit = {},
     voiceOptions: () -> List<Speaker.Option> = { emptyList() },
     currentVoiceId: () -> String? = { null },
@@ -150,7 +151,7 @@ fun JarvisApp(
     ) {
         Box(modifier = modifier.fillMaxSize().background(palette.background)) {
             when (current) {
-                Dest.Home -> HomeContent(state)
+                Dest.Home -> HomeContent(state, onWake)
                 Dest.Chat -> ChatScreen(state.messages, onClearChat)
                 Dest.Diagnostics -> DiagnosticsScreen(onSubmitCommand = onSubmitCommand)
                 Dest.Settings -> SettingsScreen(
@@ -192,7 +193,7 @@ fun JarvisApp(
 }
 
 @Composable
-private fun HomeContent(state: VoiceUiState) {
+private fun HomeContent(state: VoiceUiState, onWake: () -> Unit = {}) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val viewport = maxHeight
         // The backdrop sits behind the scrolling content, so the starfield stays
@@ -204,14 +205,14 @@ private fun HomeContent(state: VoiceUiState) {
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
         ) {
-            HeroSection(state = state, height = viewport)
+            HeroSection(state = state, height = viewport, onWake = onWake)
             ScheduleSection()
         }
     }
 }
 
 @Composable
-private fun HeroSection(state: VoiceUiState, height: Dp) {
+private fun HeroSection(state: VoiceUiState, height: Dp, onWake: () -> Unit = {}) {
     val greeting = remember { greetingForHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
     // Show live transcript/reply only during an active conversation; hide when asleep.
     val active = state.orb != OrbState.Idle && state.orb != OrbState.Offline
@@ -234,7 +235,16 @@ private fun HeroSection(state: VoiceUiState, height: Dp) {
         )
 
         Spacer(Modifier.height(28.dp))
-        HudOrb(orb = state.orb, amplitude = state.amplitude, size = 280.dp)
+        // Tapping the orb wakes JARVIS without the wake word — enabled only while
+        // it is asleep (idle), so a live conversation isn't interrupted by a tap.
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .clickable(enabled = !active) { onWake() },
+            contentAlignment = Alignment.Center,
+        ) {
+            HudOrb(orb = state.orb, amplitude = state.amplitude, size = 280.dp)
+        }
         Spacer(Modifier.height(8.dp))
 
         // The waveform strip from the designs. Driven by the real mic level, so

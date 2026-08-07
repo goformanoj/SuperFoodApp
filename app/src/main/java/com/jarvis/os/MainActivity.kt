@@ -48,6 +48,7 @@ class MainActivity : ComponentActivity() {
                     JarvisApp(
                         state = state,
                         onClearChat = { engine.clearConversation() },
+                        onWake = { engine.wake() },
                         onSubmitCommand = { engine.submitText(it) },
                         voiceOptions = { engine.voiceOptions() },
                         currentVoiceId = { engine.currentVoiceId() },

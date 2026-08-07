@@ -15,12 +15,17 @@ CI pending.** On-screen drawing is device-unconfirmed (Rule 5). New gotcha: memo
 *typed* fact ("peak") that contradicts an *auto-learned* one ("Pic") from a mishearing — deletable
 on the redesigned instructions screen.
 
-**Wake word is a live, deliberately-unbuilt decision.** The user asked for it; the files record
-it failing twice on `SpeechRecognizer` (2026-07-26, mic conflict → reverted). Do NOT rebuild it on
-`SpeechRecognizer`. The path is a hotword engine (Porcupine has a built-in "Jarvis" keyword, needs
-a Picovoice AccessKey injected like `GROQ_API_KEY`; openWakeWord/Vosk are key-free but more work),
-with the Google recogniser started only after the hotword fires, and the whole thing obeying the
-one-mic-owner rule in `WorkSession`. Engine choice was put to the user.
+**Wake word is BUILT — in-app asleep/awake (`voice/WakeWord` + engine `awake` flag).** Rebuilt
+without repeating the 2026-07-26 failures: NO second recogniser (avoids `RECOGNIZER_BUSY`), the
+"Yes?" ack reuses the normal speak→listen path (`speakAck`), and no custom silence hints. Asleep,
+the engine ignores everything but "Hey JARVIS"; on wake it says "Yes?" or runs the trailing
+command, stays awake 18s, then sleeps. A work session counts as engaged; "thank you Jarvis" and
+the notification Stop sleep it. The orb is tap-to-wake while idle. **This is NOT a true mic-off
+hotword** — stock Android keeps the recogniser running while asleep, it just won't act. The
+mic-hardware-off version is still the Porcupine/openWakeWord upgrade (Porcupine ships a built-in
+"Jarvis" keyword, needs a Picovoice AccessKey). Do NOT reintroduce a background second recogniser
+— that is the reverted design. On-device listening behaviour is unconfirmed (Rule 5); the matcher
+is unit-tested.
 
 ### ⚠️ Read this first: the screen-control loop is NOT working on a device
 Two device sessions (2026-08-04 Blinkit, 2026-08-05 Zepto) both ended with the errand

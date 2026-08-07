@@ -39,6 +39,7 @@ import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.Transcript
 import com.jarvis.os.voice.VoiceController
+import com.jarvis.os.voice.WakeWord
 import com.jarvis.os.voice.VoiceUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,11 +55,13 @@ import java.util.Locale
  * Orchestrates the assistant loop:
  *   listen (SpeechRecognizer) -> think (Groq) -> speak (TextToSpeech) -> listen…
  *
- * Deliberately simple and always-on: while the screen is visible it just listens,
- * answers, and listens again — no wake word, no "are you there" hand-off. It
- * keeps a persisted conversation for context and can act on the calendar and the
- * screen. Owns the single [VoiceUiState] the UI observes; driven from the
- * Activity lifecycle (onMicPermission / resume / pause / destroy).
+ * It listens continuously, but stays ASLEEP until it hears the wake word: asleep
+ * it ignores everything that is not "Hey JARVIS"; awake it answers, acts, and
+ * listens for follow-ups, returning to sleep after a spell of silence (see the
+ * [awake] flag and [WakeWord]). It keeps a persisted conversation for context and
+ * can act on the calendar and the screen. Owns the single [VoiceUiState] the UI
+ * observes; driven from the Activity lifecycle (onMicPermission / resume / pause /
+ * destroy).
  *
  * It also owns the process's only [VoiceController]. Listening starts and stops
  * in exactly one place, [applyMicOwner], which obeys [WorkSession] — that is how
@@ -117,6 +120,13 @@ class AssistantEngine(context: Context) {
     private var micGranted = false
     private var mediaPlaying = false
     private var busy = false // thinking or speaking — do not listen
+
+    // Wake-word gate. When asleep, JARVIS listens but stays silent and inert until
+    // it hears "Hey JARVIS" — it will not think, speak, or act on anything else.
+    // Once awake it handles commands normally and, after a spell of silence, falls
+    // back to sleep. A work session (opened an app on command, listening for
+    // follow-ups) counts as engaged, so mid-errand follow-ups need no wake word.
+    private var awake = false
     // A screen action (open app / tap) to run AFTER JARVIS finishes speaking, so
     // the spoken reply isn't cut off when the screen switches away.
     private var pendingScreen: ScreenActions.Plan? = null
@@ -126,16 +136,24 @@ class AssistantEngine(context: Context) {
     private var currentGoal: String = ""
 
     init {
-        voice.onReady = { if (!busy) set { it.copy(orb = OrbState.Listening, status = "Listening…") } }
+        voice.onReady = { if (!busy) set { it.copy(orb = idleOrb(), status = idleStatus()) } }
         voice.onPartial = { text ->
-            if (!busy) set { it.copy(orb = OrbState.Listening, status = "Listening…", transcript = text) }
+            // Show live text only while engaged; asleep it should read as waiting
+            // for the wake word, not transcribing the room.
+            if (!busy) set {
+                it.copy(
+                    orb = idleOrb(),
+                    status = idleStatus(),
+                    transcript = if (isEngaged()) text else "",
+                )
+            }
         }
         voice.onAmplitude = { amp -> if (!busy) set { it.copy(amplitude = amp) } }
         voice.onNoInput = { restartSoon() }
         voice.onFatal = { msg -> set { it.copy(orb = OrbState.Error, status = msg, amplitude = 0f) } }
         voice.onFinal = { hypotheses ->
             val best = hypotheses.firstOrNull().orEmpty()
-            if (best.isNotBlank()) ask(best, heard = hypotheses)
+            if (best.isNotBlank()) onHeard(best, hypotheses)
         }
         speaker.onDone = { onSpokenDone() }
         // The executor asks the model which on-screen option a <<PICK>> means. It
@@ -242,6 +260,7 @@ class AssistantEngine(context: Context) {
         WorkSessionService.onStopRequested = {
             main.post {
                 session.end()
+                awake = false
                 DebugLog.log(DebugLog.Stage.SESSION, "ended by notification Stop")
                 applyMicOwner()
             }
@@ -441,13 +460,29 @@ class AssistantEngine(context: Context) {
         ask(text, source = "typed")
     }
 
+    /**
+     * Wake JARVIS by hand — tapping the orb — instead of saying the wake word.
+     * A deliberate tap is as clear a summons as "Hey JARVIS", and it works when
+     * saying it out loud would be awkward. No-op if already engaged or mid-turn.
+     */
+    fun wake() {
+        if (busy || isEngaged() || session.owner == MicOwner.NONE) return
+        awake = true
+        DebugLog.log(DebugLog.Stage.THINK, "woken by tap")
+        applyMicOwner() // re-enters listen(), which now shows Listening and arms the idle timer
+    }
+
     private fun listen() {
         if (!voice.isAvailable()) {
             set { it.copy(orb = OrbState.Error, status = "Speech recognition unavailable") }
             return
         }
         busy = false
-        set { it.copy(orb = OrbState.Listening, status = "Listening…", amplitude = 0f) }
+        set { it.copy(orb = idleOrb(), status = idleStatus(), amplitude = 0f) }
+        // Only count down to sleep while awake and outside a session; a session is
+        // its own "keep listening" contract, and asleep there is nothing to time.
+        main.removeCallbacks(sleepTimer)
+        if (awake && !session.isActive) main.postDelayed(sleepTimer, SLEEP_AFTER_MS)
         voice.startListening()
     }
 
@@ -456,8 +491,87 @@ class AssistantEngine(context: Context) {
         main.postDelayed({ if (!busy && session.owner != MicOwner.NONE) voice.startListening() }, RESTART_MS)
     }
 
+    /** Engaged = mid-conversation: already awake, or in a work session. */
+    private fun isEngaged(): Boolean = awake || session.isActive
+
+    private fun idleOrb(): OrbState = if (isEngaged()) OrbState.Listening else OrbState.Idle
+
+    private fun idleStatus(): String = if (isEngaged()) "Listening…" else WAKE_HINT
+
+    /**
+     * A final transcript arrived. While asleep, everything except the wake word is
+     * ignored — not thought about, not spoken to, not acted on. This is the whole
+     * point of the wake word, and why the earlier always-on build reacted to
+     * speech the user never aimed at it.
+     */
+    private fun onHeard(text: String, heard: List<String>) {
+        if (isEngaged()) {
+            stayAwake()
+            ask(text, heard = heard)
+            return
+        }
+        val wake = WakeWord.detect(text)
+        if (!wake.matched) {
+            DebugLog.log(DebugLog.Stage.HEARD, "(asleep) ignored: $text")
+            restartSoon()
+            return
+        }
+        DebugLog.log(DebugLog.Stage.THINK, "woke on the wake word")
+        awake = true
+        if (wake.command.isBlank()) {
+            // Just "Hey JARVIS" — acknowledge and listen for the real command.
+            speakAck("Yes?")
+        } else {
+            // "Hey JARVIS, <command>" — handle the command in the same breath.
+            ask(wake.command, heard = listOf(wake.command))
+        }
+    }
+
+    /** Stay awake and (re)start the idle countdown back to sleep. */
+    private fun stayAwake() {
+        awake = true
+        main.removeCallbacks(sleepTimer)
+        if (!session.isActive) main.postDelayed(sleepTimer, SLEEP_AFTER_MS)
+    }
+
+    private val sleepTimer = object : Runnable {
+        override fun run() {
+            // Don't fall asleep mid-think/speak; check again once that finishes.
+            if (busy) {
+                main.postDelayed(this, SLEEP_AFTER_MS)
+                return
+            }
+            goToSleep()
+        }
+    }
+
+    private fun goToSleep() {
+        if (!awake) return
+        awake = false
+        main.removeCallbacks(sleepTimer)
+        DebugLog.log(DebugLog.Stage.THINK, "back to sleep — waiting for the wake word")
+        if (!busy) set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, transcript = "", reply = "") }
+    }
+
+    /**
+     * Speak a short acknowledgement ("Yes?") with no model round-trip, then listen.
+     * Uses the ordinary speak → [onSpokenDone] → listen path so the hand-off is the
+     * same one every reply uses — the divergent "Yes?" path is exactly what made
+     * the wake word unreliable last time.
+     */
+    private fun speakAck(line: String) {
+        busy = true
+        main.removeCallbacks(sleepTimer)
+        voice.stopListening()
+        set { it.copy(orb = OrbState.Speaking, status = "Speaking…", transcript = "", reply = line) }
+        speaker.speak(line)
+    }
+
     private fun ask(userText: String, source: String = "voice", heard: List<String> = emptyList()) {
         busy = true
+        // Handling a command means JARVIS is engaged; the sleep timer is cleared by
+        // the removeCallbacks below and re-armed when it next returns to listening.
+        awake = true
         pendingScreen = null
         voice.stopListening()
         main.removeCallbacksAndMessages(null)
@@ -485,6 +599,9 @@ class AssistantEngine(context: Context) {
         // is called, so it always works even if the network is down.
         if (session.endIfStopPhrase(userText)) {
             DebugLog.log(DebugLog.Stage.SESSION, "ended by stop phrase")
+            // Dismissing JARVIS puts it back to sleep: the next command needs the
+            // wake word again, which is what "thank you Jarvis" should mean.
+            awake = false
             val farewell = "Anytime."
             addTurn(ChatTurn(ChatTurn.USER, userText))
             addTurn(ChatTurn(ChatTurn.ASSISTANT, farewell))
@@ -1029,5 +1146,13 @@ class AssistantEngine(context: Context) {
         const val MAX_CONTEXT_TURNS = 10 // turns sent to the AI as context
         const val MAX_STORED_TURNS = 200 // turns kept on disk
         const val MEDIA_POLL_MS = 2000L // how often to check whether audio is playing
+
+        // Wake-word idle timeout: after this long awake with nothing said, JARVIS
+        // returns to sleep and needs "Hey JARVIS" again. Long enough to think
+        // between follow-ups, short enough that it isn't left wide open.
+        const val SLEEP_AFTER_MS = 18_000L
+
+        // Shown while asleep, so the screen says how to get JARVIS's attention.
+        const val WAKE_HINT = "Say “Hey JARVIS”"
     }
 }
