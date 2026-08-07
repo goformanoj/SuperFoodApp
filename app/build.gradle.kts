@@ -12,12 +12,6 @@ val geminiApiKey: String = (project.findProperty("GEMINI_API_KEY") as String?)
 val groqApiKey: String = (project.findProperty("GROQ_API_KEY") as String?)
     ?: System.getenv("GROQ_API_KEY")
     ?: ""
-// Picovoice access key for the Porcupine wake-word engine. Same rule: provided at
-// build time, never committed, empty when unset — and when empty the app falls
-// back to the in-app wake gate, so an unset key is harmless.
-val picovoiceAccessKey: String = (project.findProperty("PICOVOICE_ACCESS_KEY") as String?)
-    ?: System.getenv("PICOVOICE_ACCESS_KEY")
-    ?: ""
 
 android {
     namespace = "com.jarvis.os"
@@ -31,7 +25,6 @@ android {
         versionName = "1.0"
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
         buildConfigField("String", "GROQ_API_KEY", "\"$groqApiKey\"")
-        buildConfigField("String", "PICOVOICE_ACCESS_KEY", "\"$picovoiceAccessKey\"")
     }
 
     signingConfigs {
@@ -93,12 +86,6 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-
-    // Porcupine on-device wake-word engine ("Jarvis" is a built-in keyword). A
-    // tiny always-on model, so JARVIS can be summoned without the heavy speech
-    // recogniser transcribing everything. Used only when a Picovoice access key
-    // is present; otherwise the app falls back to the in-app wake gate.
-    implementation("ai.picovoice:porcupine-android:3.0.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
