@@ -8,11 +8,19 @@
 **`main` @ `37fb8c0`** — green build **#190**, artifact `jarvis-debug-apk` 18.99 MB confirmed.
 Branch `claude/project-onboarding-lcnvi7` carries **unmerged** work: speech now keeps the
 recogniser's n-best alternatives and hands the near misses to the model (`voice/Transcript`,
-JUnit-tested), and the custom-instructions screen was rebuilt. **Build pending CI — not
-device-confirmed, no artifact seen.** Recognition quality can only be judged from a real trace
-(Rule 5). New gotcha surfaced by the same trace: memory can hold a *typed* fact ("peak") that
-contradicts an *auto-learned* one ("Pic") born from a mishearing — the learned one is deletable
+JUnit-tested); the custom-instructions screen was rebuilt; and a translucent "JARVIS is
+controlling the screen" tint (accessibility overlay, no new permission) now shows while it drives
+the screen. **Build #195 green (artifact confirmed) for the first two; the tint is a later commit,
+CI pending.** On-screen drawing is device-unconfirmed (Rule 5). New gotcha: memory can hold a
+*typed* fact ("peak") that contradicts an *auto-learned* one ("Pic") from a mishearing — deletable
 on the redesigned instructions screen.
+
+**Wake word is a live, deliberately-unbuilt decision.** The user asked for it; the files record
+it failing twice on `SpeechRecognizer` (2026-07-26, mic conflict → reverted). Do NOT rebuild it on
+`SpeechRecognizer`. The path is a hotword engine (Porcupine has a built-in "Jarvis" keyword, needs
+a Picovoice AccessKey injected like `GROQ_API_KEY`; openWakeWord/Vosk are key-free but more work),
+with the Google recogniser started only after the hotword fires, and the whole thing obeying the
+one-mic-owner rule in `WorkSession`. Engine choice was put to the user.
 
 ### ⚠️ Read this first: the screen-control loop is NOT working on a device
 Two device sessions (2026-08-04 Blinkit, 2026-08-05 Zepto) both ended with the errand

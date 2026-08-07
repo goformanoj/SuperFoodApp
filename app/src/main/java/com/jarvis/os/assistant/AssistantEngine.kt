@@ -472,6 +472,9 @@ class AssistantEngine(context: Context) {
             DebugLog.log(DebugLog.Stage.HEARD, "unsure of a word — also heard: $heardHint")
         }
         currentGoal = userText
+        // A new utterance ends any control the previous one had — drop the tint now
+        // so it never lingers; the new command re-shows it if it drives the screen.
+        ScreenControlService.instance?.setControlOverlay(false)
         // Any new utterance abandons the errand in flight. Without this, an old
         // loop kept choosing steps while a new command ran — a trace shows the
         // user asking a question at 15:48:32 and the previous errand still
@@ -760,6 +763,11 @@ class AssistantEngine(context: Context) {
             return ScreenOutcome.NEEDS_PERMISSION
         }
         DebugLog.log(DebugLog.Stage.SCREEN, "running ${plan.steps.joinToString(", ")}")
+        // Dim the screen for the whole errand/sequence: the user should be able to
+        // see that JARVIS is the one acting. Only for steps that actually drive the
+        // screen — merely launching an app is not "taking control". Cleared when
+        // the work finishes (say), is superseded (ask), or onDone reports it over.
+        if (plan.needsAccessibility) ScreenControlService.instance?.setControlOverlay(true)
         // A command that opens an app starts a work session: JARVIS keeps hearing
         // follow-ups while the user is in that app. Merely opening or closing
         // JARVIS itself never gets here, so it never starts one.
@@ -799,6 +807,8 @@ class AssistantEngine(context: Context) {
             // Run the whole ordered sequence (open -> tap -> type -> enter) via the service.
             val goal = pendingGoal
             ScreenControlService.instance?.runSteps(plan.steps) { ok, ranClean ->
+                // The sequence is over — stop showing the control tint.
+                main.post { ScreenControlService.instance?.setControlOverlay(false) }
                 // Only a sequence that ran clean is worth keeping. Routes that
                 // needed recovery are exactly the ones whose steps were wrong.
                 //
@@ -997,6 +1007,9 @@ class AssistantEngine(context: Context) {
      * to a question the user just asked, but they still have to be heard.
      */
     private fun say(line: String) {
+        // Reaching here ends an errand (done, asked, blocked, or out of steps), so
+        // JARVIS is no longer driving the screen — drop the control tint.
+        ScreenControlService.instance?.setControlOverlay(false)
         addTurn(ChatTurn(ChatTurn.ASSISTANT, line))
         DebugLog.log(DebugLog.Stage.SPOKE, line)
         set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = line) }

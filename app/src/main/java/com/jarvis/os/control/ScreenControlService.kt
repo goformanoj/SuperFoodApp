@@ -10,6 +10,7 @@ import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -42,6 +43,13 @@ class ScreenControlService : AccessibilityService() {
     private var sequenceRunning = false
     private var recoveriesLeft = 0
 
+    // A translucent full-screen tint shown while JARVIS is driving the screen, so
+    // the user can see at a glance that the taps are JARVIS's, not theirs. Drawn
+    // as a non-touchable accessibility overlay — the same mechanism as the tap
+    // outline, so it needs no "draw over other apps" permission.
+    private var scrim: View? = null
+    private val scrimSafety = Runnable { removeScrim() }
+
     // What the user was last looking at. Written from accessibility events and
     // from each successful read, so JARVIS still knows the state of the app the
     // user is in even while its own UI is the foreground window. Volatile because
@@ -69,6 +77,7 @@ class ScreenControlService : AccessibilityService() {
     override fun onInterrupt() { }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        removeScrim()
         instance = null
         return super.onUnbind(intent)
     }
@@ -76,6 +85,7 @@ class ScreenControlService : AccessibilityService() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         removeOutline()
+        removeScrim()
         instance = null
         super.onDestroy()
     }
@@ -137,6 +147,12 @@ class ScreenControlService : AccessibilityService() {
     ) {
         // A later command has taken over; abandon this chain silently.
         if (token != runToken) return
+        // Keep the control tint alive while steps are actually running, so its
+        // safety timer only fires if the engine truly stalls without clearing it.
+        if (scrim != null) {
+            handler.removeCallbacks(scrimSafety)
+            handler.postDelayed(scrimSafety, SCRIM_SAFETY_MS)
+        }
         if (index >= steps.size) {
             sequenceRunning = false
             onDone(true, !recoveredThisRun)
@@ -786,6 +802,108 @@ class ScreenControlService : AccessibilityService() {
         outline = null
     }
 
+    /**
+     * Show or hide the translucent "JARVIS is in control" tint over the whole
+     * screen. Called by the engine when an on-screen errand begins and ends. Safe
+     * to call from any thread and idempotent — a second `true` does not stack a
+     * second layer. A safety timer removes it if the engine ever forgets, so a
+     * stuck errand cannot leave the screen dimmed for good.
+     */
+    fun setControlOverlay(active: Boolean) {
+        handler.post {
+            handler.removeCallbacks(scrimSafety)
+            if (active) {
+                addScrim()
+                handler.postDelayed(scrimSafety, SCRIM_SAFETY_MS)
+            } else {
+                removeScrim()
+            }
+        }
+    }
+
+    private fun addScrim() {
+        if (scrim != null) return
+        val view = ScrimView(this)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            // Not touchable and not focusable: the tint must never swallow a tap —
+            // JARVIS's own gestures still have to reach the app underneath.
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT,
+        )
+        try {
+            windowManager.addView(view, params)
+            scrim = view
+        } catch (e: Exception) {
+            scrim = null
+        }
+    }
+
+    private fun removeScrim() {
+        scrim?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (e: Exception) {
+                // already gone
+            }
+        }
+        scrim = null
+    }
+
+    /**
+     * Full-screen translucent tint plus a cyan edge frame and a small label, so
+     * the screen visibly "belongs to JARVIS" while it acts. Deliberately see-
+     * through — the user still needs to watch what it is doing.
+     */
+    private class ScrimView(context: Context) : View(context) {
+        private val frame = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 8f
+            color = Color.parseColor("#00D4FF")
+        }
+        private val frameGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 24f
+            color = Color.parseColor("#3300D4FF")
+        }
+        private val pillFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#E60A1426")
+        }
+        private val pillText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#00D4FF")
+            textSize = 34f
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val w = width.toFloat()
+            val h = height.toFloat()
+            // Translucent navy wash — low enough alpha that the app stays readable.
+            canvas.drawColor(Color.parseColor("#59060D1C"))
+            val edge = RectF(6f, 6f, w - 6f, h - 6f)
+            canvas.drawRoundRect(edge, 44f, 44f, frameGlow)
+            canvas.drawRoundRect(edge, 44f, 44f, frame)
+            // A small pill near the top so the dimming reads as intentional.
+            val label = "JARVIS is controlling the screen"
+            val tw = pillText.measureText(label)
+            val cx = w / 2f
+            val top = 70f
+            val ph = 82f
+            val padX = 44f
+            val pill = RectF(cx - tw / 2 - padX, top, cx + tw / 2 + padX, top + ph)
+            canvas.drawRoundRect(pill, ph / 2, ph / 2, pillFill)
+            canvas.drawRoundRect(pill, ph / 2, ph / 2, frame)
+            val baseline = top + ph / 2 - (pillText.descent() + pillText.ascent()) / 2
+            canvas.drawText(label, cx, baseline, pillText)
+        }
+    }
+
     /** Full-screen transparent view that draws a cyan glow rectangle at [target]. */
     private class OutlineView(context: Context, private val target: RectF) : View(context) {
         private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -896,5 +1014,12 @@ class ScreenControlService : AccessibilityService() {
          */
         private const val MAX_RECOVERIES = 12
         private const val OUTLINE_MS = 1100L
+
+        /**
+         * Backstop that removes the control tint if the engine never clears it.
+         * Re-armed on every step, so it only fires when the screen genuinely
+         * stops changing — long enough that a slow-but-live errand keeps its tint.
+         */
+        private const val SCRIM_SAFETY_MS = 30_000L
     }
 }

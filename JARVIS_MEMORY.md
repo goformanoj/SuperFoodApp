@@ -2355,3 +2355,46 @@ leading cyan **+** so they read as *add* actions, not more facts.
 Build pending CI — no `jarvis-debug-apk` seen yet, and none of this is
 device-confirmed. Speech accuracy in particular can only be judged from a real
 trace (Rule 5): the logic is tested, the recognition is not.
+
+### 2026-08-06 — A translucent "JARVIS is in control" tint while it drives the screen
+
+The user asked for the screen to go translucent while JARVIS has control — a
+visible signal that the taps happening are JARVIS's, not a ghost. Built as a
+full-screen, non-touchable accessibility overlay: a low-alpha navy wash, a cyan
+edge frame, and a small "JARVIS is controlling the screen" pill.
+
+**Why this was cheap and safe.** The same file already draws the per-tap cyan
+outline with `TYPE_ACCESSIBILITY_OVERLAY` — an accessibility service can paint
+over any app with **no** `SYSTEM_ALERT_WINDOW` permission. So the scrim reuses
+exactly that: `FLAG_NOT_TOUCHABLE | FLAG_NOT_FOCUSABLE` so it never swallows a
+tap (JARVIS's own gestures still reach the app underneath), and it needed no new
+manifest permission — notable given the 2026-07-26 background-wake attempt had to
+ask for "display over other apps" and still failed.
+
+**Lifecycle — where it shows and hides.** `ScreenControlService.setControlOverlay`
+is idempotent and thread-safe (posts to the main handler). The engine shows it in
+`executeScreen` only when `plan.needsAccessibility` (merely launching an app is
+not "taking control"), and clears it at every exit: `say()` (errand done/asked/
+blocked/out-of-steps), the top of `ask()` (a new utterance supersedes), and the
+non-errand sequence's `onDone` (which also catches recovery dead-ends, since an
+empty recovery plan drives `onDone`). A 30s safety timer, re-armed on every step,
+removes it if the engine ever stalls without clearing — a slow-but-live errand
+keeps its tint because each step re-arms the timer. Also removed on service
+`onUnbind`/`onDestroy`.
+
+Device-unconfirmed like all the on-screen drawing here (Rule 5): the show/hide
+wiring is plain, but the tint itself can only be judged by looking on a device.
+
+**Also this turn: the wake word, which the files already litigated — twice.** The
+user asked for a wake word so the mic isn't always transcribing. The 2026-07-26
+entries record that a `SpeechRecognizer`-based wake word (both in-app and a
+background `JarvisService`) was built and **reverted**: two recognisers are two
+mic holders, which produced `RECOGNIZER_BUSY` and broke everything, and even the
+single in-app version made the command hand-off unreliable. The recorded, honest
+conclusion stands: a real wake word needs a dedicated on-device hotword engine
+(Porcupine / openWakeWord / Vosk) running its own tiny always-on model, with the
+heavy Google recogniser spun up only AFTER the hotword fires. That is an engine +
+key + licensing decision (Porcupine ships a built-in "Jarvis" keyword but needs a
+Picovoice AccessKey; openWakeWord needs no key but more integration and is
+cleaner for commercial use), so it was put back to the user rather than guessed —
+and it must respect the one-mic-owner rule that the earlier failure earned.
