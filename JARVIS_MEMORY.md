@@ -2566,3 +2566,25 @@ and `FLAG_LAYOUT_NO_LIMITS` so it covers the bars. The next trace will say wheth
 `addView` throws or the tint is simply too brief (errands that fail in ~3 s clear it
 fast; the accuracy fixes should let errands run longer). Diagnose from the trace
 before theorising further (Rule 4).
+
+### 2026-08-06 — openWakeWord overflow is a 2.16.1 core-allocator bug; bump to 2.17.0
+
+The strict-resize fix did NOT work — the device trace still shows the identical
+"BytesRequired number of elements overflowed. Node number 3 (CONV_2D) failed to
+prepare." Re-diagnosed: this is in CORE tensor allocation (`allocateTensors`),
+which runs before any delegate, so `setUseXNNPACK(false)` and `strict` can't touch
+it. It's a shape-inference/allocator bug in `org.tensorflow:tensorflow-lite:2.16.1`
+for the melspectrogram model's dynamic-length input — the newer LiteRT runtime
+(ai-edge-litert 2.1.6, what the Python pre-flight ran) handles the identical model
+and resize fine. Fix: bump the Android runtime to **2.17.0** (newest classic
+`org.tensorflow.lite` API, drop-in). Device-independent, not a per-device hack.
+
+Confidence is moderate, not high — 2.17.0 is newer than 2.16.1 but may not carry
+the exact allocator fix that litert 2.1.6 has. So the **certain fallback** is
+scoped and ready if it fails: the melspec model is 30 pure/linear nodes (2×CONV_2D
+for the STFT, BATCH_MATMUL for the mel filterbank, LOG + max-normalisation). Its
+constant tensors (the DFT kernels and the mel matrix) can be read straight out of
+the .tflite and the whole thing re-implemented in Kotlin, bypassing the runtime's
+dynamic-shape path entirely — and verified numerically against the model in Python
+before the user ever installs it. The embedding and wake-word models have FIXED
+input shapes and did not overflow, so they can stay on TFLite.
