@@ -2460,3 +2460,51 @@ and run them over an `AudioRecord` stream, replacing Porcupine behind the same
 `HotwordController` arm/disarm seam the reverted commit already designed. Vosk is
 the heavier fallback (full offline recogniser, ~40MB). Do NOT reach for Picovoice
 again — the blocker is account policy, not code.
+
+### 2026-08-06 — openWakeWord: a real mic-off "Hey Jarvis", from any app (no key)
+
+Porcupine was out (company-email signup). openWakeWord is the key-free, Apache
+alternative, and it's what shipped. It answers the user's actual question — "wake
+JARVIS while using my phone, without opening the app" — with a background
+microphone service running a tiny on-device model, the heavy recogniser off.
+
+**De-risked before writing a line of Kotlin.** I could not run the models on a
+device, so I fetched openWakeWord's exact source and the three TFLite models and
+prototyped the streaming pipeline in Python with litert, confirming: melspec input
+is dynamic (resize to 1760 = 1280 + 3×160 look-back) → [1,1,8,32] (8 mel frames of
+32); transform `mel/10 + 2`; embedding window 76 mel frames → 96-d; prediction
+window 16 embeddings → score. Feeding a fixed 1280-sample chunk makes each step
+produce exactly 8 mel frames and 1 embedding, so consecutive embeddings are 8
+frames apart — matching openWakeWord's window-76/step-8. Silence → 0.0, white noise
+→ 0.0002, shapes chain. `voice/OpenWakeWord` is a direct port of that verified
+pipeline (audio fed as raw int16 cast to float, NOT normalised — the scale the
+models expect). Threshold 0.5 (openWakeWord's default), tunable, and scores are
+logged so it can be tuned from a trace.
+
+**The mic-off, from-anywhere part.** `control/HotwordService` is a microphone
+foreground service that owns an `AudioRecord` and runs the detector. On "Hey
+Jarvis" it launches `MainActivity` (singleTask) with `EXTRA_WOKE_BY_HOTWORD`; the
+Activity's `onStart` stops the service (handing the mic over) and calls
+`engine.wakeFromHotword()` → "Yes?" → the command comes through the ordinary
+recogniser path. The one-owner rule is preserved by lifecycle: the engine starts
+the service ONLY in `pause()` when backgrounded, asleep, and not in a work session,
+and stops it in `resume()`. So the recogniser (foreground / session) and the
+hotword `AudioRecord` (background) never run together. Default ON (`UserPreferences
+.backgroundWake`), with a Settings toggle and a Stop action on the notification.
+
+**Honest scope + the three real risks (all device-unverifiable here):**
+1. **True-positive detection** — silence/noise verified 0; whether a real "Hey
+   Jarvis" crosses 0.5 needs a device + trace to confirm/tune (scores are logged).
+2. **Foreground-service background start** — starting a mic FGS from `pause()` can
+   throw `ForegroundServiceStartNotAllowedException` on Android 12+. It's wrapped
+   and logged; if a trace shows the refusal, move to an always-running service that
+   gates capture instead of start/stop.
+3. **Realme's battery killer** — an aggressive OEM manager may kill the service;
+   the user may need to exempt JARVIS from battery optimisation. Known Android
+   wake-word limitation, not a code bug.
+
+Foreground wake is unchanged (the in-app "Hey JARVIS" gate + tap-to-wake); only the
+background path is openWakeWord. Models add ~3.6 MB to the APK (assets, uncompressed
+via `noCompress "tflite"`). No JUnit test — the pipeline needs TFLite native libs
+that don't run in a JVM unit test, so it was validated in Python against the
+reference instead (Rule 5's spirit: verified, just not on-device).

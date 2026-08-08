@@ -46,6 +46,8 @@ fun SettingsScreen(
     onVoiceDownloadOffered: () -> Unit,
     palette: JarvisPalette,
     onSelectPalette: (JarvisPalette) -> Unit,
+    backgroundWakeEnabled: Boolean = true,
+    onSetBackgroundWake: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var section by remember { mutableStateOf(Section.Voice) }
@@ -57,6 +59,12 @@ fun SettingsScreen(
             style = MaterialTheme.typography.headlineSmall,
             color = TextPrimary,
             modifier = Modifier.padding(horizontal = 20.dp),
+        )
+
+        WakeToggle(
+            enabled = backgroundWakeEnabled,
+            onToggle = onSetBackgroundWake,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
         )
         Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
             Section.entries.forEach { entry ->
@@ -95,5 +103,49 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+}
+
+/** A labelled on/off row for the background "Hey Jarvis" wake word. */
+@Composable
+private fun WakeToggle(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var on by remember { mutableStateOf(enabled) }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(SurfaceGlass)
+            .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
+            .clickable { on = !on; onToggle(on) }
+            .padding(16.dp),
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(
+                "Wake word — \"Hey Jarvis\"",
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextPrimary,
+            )
+            Text(
+                "Summon JARVIS by voice from any app. On-device, nothing recorded. " +
+                    "Uses some battery and shows an ongoing notification.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Text(
+            if (on) "On" else "Off",
+            style = MaterialTheme.typography.labelLarge,
+            color = if (on) Cyan else TextSecondary,
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(if (on) Cyan.copy(alpha = 0.12f) else SurfaceGlass)
+                .border(1.dp, if (on) Cyan else GlassBorder, RoundedCornerShape(20.dp))
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+        )
     }
 }

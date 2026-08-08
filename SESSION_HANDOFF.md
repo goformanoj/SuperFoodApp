@@ -22,11 +22,25 @@ the engine ignores everything but "Hey JARVIS"; on wake it says "Yes?" or runs t
 command, stays awake 18s, then sleeps. A work session counts as engaged; "thank you Jarvis" and
 the notification Stop sleep it. The orb is tap-to-wake while idle. **This is NOT a true mic-off
 hotword** — stock Android keeps the recogniser running while asleep, it just won't act. The
-mic-hardware-off version is **openWakeWord** (Apache, no key). **Porcupine was built and reverted**
-(2026-08-06) — a Picovoice AccessKey needs a company email the user doesn't have; do NOT reach for
-it again. The reverted commit's `HotwordController` arm/disarm seam is the design to reuse if
-openWakeWord is done later. Do NOT reintroduce a background second recogniser — that is the older
-reverted design. On-device listening behaviour is unconfirmed (Rule 5); the matcher is unit-tested.
+mic-hardware-off version is **openWakeWord** — now BUILT (below). Porcupine was built and reverted
+(Picovoice needs a company email); do NOT reach for it again. Do NOT reintroduce a background second
+recogniser — that is the older reverted design. In-app matcher is unit-tested; on-device unconfirmed.
+
+**Mic-off "Hey Jarvis" from ANY app is BUILT via openWakeWord (key-free, this branch).**
+`voice/OpenWakeWord` runs 3 bundled TFLite models (assets, `noCompress "tflite"`, ~3.6 MB) — a port
+of openWakeWord's streaming pipeline **pre-verified in Python with litert** (mel input resize to
+1760 → [1,1,8,32]; transform `mel/10+2`; embedding window 76 step 8; predict window 16; feed raw
+int16-as-float, NOT normalised; threshold 0.5; scores logged). `control/HotwordService` = mic
+foreground service running it in the background; on detection it launches MainActivity (singleTask,
+`EXTRA_WOKE_BY_HOTWORD`) → `engine.wakeFromHotword()` → "Yes?" → command via the recogniser.
+One-owner by lifecycle: engine starts it in `pause()` only when backgrounded + asleep +
+`!session.isActive`, stops in `resume()`; recogniser and hotword never run together. Default-on
+`UserPreferences.backgroundWake` + Settings toggle + notification Stop. **DEVICE-ONLY UNKNOWNS to
+check from a trace:** (1) does a real "Hey Jarvis" cross 0.5 — tune `OpenWakeWord.DETECT_THRESHOLD`;
+(2) `ForegroundServiceStartNotAllowedException` on the `pause()` start (Android 12+) — if so, switch
+to an always-running service that gates capture rather than start/stop; (3) Realme battery killer —
+exempt JARVIS from battery optimisation. Foreground wake still uses the in-app gate above. No JUnit
+test (needs TFLite native libs); validated in Python against the reference instead.
 
 ### ⚠️ Read this first: the screen-control loop is NOT working on a device
 Two device sessions (2026-08-04 Blinkit, 2026-08-05 Zepto) both ended with the errand

@@ -43,6 +43,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@android:style/Theme.Material.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -66,6 +67,14 @@
         <!-- Work session: runs only while JARVIS is backgrounded mid-session. -->
         <service
             android:name=".control.WorkSessionService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- Background wake word: runs the on-device "Hey Jarvis" detector so JARVIS
+             can be summoned from any app. Opens the mic itself (openWakeWord), only
+             ever while the in-app recogniser is not listening — one mic owner. -->
+        <service
+            android:name=".control.HotwordService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
 

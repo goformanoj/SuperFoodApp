@@ -125,6 +125,8 @@ fun JarvisApp(
     learnedFacts: () -> List<String> = { emptyList() },
     onSaveInstructions: (String) -> Unit = {},
     onForgetFact: (String) -> Unit = {},
+    backgroundWakeEnabled: () -> Boolean = { true },
+    onSetBackgroundWake: (Boolean) -> Unit = {},
     palette: JarvisPalette = JarvisPalette.Default,
     onSelectPalette: (JarvisPalette) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -163,6 +165,8 @@ fun JarvisApp(
                     onVoiceDownloadOffered = onVoiceDownloadOffered,
                     palette = palette,
                     onSelectPalette = onSelectPalette,
+                    backgroundWakeEnabled = backgroundWakeEnabled(),
+                    onSetBackgroundWake = onSetBackgroundWake,
                 )
                 Dest.Instructions -> InstructionsScreen(
                     initial = customInstructions(),

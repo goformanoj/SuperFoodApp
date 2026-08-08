@@ -21,6 +21,7 @@ import com.jarvis.os.calendar.CalendarActions
 import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.calendar.CalendarWriter
 import com.jarvis.os.control.AppLauncher
+import com.jarvis.os.control.HotwordService
 import com.jarvis.os.control.ScreenActions
 import com.jarvis.os.control.ScreenControlService
 import com.jarvis.os.control.ScreenStep
@@ -265,6 +266,15 @@ class AssistantEngine(context: Context) {
                 applyMicOwner()
             }
         }
+        // The wake-word notification's Stop turns off background listening for good
+        // (until re-enabled in settings), and stops the service now.
+        HotwordService.onDisableRequested = {
+            main.post {
+                userPrefs.backgroundWake = false
+                HotwordService.stop(appContext)
+                DebugLog.log(DebugLog.Stage.SESSION, "background wake word turned off")
+            }
+        }
     }
 
     fun onMicPermission(granted: Boolean) {
@@ -279,6 +289,9 @@ class AssistantEngine(context: Context) {
 
     fun resume() {
         session.onVisibilityChanged(true)
+        // Foreground now, so the engine owns the mic — the background hotword must
+        // let go, or two listeners would fight over it (the one-owner rule).
+        HotwordService.stop(appContext)
         // Coming back to the foreground (e.g. after being sent to Settings) — any
         // interrupted think/speak is abandoned, so clear busy and start listening
         // again. Without this the "busy" flag could stay stuck and it never
@@ -294,7 +307,27 @@ class AssistantEngine(context: Context) {
         // one, it keeps talking and listening from the background.
         if (!session.isActive) speaker.stop()
         applyMicOwner()
+        // Backgrounded and not mid-session: hand the mic to the background wake
+        // word so "Hey Jarvis" still reaches JARVIS from other apps. A session
+        // already listens in the background, so the hotword stays off then.
+        if (userPrefs.backgroundWake && micGranted && !session.isActive) {
+            HotwordService.start(appContext)
+        } else {
+            HotwordService.stop(appContext)
+        }
         set { it.copy(amplitude = 0f) }
+    }
+
+    /**
+     * The background wake word heard "Hey Jarvis" and brought JARVIS to the front.
+     * Wake up and acknowledge, then listen for the command through the ordinary
+     * recogniser path. Called by the Activity when it was launched by the hotword.
+     */
+    fun wakeFromHotword() {
+        if (busy) return
+        awake = true
+        DebugLog.log(DebugLog.Stage.THINK, "woken by “Hey Jarvis” (background)")
+        speakAck("Yes?")
     }
 
     /**
@@ -421,6 +454,17 @@ class AssistantEngine(context: Context) {
     fun saveCustomInstructions(text: String) {
         userPrefs.customInstructions = text
         DebugLog.log(DebugLog.Stage.THINK, "custom instructions updated (${text.trim().length} chars)")
+    }
+
+    /** Whether the background "Hey Jarvis" wake word is switched on. */
+    fun backgroundWakeEnabled(): Boolean = userPrefs.backgroundWake
+
+    fun setBackgroundWake(enabled: Boolean) {
+        userPrefs.backgroundWake = enabled
+        DebugLog.log(DebugLog.Stage.SESSION, "background wake word ${if (enabled) "on" else "off"}")
+        // Apply immediately: if we're in the foreground the engine owns the mic and
+        // the service stays off until we background; if turned off, stop it now.
+        if (!enabled) HotwordService.stop(appContext)
     }
 
     fun themeId(): String = userPrefs.themeId

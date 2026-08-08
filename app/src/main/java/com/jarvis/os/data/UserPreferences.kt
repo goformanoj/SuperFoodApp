@@ -24,6 +24,16 @@ class UserPreferences(context: Context) {
         set(value) = prefs.edit().putString(KEY_THEME, value).apply()
 
     /**
+     * Whether the background "Hey Jarvis" wake word runs — a mic foreground
+     * service that lets JARVIS be summoned from any app. On by default (it is the
+     * point of the feature), and turned off from the wake-word notification's Stop
+     * action or the settings screen. Costs battery and shows an ongoing notice.
+     */
+    var backgroundWake: Boolean
+        get() = prefs.getBoolean(KEY_BG_WAKE, true)
+        set(value) = prefs.edit().putBoolean(KEY_BG_WAKE, value).apply()
+
+    /**
      * Facts JARVIS decided to keep — nicknames, forms of address, standing
      * preferences it was told once. Newest last, so context reads chronologically.
      */
@@ -83,5 +93,6 @@ class UserPreferences(context: Context) {
         private const val KEY_INSTRUCTIONS = "custom_instructions"
         private const val KEY_THEME = "theme"
         private const val KEY_FACTS = "learned_facts"
+        private const val KEY_BG_WAKE = "background_wake"
     }
 }

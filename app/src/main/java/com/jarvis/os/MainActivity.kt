@@ -1,6 +1,7 @@
 package com.jarvis.os
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -60,6 +61,8 @@ class MainActivity : ComponentActivity() {
                         learnedFacts = { engine.learnedFacts() },
                         onSaveInstructions = { engine.saveCustomInstructions(it) },
                         onForgetFact = { engine.forgetFact(it) },
+                        backgroundWakeEnabled = { engine.backgroundWakeEnabled() },
+                        onSetBackgroundWake = { engine.setBackgroundWake(it) },
                         palette = palette,
                         onSelectPalette = {
                             palette = it
@@ -71,11 +74,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // The background hotword service launches us with this flag set. singleTask
+    // (manifest) means an existing instance is reused and gets the new intent here.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onStart() {
         super.onStart()
         engine.resume()
         if (hasPermission(Manifest.permission.RECORD_AUDIO)) engine.onMicPermission(true)
         requestMissingPermissions()
+        // Woken by "Hey Jarvis" from the background: acknowledge and listen for the
+        // command. Consume the flag so re-opening the app later doesn't re-trigger.
+        if (intent?.getBooleanExtra(EXTRA_WOKE_BY_HOTWORD, false) == true) {
+            intent.removeExtra(EXTRA_WOKE_BY_HOTWORD)
+            engine.wakeFromHotword()
+        }
     }
 
     override fun onStop() {
@@ -99,8 +115,11 @@ class MainActivity : ComponentActivity() {
     private fun hasPermission(permission: String): Boolean =
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
-    private companion object {
-        val REQUIRED: Array<String> = buildList {
+    companion object {
+        /** Intent extra set by [com.jarvis.os.control.HotwordService] on detection. */
+        const val EXTRA_WOKE_BY_HOTWORD = "woke_by_hotword"
+
+        private val REQUIRED: Array<String> = buildList {
             add(Manifest.permission.RECORD_AUDIO)
             add(Manifest.permission.READ_CALENDAR)
             add(Manifest.permission.WRITE_CALENDAR)

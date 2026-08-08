@@ -60,6 +60,12 @@ android {
         buildConfig = true
     }
 
+    androidResources {
+        // TFLite models are memory-mapped at runtime, so they must be stored
+        // uncompressed in the APK — otherwise the interpreter cannot load them.
+        noCompress += "tflite"
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -86,6 +92,12 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+
+    // On-device wake word (openWakeWord models run via TensorFlow Lite). No key,
+    // no account — the "hey jarvis" model and its two feature models are bundled
+    // in assets. Lets JARVIS be summoned by voice with the heavy speech recogniser
+    // switched off, and (via the hotword service) from any app.
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
