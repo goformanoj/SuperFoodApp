@@ -830,16 +830,23 @@ class ScreenControlService : AccessibilityService() {
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             // Not touchable and not focusable: the tint must never swallow a tap —
             // JARVIS's own gestures still have to reach the app underneath.
+            // LAYOUT_NO_LIMITS lets it cover the status/nav bars too, so the whole
+            // screen is visibly JARVIS's rather than just the app area.
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         )
         try {
             windowManager.addView(view, params)
             scrim = view
+            DebugLog.log(DebugLog.Stage.SCREEN, "control tint shown")
         } catch (e: Exception) {
             scrim = null
+            // If this throws, the tint never appears — log it so a trace says why
+            // rather than the feature just seeming to "not work".
+            DebugLog.log(DebugLog.Stage.ERROR, "control tint failed: ${e.message ?: e.javaClass.simpleName}")
         }
     }
 

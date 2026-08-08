@@ -196,7 +196,7 @@ class AssistantEngine(context: Context) {
                         systemOverride = AGENT_PROMPT,
                         tier = Tier.SMART,
                     )
-                    AgentLoop.parseMove(answer, avoid = failedStep)
+                    AgentLoop.parseMove(answer, avoid = failedStep, stayInApp = AgentLoop.appOf(stepsTaken))
                 } catch (e: Exception) {
                     DebugLog.log(DebugLog.Stage.ERROR, "agent step failed: ${e.message ?: e.javaClass.simpleName}")
                     AgentMove.Blocked(e.message ?: "no answer")
@@ -949,6 +949,8 @@ class AssistantEngine(context: Context) {
             // atta, dal, coke and more". Open the app, then look before each move.
             val goal = pendingGoal
             val opens = AgentLoop.opensIn(plan.steps)
+            // The app this errand belongs to — the loop must not wander out of it.
+            val errandApp = AgentLoop.appOf(plan.steps)
             DebugLog.log(
                 DebugLog.Stage.SCREEN,
                 "errand: opening, then deciding each step from the screen " +
@@ -960,7 +962,7 @@ class AssistantEngine(context: Context) {
             errandSteps = opens
             val token = errandToken
             ScreenControlService.instance?.runSteps(opens, recover = false) { _, _ ->
-                main.post { driveErrand(goal, token, lastFailed = null) }
+                main.post { driveErrand(goal, token, lastFailed = null, app = errandApp) }
             }
             return ScreenOutcome.DISPATCHED
         }
@@ -1058,6 +1060,7 @@ class AssistantEngine(context: Context) {
         goal: String,
         token: Int,
         lastFailed: ScreenStep?,
+        app: String = "",
         stalls: Int = 0,
         lastScreen: String = "",
         nudges: Int = 0,
@@ -1102,7 +1105,7 @@ class AssistantEngine(context: Context) {
                     systemOverride = AGENT_PROMPT,
                     tier = Tier.SMART,
                 )
-                AgentLoop.parseMove(answer, avoid = lastFailed, taken = errandSteps)
+                AgentLoop.parseMove(answer, avoid = lastFailed, taken = errandSteps, stayInApp = app)
             } catch (e: Exception) {
                 DebugLog.log(DebugLog.Stage.ERROR, "agent step failed: ${e.message ?: e.javaClass.simpleName}")
                 AgentMove.Blocked(e.message ?: "no answer")
@@ -1127,6 +1130,7 @@ class AssistantEngine(context: Context) {
                                     goal = goal,
                                     token = token,
                                     lastFailed = if (ok) null else move.step,
+                                    app = app,
                                     stalls = stalled,
                                     lastScreen = screen,
                                 )
@@ -1149,7 +1153,7 @@ class AssistantEngine(context: Context) {
                         // round trip and no taps.
                         if (move.reason == AgentLoop.GOING_IN_CIRCLES && nudges == 0) {
                             DebugLog.log(DebugLog.Stage.SCREEN, "errand: repeated itself — asking once more")
-                            driveErrand(goal, token, lastFailed, stalled, lastScreen, nudges = 1)
+                            driveErrand(goal, token, lastFailed, app, stalled, lastScreen, nudges = 1)
                         } else {
                             DebugLog.log(DebugLog.Stage.SCREEN, "errand stuck: ${move.reason}")
                             say(AgentLoop.blockedMessage(goal, move.reason))

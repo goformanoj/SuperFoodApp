@@ -14,6 +14,50 @@ import org.junit.Test
 class AgentLoopTest {
 
     @Test
+    fun `an errand refuses to open an unrelated app`() {
+        // The device disaster: "play a song" (misheard "…call Khat") opened the
+        // Phone app to call Mom. Locked to the errand's app, that move is blocked.
+        val move = AgentLoop.parseMove("<<OPEN|Phone>>", stayInApp = "Amazon Music")
+        assertTrue(move is AgentMove.Blocked)
+        assertEquals(AgentLoop.LEFT_APP, (move as AgentMove.Blocked).reason)
+    }
+
+    @Test
+    fun `reopening the same app mid-errand is allowed`() {
+        val move = AgentLoop.parseMove("<<OPEN|Amazon Music>>", stayInApp = "Amazon Music")
+        assertTrue(move is AgentMove.Act)
+    }
+
+    @Test
+    fun `acting inside the errand app is unaffected by the lock`() {
+        val move = AgentLoop.parseMove("<<TAP|Play>>", stayInApp = "Amazon Music")
+        assertTrue(move is AgentMove.Act)
+        assertEquals(ScreenStep.Tap("Play"), (move as AgentMove.Act).step)
+    }
+
+    @Test
+    fun `without an app lock, opening any app is still allowed`() {
+        val move = AgentLoop.parseMove("<<OPEN|Phone>>")
+        assertTrue(move is AgentMove.Act)
+    }
+
+    @Test
+    fun `sameApp treats variants as the same and unrelated apps as different`() {
+        assertTrue(AgentLoop.sameApp("Amazon Music", "Amazon"))
+        assertTrue(AgentLoop.sameApp("Music", "Amazon Music"))
+        assertTrue(AgentLoop.sameApp("YouTube Music", "youtube music"))
+        assertFalse(AgentLoop.sameApp("Amazon Music", "Phone"))
+        assertFalse(AgentLoop.sameApp("WhatsApp", "Instagram"))
+    }
+
+    @Test
+    fun `the app-lock block speaks a clear reason, not the internal tag`() {
+        val spoken = AgentLoop.blockedMessage("play the peak playlist", AgentLoop.LEFT_APP)
+        assertTrue(spoken.contains("different app"))
+        assertFalse(spoken.contains(AgentLoop.LEFT_APP))
+    }
+
+    @Test
     fun `one action is taken from a reply, even when the model sends several`() {
         // The whole premise: anything after the first is planned against a screen
         // that does not exist yet, which is how the old executor went wrong.

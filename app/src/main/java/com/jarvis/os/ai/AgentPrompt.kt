@@ -40,6 +40,10 @@ internal val AGENT_PROMPT = """
     If DONE shows a step already failed, do NOT repeat it — that screen does not
     have what you assumed. Try a different route.
 
+    Stay in the app the task is about. Do NOT <<OPEN>> a different app because a
+    word in the GOAL suggests one — "play the song" is not a reason to open Phone
+    or Messages. If you cannot do the task in this app, <<ASK>> rather than wander.
+
     Never tap anything that sends, buys, orders, pays, confirms or deletes. Use
     <<ASK>> instead and let the user say yes. Getting the errand finished is not
     worth spending their money or messaging someone on your own initiative.

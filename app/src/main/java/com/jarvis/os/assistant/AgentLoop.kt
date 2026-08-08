@@ -83,8 +83,11 @@ object AgentLoop {
     /** Reason given when the model re-picks the step that just failed. */
     const val ALREADY_FAILED = "that step has already failed here"
 
+    /** Reason given when the loop tried to leave for an unrelated app. */
+    const val LEFT_APP = "tried to switch to a different app"
+
     /** Blocked reasons JARVIS produced itself, which must never be read aloud. */
-    val INTERNAL_REASONS = setOf(NO_STEP, ALREADY_FAILED, GOING_IN_CIRCLES)
+    val INTERNAL_REASONS = setOf(NO_STEP, ALREADY_FAILED, GOING_IN_CIRCLES, LEFT_APP)
 
     /**
      * True when [step] has been chosen too often already.
@@ -121,6 +124,26 @@ object AgentLoop {
     /** The leading app launches, which are safe to run before looking. */
     fun opensIn(steps: List<ScreenStep>): List<ScreenStep> = steps.takeWhile { it is ScreenStep.Open }
 
+    /** The app an errand runs in — the first thing it opened — or empty. */
+    fun appOf(steps: List<ScreenStep>): String =
+        (steps.firstOrNull { it is ScreenStep.Open } as? ScreenStep.Open)?.app.orEmpty()
+
+    /**
+     * Whether two app names refer to the same app, loosely. Shares a meaningful
+     * word ("Amazon Music" ↔ "Amazon", "Music" ↔ "Amazon Music"), so only a truly
+     * unrelated app ("Phone" vs "Amazon Music") counts as different. Unknown names
+     * are treated as the same, so the app-lock never blocks on missing information.
+     */
+    fun sameApp(a: String, b: String): Boolean {
+        val at = appTokens(a)
+        val bt = appTokens(b)
+        if (at.isEmpty() || bt.isEmpty()) return true
+        return at.any { x -> x.length >= 3 && bt.contains(x) }
+    }
+
+    private fun appTokens(s: String): List<String> =
+        s.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+
     /** The model says the goal is met. */
     private val DONE = Regex("""<<\s*DONE\s*>{1,2}""", RegexOption.IGNORE_CASE)
 
@@ -139,6 +162,7 @@ object AgentLoop {
         reply: String,
         avoid: ScreenStep? = null,
         taken: List<ScreenStep> = emptyList(),
+        stayInApp: String? = null,
     ): AgentMove {
         ASK.find(reply)?.let { match ->
             val question = match.groupValues[1].trim()
@@ -147,6 +171,16 @@ object AgentLoop {
 
         val steps = ScreenActions.parse(reply).steps
         val first = steps.firstOrNull()
+
+        // An errand belongs to one app. If the loop tries to OPEN a different one,
+        // stop — that is almost always the model chasing a stray word rather than
+        // the task. A device trace shows "play a song" (misheard as "…call Khat")
+        // opening the Phone app and starting to call "Mom": exactly the wander this
+        // refuses. Opening the same app again is fine (the [repeats] guard handles
+        // redundant relaunches); only a genuinely different app is blocked.
+        if (first is ScreenStep.Open && stayInApp != null && !sameApp(first.app, stayInApp)) {
+            return AgentMove.Blocked(LEFT_APP)
+        }
 
         // Never re-run the step that just failed. The prompt asks for this and a
         // device trace shows the model doing it anyway: told that
@@ -224,6 +258,12 @@ object AgentLoop {
      * spoken; a stray word read aloud is worse than a plain admission.
      */
     fun blockedMessage(goal: String, reason: String): String {
+        // The app-lock is internal, but its honest explanation is more useful than
+        // the generic "can't see what to do", so it gets its own line.
+        if (reason == LEFT_APP) {
+            return "I started heading into a different app than \"$goal\" needs, so I stopped " +
+                "rather than do the wrong thing. What next?"
+        }
         val explanation = reason.trim()
         // Reasons JARVIS wrote for itself are diagnostics, not speech. A trace
         // has it saying "that step has already failed here. I've stopped there

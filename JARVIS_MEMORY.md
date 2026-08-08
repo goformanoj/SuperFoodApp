@@ -2532,3 +2532,37 @@ Lesson: the pre-flight ran a DIFFERENT TFLite build than the app ships. Validati
 the algorithm in litert proved the math, not the runtime — the runtime disagreed on
 dynamic-shape handling. Worth pinning the same runtime next time, or expecting
 shape-inference differences between TFLite builds.
+
+### 2026-08-06 — Screen-control accuracy: wrong app, and a near-miss phone call
+
+Second device session with the wake word installed surfaced two real screen-
+control bugs (plus the overlay question). Fixes, each quoting the trace.
+
+**"Amazon Music" opened Amazon (the shop) or Music.** `AppLauncher.resolvePackage`
+took the FIRST app whose label loosely contained the query, and `query.contains(
+label)` means "amazon music" matches the shorter, more general "Amazon" — whichever
+the launcher enumerated first. Replaced with `AppLauncher.rank` (pure, unit-tested):
+every candidate is scored by how many spoken words its label actually contains, with
+a bonus for covering ALL of them and a penalty for extra words — so "Amazon Music"
+beats "Amazon" for "amazon music", "Amazon" still wins for "amazon", and an exact
+name always wins. Below a floor it resolves to nothing rather than a wrong app.
+
+**"Play a song" opened the Phone app and started to call "Mom".** The utterance was
+misheard as "…please call Khat"; the errand loop, seeing "call" in the goal, chose
+`Open(Phone) → Type(Mom) → Tap(Quick contact for Mom)` and only a failed step
+stopped it short of a call. The loop had budget/repeat/stall guards but nothing
+stopping it LEAVING the app. Added an app-lock: `parseMove(..., stayInApp)` blocks
+an `<<OPEN>>` of an app unrelated to the errand's app (`AgentLoop.sameApp` shares a
+meaningful word, so "Amazon Music"↔"Amazon" is allowed but "Amazon Music"↔"Phone"
+is not). `AGENT_PROMPT` now also says to stay in the task's app and never open a
+different one because a word in the goal suggests it. Both the one-shot recovery and
+the errand loop pass `stayInApp`. This is the same posture as SendGuard/SpendGuard:
+a code guard for an irreversible-ish action, because the prompt alone is
+probabilistic — and this one wandered toward a phone call.
+
+**The control tint "doesn't work".** Could not reproduce (no device), so added
+`DebugLog` on add ("control tint shown") and on failure ("control tint failed: …")
+and `FLAG_LAYOUT_NO_LIMITS` so it covers the bars. The next trace will say whether
+`addView` throws or the tint is simply too brief (errands that fail in ~3 s clear it
+fast; the accuracy fixes should let errands run longer). Diagnose from the trace
+before theorising further (Rule 4).
