@@ -49,8 +49,12 @@ class OpenWakeWord(context: Context) {
 
     init {
         try {
-            melspec = interpreter(context, "openwakeword/melspectrogram.tflite")
-                .apply { resizeInput(0, intArrayOf(1, MEL_INPUT_SAMPLES)); allocateTensors() }
+            // The melspectrogram model has a dynamic audio-length input; resize it to
+            // our fixed chunk. strict=true is REQUIRED here — without it TFLite 2.16
+            // leaves the downstream tensor shapes symbolic and a CONV_2D overflows
+            // its byte count at prepare time ("BytesRequired ... overflowed"). This
+            // matches openWakeWord's own resize_tensor_input(..., strict=True).
+            melspec = interpreter(context, "openwakeword/melspectrogram.tflite", intArrayOf(1, MEL_INPUT_SAMPLES))
             embedding = interpreter(context, "openwakeword/embedding_model.tflite")
             wakeword = interpreter(context, "openwakeword/hey_jarvis_v0.1.tflite")
             DebugLog.log(DebugLog.Stage.HEARD, "openWakeWord loaded — \"hey jarvis\" ready")
@@ -144,8 +148,18 @@ class OpenWakeWord(context: Context) {
         wakeword = null
     }
 
-    private fun interpreter(context: Context, assetPath: String): Interpreter =
-        Interpreter(loadModel(context, assetPath), Interpreter.Options().apply { numThreads = 1 })
+    private fun interpreter(context: Context, assetPath: String, inputShape: IntArray? = null): Interpreter {
+        val options = Interpreter.Options().apply {
+            numThreads = 1
+            // The XNNPACK delegate failed to apply on these models on-device; the
+            // plain CPU kernels are plenty fast for one wake phrase and avoid it.
+            setUseXNNPACK(false)
+        }
+        return Interpreter(loadModel(context, assetPath), options).apply {
+            if (inputShape != null) resizeInput(0, inputShape, true) // strict — see init
+            allocateTensors()
+        }
+    }
 
     private fun loadModel(context: Context, assetPath: String): MappedByteBuffer {
         context.assets.openFd(assetPath).use { fd ->

@@ -2508,3 +2508,27 @@ background path is openWakeWord. Models add ~3.6 MB to the APK (assets, uncompre
 via `noCompress "tflite"`). No JUnit test — the pipeline needs TFLite native libs
 that don't run in a JVM unit test, so it was validated in Python against the
 reference instead (Rule 5's spirit: verified, just not on-device).
+
+### 2026-08-06 — openWakeWord device fix: strict resize (CONV_2D byte overflow)
+
+First on-device trace of openWakeWord failed at load: "BytesRequired number of
+elements overflowed. Node number 3 (CONV_2D) failed to prepare." The fallback
+worked perfectly (background wake auto-disabled, in-app gate + tap-to-wake kept
+working — the trace shows "Hello Pranjal" via tap), but the detector never ran.
+
+Cause: the melspectrogram model's audio input is a dynamic length. On the Android
+`org.tensorflow:tensorflow-lite:2.16.1` runtime a NON-strict `resizeInput` leaves
+the downstream tensor shapes symbolic, so a CONV_2D computes a garbage element
+count and overflows at prepare. openWakeWord's own Python uses
+`resize_tensor_input(..., strict=True)` for exactly this reason; my pre-flight used
+ai-edge-litert (a newer TFLite) whose shape inference propagates without strict, so
+it passed there and hid the difference. Fix: `resizeInput(0, shape, strict=true)`
+plus `setUseXNNPACK(false)` (the delegate also failed to apply on-device; plain CPU
+kernels are plenty for one phrase). Verified strict resize still yields [1,1,8,32]
+in the reference. Still needs the next device trace to confirm it now loads and
+that a real "Hey Jarvis" crosses threshold.
+
+Lesson: the pre-flight ran a DIFFERENT TFLite build than the app ships. Validating
+the algorithm in litert proved the math, not the runtime — the runtime disagreed on
+dynamic-shape handling. Worth pinning the same runtime next time, or expecting
+shape-inference differences between TFLite builds.
