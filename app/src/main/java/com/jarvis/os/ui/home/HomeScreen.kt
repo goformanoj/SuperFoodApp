@@ -127,6 +127,7 @@ fun JarvisApp(
     onForgetFact: (String) -> Unit = {},
     backgroundWakeEnabled: () -> Boolean = { true },
     onSetBackgroundWake: (Boolean) -> Unit = {},
+    onOpenAssistantSettings: () -> Unit = {},
     palette: JarvisPalette = JarvisPalette.Default,
     onSelectPalette: (JarvisPalette) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -167,6 +168,7 @@ fun JarvisApp(
                     onSelectPalette = onSelectPalette,
                     backgroundWakeEnabled = backgroundWakeEnabled(),
                     onSetBackgroundWake = onSetBackgroundWake,
+                    onOpenAssistantSettings = onOpenAssistantSettings,
                 )
                 Dest.Instructions -> InstructionsScreen(
                     initial = customInstructions(),

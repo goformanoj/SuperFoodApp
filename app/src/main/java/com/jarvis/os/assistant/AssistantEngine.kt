@@ -319,14 +319,15 @@ class AssistantEngine(context: Context) {
     }
 
     /**
-     * The background wake word heard "Hey Jarvis" and brought JARVIS to the front.
-     * Wake up and acknowledge, then listen for the command through the ordinary
-     * recogniser path. Called by the Activity when it was launched by the hotword.
+     * Summon JARVIS to take a command — wake, acknowledge with "Yes?", then listen
+     * through the ordinary recogniser path. Used both when the assist gesture
+     * launches the app (the mic-free default) and when the background wake word
+     * brought it to the front. [via] is only for the trace.
      */
-    fun wakeFromHotword() {
+    fun summon(via: String = "") {
         if (busy) return
         awake = true
-        DebugLog.log(DebugLog.Stage.THINK, "woken by “Hey Jarvis” (background)")
+        DebugLog.log(DebugLog.Stage.THINK, "summoned${if (via.isBlank()) "" else " by $via"}")
         speakAck("Yes?")
     }
 
@@ -454,6 +455,28 @@ class AssistantEngine(context: Context) {
     fun saveCustomInstructions(text: String) {
         userPrefs.customInstructions = text
         DebugLog.log(DebugLog.Stage.THINK, "custom instructions updated (${text.trim().length} chars)")
+    }
+
+    /**
+     * Opens the system screen where JARVIS can be set as the default assistant, so
+     * the assist gesture launches it. Tries the most specific screen first and
+     * falls back, since OEMs (ColorOS included) move it around.
+     */
+    fun openAssistantSettings() {
+        val candidates = listOf(
+            Intent(Settings.ACTION_VOICE_INPUT_SETTINGS),
+            Intent("android.settings.MANAGE_DEFAULT_APPS_SETTINGS"),
+            Intent(Settings.ACTION_SETTINGS),
+        )
+        for (intent in candidates) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                appContext.startActivity(intent)
+                return
+            } catch (e: Exception) {
+                // Try the next, more general screen.
+            }
+        }
     }
 
     /** Whether the background "Hey Jarvis" wake word is switched on. */

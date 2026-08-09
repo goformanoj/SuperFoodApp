@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
                         onForgetFact = { engine.forgetFact(it) },
                         backgroundWakeEnabled = { engine.backgroundWakeEnabled() },
                         onSetBackgroundWake = { engine.setBackgroundWake(it) },
+                        onOpenAssistantSettings = { engine.openAssistantSettings() },
                         palette = palette,
                         onSelectPalette = {
                             palette = it
@@ -86,11 +87,19 @@ class MainActivity : ComponentActivity() {
         engine.resume()
         if (hasPermission(Manifest.permission.RECORD_AUDIO)) engine.onMicPermission(true)
         requestMissingPermissions()
-        // Woken by "Hey Jarvis" from the background: acknowledge and listen for the
-        // command. Consume the flag so re-opening the app later doesn't re-trigger.
-        if (intent?.getBooleanExtra(EXTRA_WOKE_BY_HOTWORD, false) == true) {
-            intent.removeExtra(EXTRA_WOKE_BY_HOTWORD)
-            engine.wakeFromHotword()
+        // Summoned — either by the assist gesture (default digital-assistant app) or
+        // by the background "Hey Jarvis". Acknowledge and listen for the command,
+        // then neutralise the intent so a later ordinary reopen doesn't re-trigger.
+        val i = intent
+        when {
+            i?.action == Intent.ACTION_ASSIST -> {
+                setIntent(Intent(this, MainActivity::class.java))
+                engine.summon("assist gesture")
+            }
+            i?.getBooleanExtra(EXTRA_WOKE_BY_HOTWORD, false) == true -> {
+                i.removeExtra(EXTRA_WOKE_BY_HOTWORD)
+                engine.summon("Hey Jarvis")
+            }
         }
     }
 

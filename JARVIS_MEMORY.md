@@ -2588,3 +2588,34 @@ the .tflite and the whole thing re-implemented in Kotlin, bypassing the runtime'
 dynamic-shape path entirely — and verified numerically against the model in Python
 before the user ever installs it. The embedding and wake-word models have FIXED
 input shapes and did not overflow, so they can stay on TFLite.
+
+### 2026-08-06 — The honest wake-word answer: gesture-launch (mic-free) + optional wake
+
+The user pushed on exactly the right thing: a wake word that holds the mic is not
+"like Siri", and my openWakeWord approach does hold the mic continuously — same
+problem they wanted to avoid. The unavoidable platform truth: "Hey Siri"/"Hey
+Google" run on a dedicated always-on hardware DSP (`SoundTrigger` HAL) reserved for
+the OEM's own assistant and NOT available to third-party apps. So any third-party
+wake word must run a software model over the normal mic via AudioRecord — which
+occupies the mic, shows the mic indicator, costs battery, and needs a foreground
+notification. You cannot have both always-on voice AND a free mic as a third party.
+Full stop. Stated plainly to the user rather than pretending otherwise.
+
+The user chose "both": gesture-launch as the mic-free default, plus the software
+wake word as an opt-in. Built the gesture path (the genuinely reliable, mic-free
+one):
+- Manifest: MainActivity now declares an `ACTION_ASSIST` intent-filter, so JARVIS
+  can be set as the device's default digital-assistant app.
+- Once set, the assist gesture (long-press power / corner swipe) launches JARVIS;
+  MainActivity sees `ACTION_ASSIST` (or the hotword's `EXTRA_WOKE_BY_HOTWORD`) and
+  calls `engine.summon()` — wake, "Yes?", listen. `wakeFromHotword` was renamed
+  `summon(via)` since both paths share it.
+- Settings has an "Open JARVIS with a gesture" row that deep-links to the assistant
+  settings (`ACTION_VOICE_INPUT_SETTINGS`, falling back to default-apps → Settings,
+  since ColorOS moves it).
+
+This gives instant, one-move access with NO mic held, NO notification, NO battery
+drain — the closest practical thing to Siri's convenience for a third-party app.
+The openWakeWord "Hey Jarvis" stays behind its toggle for users who accept the
+mic/battery/notification cost; its on-device load still needs the 2.17.0 verdict
+(or the Kotlin melspec fallback).

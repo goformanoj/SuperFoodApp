@@ -48,6 +48,7 @@ fun SettingsScreen(
     onSelectPalette: (JarvisPalette) -> Unit,
     backgroundWakeEnabled: Boolean = true,
     onSetBackgroundWake: (Boolean) -> Unit = {},
+    onOpenAssistantSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var section by remember { mutableStateOf(Section.Voice) }
@@ -61,10 +62,15 @@ fun SettingsScreen(
             modifier = Modifier.padding(horizontal = 20.dp),
         )
 
+        AssistantRow(
+            onOpen = onOpenAssistantSettings,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp),
+        )
+
         WakeToggle(
             enabled = backgroundWakeEnabled,
             onToggle = onSetBackgroundWake,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
         )
         Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
             Section.entries.forEach { entry ->
@@ -103,6 +109,45 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+}
+
+/** Guides the user to set JARVIS as the assist app, for mic-free gesture launch. */
+@Composable
+private fun AssistantRow(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(SurfaceGlass)
+            .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
+            .clickable { onOpen() }
+            .padding(16.dp),
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(
+                "Open JARVIS with a gesture",
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextPrimary,
+            )
+            Text(
+                "Set JARVIS as your assistant app, then long-press power (or swipe from a " +
+                    "corner) to open it instantly — mic ready, no wake word, no battery cost.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Text(
+            "Set up",
+            style = MaterialTheme.typography.labelLarge,
+            color = Cyan,
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(Cyan.copy(alpha = 0.12f))
+                .border(1.dp, Cyan, RoundedCornerShape(20.dp))
+                .padding(horizontal = 18.dp, vertical = 8.dp),
+        )
     }
 }
 
