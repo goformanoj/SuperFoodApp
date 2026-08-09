@@ -5,8 +5,13 @@
 
 ## Current position + immediate next
 
-**`main` @ `0e3db29`** — green build **#218** (all 3 CI jobs; emulator ran **8 instrumented tests, 0
-failed**). Branch `claude/project-onboarding-lcnvi7` is **level with `main`** (just fast-forwarded).
+**`main` @ `553bf7a`** — green build **#226** (all 3 CI jobs). Branch `claude/project-onboarding-lcnvi7`
+is **level with `main`** (just fast-forwarded). Latest: ~50 rigorous A/B/C/F scenario tests added (screen
+control accuracy + long errands, work-session lifecycle, phantom-alarm, files) — all green in `build`. An
+on-device PDF test was tried and pulled: it reliably crashed the GitHub emulator VM under the fuller load
+(runs #222–#225, infra not assertion), so the emulator job is back to its stable 8-test set and real
+`PdfDocument` rendering is a Rule-5 device-only check. **GOTCHA: the CI emulator has a hard capacity — a
+native-heavy instrumented test can flip it from green to reliably red; keep logic in the fast tiers.**
 **The test pyramid is COMPLETE** — all six layers live: pure JVM, Robolectric, Python wake-word check,
 emulator (openWakeWord load+detect **and** Compose UI: `InstructionsScreenUiTest` + `JarvisAppUiTest`),
 trace-replay, lint. The screen-control a11y-binding emulator test was deliberately skipped (flaky, no
