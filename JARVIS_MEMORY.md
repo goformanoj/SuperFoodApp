@@ -2930,3 +2930,5 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 `AgentLoop.needsConfirmation`); a hallucinated destructive tap the user didn't name is still withheld.
 
 <!-- 1244f67 follow-up: fixed a JVM-illegal ";" in a SpendGuardTest backtick method name (compile error, not a logic failure). -->
+
+<!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->

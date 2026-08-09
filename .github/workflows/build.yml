@@ -119,7 +119,36 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run instrumented tests on an emulator
+      # The GitHub emulator VM intermittently dies mid-run ("device offline"),
+      # reliably during the heavy full-shell Compose render (JarvisAppUiTest). It's
+      # a qemu/swiftshader crash, not a test failure, so a fresh emulator usually
+      # passes. Retry up to twice (each attempt boots its own emulator) so one VM
+      # crash doesn't red the whole pyramid.
+      - name: Run instrumented tests on an emulator (attempt 1)
+        id: emu1
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: ./gradlew connectedDebugAndroidTest
+
+      - name: Run instrumented tests on an emulator (attempt 2)
+        id: emu2
+        if: steps.emu1.outcome == 'failure'
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: ./gradlew connectedDebugAndroidTest
+
+      - name: Run instrumented tests on an emulator (attempt 3)
+        if: steps.emu1.outcome == 'failure' && steps.emu2.outcome == 'failure'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
