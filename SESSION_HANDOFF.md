@@ -5,10 +5,13 @@
 
 ## Current position + immediate next
 
-**`main` @ `556f24c`** — green build **#214** (all 3 CI jobs: `build`, `wakeword-pipeline`, emulator
-load+detect). Branch `claude/project-onboarding-lcnvi7` is **level with `main`** (just fast-forwarded).
-Test-pyramid **A2 shipped**: `control/ScreenMatch` extracted + Groq/Gemini parsers opened to `internal`,
-covered by `ScreenMatchTest` (pure JVM) and `Groq/GeminiClientParseTest` (Robolectric).
+**`main` @ `0e3db29`** — green build **#218** (all 3 CI jobs; emulator ran **8 instrumented tests, 0
+failed**). Branch `claude/project-onboarding-lcnvi7` is **level with `main`** (just fast-forwarded).
+**The test pyramid is COMPLETE** — all six layers live: pure JVM, Robolectric, Python wake-word check,
+emulator (openWakeWord load+detect **and** Compose UI: `InstructionsScreenUiTest` + `JarvisAppUiTest`),
+trace-replay, lint. The screen-control a11y-binding emulator test was deliberately skipped (flaky, no
+value over `ScreenMatchTest`) — documented device-only ceiling. A2 also shipped earlier: `control/ScreenMatch`
++ Groq/Gemini parsers `internal`, covered by `ScreenMatchTest` + `Groq/GeminiClientParseTest`.
 This position folds in: the wake-word LOAD fix (Kotlin melspectrogram — see the wake-word section below,
 now CI-confirmed on the emulator, no device); speech keeping the recogniser's n-best alternatives
 (`voice/Transcript`, JUnit-tested); the rebuilt custom-instructions screen; and the translucent "JARVIS is
