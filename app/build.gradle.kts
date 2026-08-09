@@ -129,6 +129,9 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+    // Hosts an empty Activity for the Compose UI tests' createComposeRule (version
+    // comes from the Compose BOM, since debugImplementation extends implementation).
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     // Plain JVM unit tests for the pure-Kotlin logic (marker parsers, session
     // state machine). No device or emulator needed — these run in CI on every push.
@@ -140,10 +143,15 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.test:core:1.6.1")
 
-    // Instrumented tests that need the REAL Android runtime (the openWakeWord TFLite
-    // load). Run on an emulator in a separate CI job. Compose-UI test deps are added
-    // later alongside the UI tests, with the Compose BOM on the androidTest classpath.
+    // Instrumented tests that need the REAL Android runtime (the openWakeWord model
+    // load) or the real Compose UI. Run on an emulator in a separate CI job.
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+
+    // Compose UI tests (createComposeRule + node finders/actions). The BOM must be on
+    // the androidTest classpath too — androidTestImplementation does NOT extend
+    // implementation — so ui-test-junit4's version resolves from it.
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }

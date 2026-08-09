@@ -2812,3 +2812,29 @@ JVM and regressions surface in CI, not on the phone.
   `extractError` message + 160-cap + raw-body fallback, from captured response bodies.
 Why it matters: the label-matching accuracy (the Amazon-Music-style "tap the wrong thing" class) and the
 redaction that protects credentials before screen text leaves the device are now locked by fast tests.
+
+### 2026-08-09 — Test pyramid completed: Compose UI instrumented tests (+ the honest screen-control boundary)
+
+Finished the pyramid's last tier — the Compose UI layer of the emulator job.
+- **Deps**: put the Compose BOM on the androidTest classpath (`androidTestImplementation` does NOT
+  extend `implementation`, so `ui-test-junit4` needs the BOM there) + `ui-test-junit4`; added
+  `ui-test-manifest` as `debugImplementation` (hosts the empty Activity `createComposeRule` launches).
+- **`InstructionsScreenUiTest`** (isolation, real composable + test callbacks): tapping an example fills
+  the editor and Save hands the text to `onSave`; Save flips the label to "Saved ✓"; "Forget" reports the
+  exact learned fact to `onForget`.
+- **`JarvisAppUiTest`** (renders the real app shell `JarvisApp` in isolation — no MainActivity, no engine,
+  no permissions): the drawer opens and navigates to Custom instructions; the wake-word toggle, wired to a
+  real `UserPreferences`, flips AND persists the SharedPreferences write. `VoiceUiState()` + `JarvisApp`'s
+  all-default params made shell-in-isolation possible; matching is by text/contentDescription (there are
+  no testTags). Gotcha banked: a closed `ModalNavigationDrawer` keeps its labels composed off-screen, so
+  assert on a node unique to the destination (the "Save" button), not the shared title.
+- **Screen-control emulator test — deliberately NOT built.** Every public `ScreenControlService` entry
+  (`tapWhenReady`/`runSteps`) needs the REAL bound AccessibilityService, enable-able only by writing the
+  `enabled_accessibility_services` secure setting via shell — flaky, with no marginal correctness value:
+  the actual label-matching logic is already locked by `ScreenMatchTest` (pure JVM, Phase A2), and the
+  gesture dispatch is thin Android glue that only real-device use validates (Rule 5 device-only ceiling).
+  Shipping a flaky a11y-binding test would undermine the green-pyramid guarantee, so the boundary is drawn
+  here on purpose — exactly the fallback the plan anticipated.
+
+Pyramid status: **all six layers live** — pure JVM, Robolectric, Python wake-word check, emulator
+(openWakeWord load+detect **and** Compose UI), trace-replay, lint. Device is now the last mile, not the first.
