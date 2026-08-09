@@ -120,7 +120,9 @@ object GeminiClient {
         }.toString()
     }
 
-    private fun extractError(body: String): String {
+    // internal (not private) so JVM unit tests can exercise the parse/error paths
+    // against captured response bodies without hitting the network.
+    internal fun extractError(body: String): String {
         return try {
             val msg = JSONObject(body).optJSONObject("error")?.optString("message").orEmpty()
             if (msg.isNotBlank()) msg.take(160) else body.take(160)
@@ -129,7 +131,7 @@ object GeminiClient {
         }
     }
 
-    private fun parseFirstText(json: String): String {
+    internal fun parseFirstText(json: String): String {
         return try {
             val candidates = JSONObject(json).optJSONArray("candidates") ?: return ""
             if (candidates.length() == 0) return ""

@@ -408,15 +408,9 @@ class ScreenControlService : AccessibilityService() {
         return "App: $app. On screen: ${items.joinToString(" ")}"
     }
 
-    /**
-     * Screen text goes to a third-party model, so credentials must never travel
-     * with it. Password fields are replaced wholesale, and bare 4-8 digit runs
-     * (one-time codes) are masked wherever they appear.
-     */
-    private fun redactSensitive(text: String, isPassword: Boolean): String {
-        if (isPassword) return "***"
-        return text.replace(OTP_LIKE, "***")
-    }
+    /** Strips credentials before screen text leaves the device — see [ScreenMatch.redactSensitive]. */
+    private fun redactSensitive(text: String, isPassword: Boolean): String =
+        ScreenMatch.redactSensitive(text, isPassword)
 
     /** Poll until the screen differs from [before], then let it finish rendering. */
     private fun awaitContentChange(before: String, tries: Int, onChanged: () -> Unit) {
@@ -649,45 +643,15 @@ class ScreenControlService : AccessibilityService() {
         return best to bestScore
     }
 
-    /** Higher = better. Exact beats partial; visible text beats content-description. */
+    /**
+     * Higher = better. Reads the node's text/content-description; the pure scoring
+     * (exact beats partial, visible text beats content-description, word-boundary
+     * rules) lives in [ScreenMatch] so it is unit-testable without a device.
+     */
     private fun matchScore(node: AccessibilityNodeInfo, query: String): Int {
-        val text = node.text?.toString()?.trim()?.lowercase().orEmpty()
-        val desc = node.contentDescription?.toString()?.trim()?.lowercase().orEmpty()
-        return maxOf(fieldScore(text, query, isText = true), fieldScore(desc, query, isText = false))
-    }
-
-    private fun fieldScore(value: String, query: String, isText: Boolean): Int {
-        if (value.isEmpty()) return 0
-        return when {
-            value == query -> if (isText) 100 else 85
-            startsWithWord(value, query) -> if (isText) 90 else 60
-            containsWord(value, query) -> if (isText) 65 else 45
-            value.contains(query) -> if (isText) 55 else 35
-            else -> 0
-        }
-    }
-
-    /** [s] starts with [q] followed by a word boundary (so "mom" matches "mom (dad)" but not "mom's status"). */
-    private fun startsWithWord(s: String, q: String): Boolean {
-        if (!s.startsWith(q)) return false
-        if (s.length == q.length) return true
-        val next = s[q.length]
-        return !next.isLetterOrDigit() && next != '\''
-    }
-
-    /** [q] appears in [s] as a standalone word. */
-    private fun containsWord(s: String, q: String): Boolean {
-        var idx = s.indexOf(q)
-        while (idx >= 0) {
-            val before = if (idx == 0) ' ' else s[idx - 1]
-            val afterIdx = idx + q.length
-            val after = if (afterIdx >= s.length) ' ' else s[afterIdx]
-            if (!before.isLetterOrDigit() && before != '\'' && !after.isLetterOrDigit() && after != '\'') {
-                return true
-            }
-            idx = s.indexOf(q, idx + 1)
-        }
-        return false
+        val text = node.text?.toString().orEmpty()
+        val desc = node.contentDescription?.toString().orEmpty()
+        return ScreenMatch.matchScore(text, desc, query)
     }
 
     /**
@@ -976,9 +940,6 @@ class ScreenControlService : AccessibilityService() {
         private const val SCREEN_SCAN_NODES = 400
         private const val SCREEN_MAX_ITEMS = 45
         private const val SCREEN_LABEL_MAX = 60
-
-        /** Bare 4-8 digit runs — one-time codes — are masked before leaving the device. */
-        private val OTP_LIKE = Regex("""\b\d{4,8}\b""")
 
         /** How many on-screen options a <<PICK>> may choose between. */
         private const val PICK_MAX_OPTIONS = 25

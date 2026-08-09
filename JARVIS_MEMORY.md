@@ -2794,3 +2794,21 @@ green signal: all three CI jobs pass — `build` (unit + Robolectric + lint + AP
 DETECTS the user's real "Hey Jarvis" clip + rejects silence, all on a real Android runtime, no device).
 Rule 2 done: pushed, artifact present, tests green, `main` fast-forwarded. Next: Phase A2 (free the
 screen-match + JSON-parse pure logic into unit-tested seams).
+
+### 2026-08-09 — Test pyramid A2: freed the screen-match + JSON-parse logic into tested seams
+
+Phase A2 of the testing plan — pull value-in/value-out logic out of Android classes so it runs on the
+JVM and regressions surface in CI, not on the phone.
+- **`control/ScreenMatch.kt`** (new `internal object`): the "tap the right control" scoring
+  (`fieldScore`/`startsWithWord`/`containsWord`/`matchScore`) and credential redaction
+  (`redactSensitive` + the OTP regex), lifted verbatim from `ScreenControlService`. The service keeps a
+  2-line shim that reads `node.text`/`contentDescription` and calls the pure `ScreenMatch.matchScore`;
+  `EDITABLE_PENALTY`/`GOOD_SCORE` stay at their caller sites. Behaviour unchanged.
+- **Groq/Gemini parsers** widened `private → internal`: `GroqClient.parseContent`/`extractError`,
+  `GeminiClient.parseFirstText`/`extractError` — already pure given a `String`.
+- **Tests:** `ScreenMatchTest` (pure JVM — score tiers, word-boundary edges like `mom` vs `mom's`/`moment`,
+  OTP masking incl. the 4-8 digit heuristic). `GroqClientParseTest` + `GeminiClientParseTest` (Robolectric,
+  because org.json is a throwing stub on the bare JVM) — happy path, empty/malformed → `""`, and
+  `extractError` message + 160-cap + raw-body fallback, from captured response bodies.
+Why it matters: the label-matching accuracy (the Amazon-Music-style "tap the wrong thing" class) and the
+redaction that protects credentials before screen text leaves the device are now locked by fast tests.

@@ -210,7 +210,9 @@ object GroqClient {
         }.toString()
     }
 
-    private fun extractError(body: String): String {
+    // internal (not private) so JVM unit tests can exercise the parse/error paths
+    // against captured response bodies without hitting the network.
+    internal fun extractError(body: String): String {
         return try {
             val msg = JSONObject(body).optJSONObject("error")?.optString("message").orEmpty()
             if (msg.isNotBlank()) msg.take(160) else body.take(160)
@@ -219,7 +221,7 @@ object GroqClient {
         }
     }
 
-    private fun parseContent(json: String): String {
+    internal fun parseContent(json: String): String {
         return try {
             val choices = JSONObject(json).optJSONArray("choices") ?: return ""
             if (choices.length() == 0) return ""
