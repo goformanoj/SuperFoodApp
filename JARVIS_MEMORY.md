@@ -2662,3 +2662,25 @@ Deps: `org.robolectric:robolectric:4.14.1` + `androidx.test:core` (test), and
 Risk noted: AGP 9.1.0 is very new; Robolectric 4.14.1 config against it is
 unverified locally (no Gradle here) — CI is the check. The emulator load test
 (Phase C) follows.
+
+### 2026-08-06 — Test pyramid C: emulator instrumented tests (catch the wake-word load)
+
+Added the emulator tier — the payoff layer for the wake word. A SEPARATE CI job
+(`instrumented`) boots an Android 34 x86_64 emulator (KVM-accelerated) via
+`reactivecircus/android-emulator-runner` and runs `connectedDebugAndroidTest`. Kept
+separate from `build` so unit-test + APK feedback stays fast and is never blocked by
+emulator boot/flakiness.
+
+- **`OpenWakeWordInstrumentedTest.models_load_on_the_real_android_runtime`** — the
+  headline: instantiates `OpenWakeWord(context)` against the app's REAL
+  `tensorflow-lite:2.17.0` AAR and asserts `available`. This is the ONLY automated
+  place the on-device `CONV_2D ... BytesRequired overflowed` load crash reproduces,
+  so from now on that bug turns CI red instead of costing the user an install. (It
+  will also tell us whether the 2.17.0 bump actually fixed the load — no audio, no
+  device, just CI.)
+- `silence_does_not_falsely_wake` — feeds silence through `process()` and asserts
+  the score stays near zero.
+
+True-positive detection (a real "hey jarvis" clip crossing threshold) still needs a
+bundled recording — deferred until the user records a couple of samples; those
+become fixtures for both this job and the Python check.
