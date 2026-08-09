@@ -20,7 +20,7 @@ irreversible tap only when the user did NOT name that action un-negated — spen
 call/share/delete need their verb, send/post belong to `SendGuard`; the errand loop still confirms multi-step
 irreversibles.** On-device eval prompts live in `docs/SCREEN_CONTROL_EVAL.md`.
 **The test pyramid is COMPLETE** — all six layers live: pure JVM, Robolectric, Python wake-word check,
-emulator (openWakeWord load+detect **and** Compose UI: `InstructionsScreenUiTest` + `JarvisAppUiTest`),
+emulator (openWakeWord load+detect **and** Compose UI: `InstructionsScreenUiTest`),
 trace-replay, lint. The screen-control a11y-binding emulator test was deliberately skipped (flaky, no
 value over `ScreenMatchTest`) — documented device-only ceiling. A2 also shipped earlier: `control/ScreenMatch`
 + Groq/Gemini parsers `internal`, covered by `ScreenMatchTest` + `Groq/GeminiClientParseTest`.

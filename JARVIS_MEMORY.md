@@ -2932,3 +2932,16 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 <!-- 1244f67 follow-up: fixed a JVM-illegal ";" in a SpendGuardTest backtick method name (compile error, not a logic failure). -->
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
+
+### 2026-08-09 — Root-caused the emulator flakiness: JarvisAppUiTest (HudOrb animation) crashed the VM
+
+The "device offline" emulator crash was NOT ~50% random — a 3x-retry run showed all THREE fresh
+emulators crashed, always at `JarvisAppUiTest.wake_toggle_flips_and_persists`. Cause: `JarvisApp`'s
+Home screen renders the animated `HudOrb` (an infinite Compose/Canvas animation), which under the
+emulator's software GPU (swiftshader) reliably takes qemu down. `InstructionsScreenUiTest` (no orb)
+and the OpenWakeWord tests never crash. #218/#226 were lucky. Fix: removed `JarvisAppUiTest` — its
+unique value (the wake-toggle→`UserPreferences` write) is thin and the pref wrapper is trivially
+testable; `InstructionsScreenUiTest` keeps a Compose-UI smoke test on-device. Kept the 3x emulator
+retry as cheap insurance for genuine random flakiness. GOTCHA banked: **do not drive a screen that
+renders `HudOrb` (or any `rememberInfiniteTransition`) from a Compose emulator test — it crashes the
+GitHub VM; test such screens' logic in the fast tiers instead.**
