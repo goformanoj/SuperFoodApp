@@ -2928,3 +2928,5 @@ Designing the scenarios surfaced two genuine defects, both now fixed:
 Documented, unchanged findings folded into the fix: "call mom"/"delete X"/"share Y" now execute when
 explicitly requested (the errand loop still confirms multi-step irreversibles via
 `AgentLoop.needsConfirmation`); a hallucinated destructive tap the user didn't name is still withheld.
+
+<!-- 1244f67 follow-up: fixed a JVM-illegal ";" in a SpendGuardTest backtick method name (compile error, not a logic failure). -->

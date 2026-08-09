@@ -107,7 +107,7 @@ class SpendGuardTest {
     }
 
     @Test
-    fun `an irreversible action the user named survives; a hallucinated one is withheld`() {
+    fun `an irreversible action the user named survives, a hallucinated one is withheld`() {
         val call = listOf(ScreenStep.Open("Phone"), ScreenStep.Tap("Mom"), ScreenStep.Tap("Call"))
         assertEquals("'call mom' authorises the Call tap", call, SpendGuard.apply("call mom", call))
 
