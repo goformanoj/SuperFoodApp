@@ -2867,3 +2867,13 @@ real third-party app layouts, the LLM's PICK choice).
 
 Honest scope note recorded for the user: Part F's flow-chart/diagram generation and image generation
 are NOT built (EXECUTION_PLAN was stale), so they can't be "tested"; the text/PDF path is covered.
+
+### 2026-08-09 — Emulator CI hardened after a device-offline crash under the fuller instrumented suite
+
+Run #222 (10 instrumented tests, after adding `ArtifactWriterInstrumentedTest`) failed NOT on an
+assertion but with `AdbCommandRejectedException: device offline` / "Expected 10 tests, received 3" —
+the emulator VM crashed mid-run (during `JarvisAppUiTest.wake_toggle_flips_and_persists`, which passes
+in isolation). Classic GitHub-emulator instability under load. Fix is infra, not test: gave the
+`reactivecircus/android-emulator-runner` more headroom — `ram-size: 4096M`, `heap-size: 576M`,
+`cores: 2`, a `-no-snapshot` clean boot, `swiftshader_indirect` GPU, and `-noaudio -no-boot-anim -no
+camera` so there's less to fall over on. The instrumented tests themselves are unchanged.
