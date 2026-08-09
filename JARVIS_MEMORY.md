@@ -2684,3 +2684,25 @@ emulator boot/flakiness.
 True-positive detection (a real "hey jarvis" clip crossing threshold) still needs a
 bundled recording — deferred until the user records a couple of samples; those
 become fixtures for both this job and the Python check.
+
+### 2026-08-06 — Wake-word DETECTION tests, from the user's own "Hey Jarvis" recordings
+
+The user sent three "Hey Jarvis" recordings. Decoded + resampled to 16 kHz and run
+through the exact pipeline, all three peak at **0.996–0.998** vs the 0.5 threshold —
+so detection works on their voice, and the clips are strong fixtures. This completes
+wake-word CI coverage: **load** (emulator, added earlier) + **detection** (now).
+
+- Fixture: one recording → 16 kHz mono little-endian int16 raw PCM (trivial to load
+  in Python and Kotlin, no mp3/WAV decode). `scripts/owwtest/fixtures/hey_jarvis.pcm`
+  and `app/src/androidTest/assets/hey_jarvis.pcm` (test APK only, never shipped) +
+  a generated `silence.pcm`.
+- **Phase B — `scripts/owwtest/run.py`**: runs the pipeline (models read straight
+  from `app/src/main/assets/openwakeword/`, one source of truth), asserts the
+  positive ≥ 0.5 and silence < 0.1. **Verified locally: 0.998 / 0.000, exit 0**
+  before it ever hit CI. Wired as a fast separate CI job `wakeword-pipeline`.
+- **Phase C — `OpenWakeWordInstrumentedTest.detects_a_real_hey_jarvis_recording`**:
+  reads the PCM asset, feeds it through `OpenWakeWord.process()` in 1280-sample
+  chunks on the real Android runtime, asserts peak ≥ `DETECT_THRESHOLD`.
+
+Threshold kept at 0.5 (0.99 headroom). Device-only ceiling now genuinely narrow:
+real-world accents/noise beyond these clips.

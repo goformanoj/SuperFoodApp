@@ -71,6 +71,24 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
+  # Fast check (~1 min): runs the openWakeWord streaming pipeline on a real "hey
+  # jarvis" recording and asserts it detects the phrase and ignores silence. Verifies
+  # the pipeline math + threshold without a device (the emulator job covers the load).
+  wakeword-pipeline:
+    name: Wake-word pipeline check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: pip install --quiet ai-edge-litert numpy
+      - name: Run openWakeWord pipeline check
+        run: python scripts/owwtest/run.py
+
   # Runs the instrumented tests on a real Android runtime (emulator). Kept as a
   # SEPARATE job so the fast unit-test + APK job above is never blocked or slowed by
   # emulator boot/flakiness. Its headline test loads the openWakeWord TFLite models
