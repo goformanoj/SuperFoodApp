@@ -3,77 +3,87 @@ package com.jarvis.os.assistant
 import com.jarvis.os.control.ScreenStep
 
 /**
- * A one-shot plan must not be able to spend the user's money.
+ * A one-shot plan must not commit an irreversible action the user did not ask for.
  *
- * From a device trace: the user said "can you go to blinkit and add some bread",
- * and the plan that ran was
+ * From a device trace: "can you go to blinkit and add some bread" produced a plan
+ * ending in Tap(Checkout). Nobody asked for a checkout; it only failed to run
+ * because an earlier step broke. This guard withholds that commit.
  *
- *   Open(Blinkit), Type(bread), Enter, Tap(Add to cart), Tap(Search),
- *   Type(Jaam), Enter, Tap(Add to cart), **Tap(Checkout)**
+ * The rule is **per action**: an irreversible tap is withheld unless the user's own
+ * words named that action (un-negated). Spending needs a spend word; a call/share/
+ * delete needs its verb. This does two things at once —
+ *  - it still catches a checkout/pay/delete the model reached for on its own, and
+ *  - it stops over-blocking an action the user explicitly asked for. (An earlier
+ *    version reused the whole irreversible list unconditionally, which silently
+ *    stripped `Tap(Send)` from "send mom a message" — the send simply never ran.)
+ * `send`/`post` are [SendGuard]'s domain, so whatever survived it is left alone here.
  *
- * Nobody asked for a checkout. It only failed to happen because the typing step
- * broke first — the tap was queued and there was nothing in the way of it.
- *
- * [AgentLoop] already stops before an irreversible tap and [Playbook] refuses to
- * learn one, but the ordinary path — the one that runs on almost every command —
- * had no such check. This closes that, and takes the same position the other
- * three guards take: the prompt is probabilistic, and the cost of the rare miss
- * is borne by the user's bank account.
- *
- * Deliberately asymmetric, like [AlarmGuard]. Refusing a checkout the user really
- * wanted costs them one more sentence; allowing one they never asked for costs
- * them an order.
+ * Deliberately asymmetric, like [AlarmGuard]. Refusing an action the user really
+ * wanted costs them one more sentence; allowing one they never asked for can cost
+ * them money — or a message to the wrong person.
  */
 object SpendGuard {
 
-    /** Words that mean the user really is asking to complete a purchase. */
+    /** Words that mean the user is asking to commit money — any authorises any spend tap. */
     private val SPEND_WORDS = listOf(
         "checkout", "check out", "place the order", "place order", "buy",
         "purchase", "pay for", "pay now", "order it", "confirm the order",
     )
 
     /**
-     * True when the user's own words asked to commit money.
-     *
-     * Strict on purpose, and this is the opposite of [AlarmGuard]'s bias. There,
-     * a loose reading only risks missing a real alarm request. Here a loose
-     * reading is what LETS the checkout through, so it matches whole words only:
-     * "buyer" is not "buy", and bare "order" is not in the list at all because
-     * "add bread to my order" is not permission to place one.
+     * For a non-spend irreversible tap, the request words that authorise it. Matched
+     * against the user's utterance (un-negated). `send`/`post` are handled by
+     * [SendGuard] and are intentionally absent.
      */
-    fun asksToSpend(utterance: String): Boolean {
-        val text = normalise(utterance)
-        return text.isNotBlank() && SPEND_WORDS.any { containsWord(text, it) }
-    }
+    private val AUTHORISERS: Map<String, List<String>> = mapOf(
+        "call" to listOf("call", "ring", "dial", "phone"),
+        "share" to listOf("share", "forward", "send"),
+        "delete" to listOf("delete", "remove", "clear", "empty", "discard"),
+        "remove" to listOf("delete", "remove", "clear", "empty", "discard"),
+    )
 
-    // The plain-string test SendGuard and AlarmGuard both use. A Regex here would
-    // buy nothing and has already broken the build once.
-    private fun containsWord(text: String, word: String): Boolean =
-        text == word || text.startsWith("$word ") || text.endsWith(" $word") ||
-            text.contains(" $word ")
+    /** True when the user's own words asked to commit money. */
+    fun asksToSpend(utterance: String): Boolean = spendRequested(normalise(utterance))
 
     /**
-     * The label of the first step that would spend or destroy something, or null
-     * when the plan is safe to run as written.
+     * The label of the first tap that would commit something the user did not ask
+     * for, or null when the plan is safe to run as written.
      */
     fun stopsAt(utterance: String, steps: List<ScreenStep>): String? {
-        if (asksToSpend(utterance)) return null
-        val step = steps.firstOrNull { it is ScreenStep.Tap && Playbook.isIrreversible(it.label) }
+        val text = normalise(utterance)
+        val step = steps.firstOrNull { it is ScreenStep.Tap && withheld(it.label, text) }
         return (step as? ScreenStep.Tap)?.label
     }
 
     /**
-     * Truncates [steps] at the first irreversible tap.
-     *
-     * Everything before it still runs — searching, typing and adding to a basket
-     * are all recoverable, and stopping the whole errand would make JARVIS
-     * useless for the part the user did ask for. Only the commit is withheld.
+     * Truncates [steps] at the first unauthorised irreversible tap. Everything before
+     * it still runs — searching, typing and adding to a basket are all recoverable, so
+     * only the un-asked-for commit is withheld.
      */
     fun apply(utterance: String, steps: List<ScreenStep>): List<ScreenStep> {
-        if (asksToSpend(utterance)) return steps
-        val at = steps.indexOfFirst { it is ScreenStep.Tap && Playbook.isIrreversible(it.label) }
+        val text = normalise(utterance)
+        val at = steps.indexOfFirst { it is ScreenStep.Tap && withheld(it.label, text) }
         return if (at < 0) steps else steps.take(at)
     }
+
+    /** True when [label] is an irreversible tap the user did NOT authorise in [text]. */
+    private fun withheld(label: String, text: String): Boolean {
+        if (!Playbook.isIrreversible(label)) return false
+        val l = normalise(label)
+        // send/post belong to SendGuard; whatever survived it is authorised here.
+        if (Negation.hasUnnegated(l, "send") || Negation.hasUnnegated(l, "post")) return false
+        // A call/share/delete/remove is fine only if the user named that action.
+        for ((keyword, authorisers) in AUTHORISERS) {
+            if (Negation.hasUnnegated(l, keyword)) {
+                return authorisers.none { Negation.hasUnnegated(text, it) }
+            }
+        }
+        // Otherwise it commits money — it needs a spend word in the request.
+        return !spendRequested(text)
+    }
+
+    private fun spendRequested(normalisedText: String): Boolean =
+        normalisedText.isNotBlank() && SPEND_WORDS.any { Negation.hasUnnegated(normalisedText, it) }
 
     /** What to say when a plan was cut short, so the stop is never silent. */
     fun explain(label: String): String =

@@ -88,6 +88,39 @@ class SpendGuardTest {
     }
 
     @Test
+    fun `a negated spend word does not authorise the checkout`() {
+        // "add apples but don't check out" contains "check out", but the user said
+        // NOT to — the checkout must still be withheld, not let through.
+        assertFalse(SpendGuard.asksToSpend("add apples but dont check out"))
+        assertFalse(SpendGuard.asksToSpend("add milk but do not checkout"))
+        assertEquals(addBread.dropLast(1), SpendGuard.apply("add apples but dont check out", addBread))
+        assertEquals("Checkout", SpendGuard.stopsAt("add apples but dont check out", addBread))
+    }
+
+    @Test
+    fun `an explicitly requested send is not stripped as spending`() {
+        // Regression: SpendGuard reused the whole irreversible list, so Tap(Send) on
+        // "send mom a message" was withheld and the message never went out.
+        val sendPlan = listOf(ScreenStep.Tap("Mom"), ScreenStep.Type("hello"), ScreenStep.Tap("Send"))
+        assertEquals(sendPlan, SpendGuard.apply("send mom a message saying hello", sendPlan))
+        assertNull(SpendGuard.stopsAt("send mom a message saying hello", sendPlan))
+    }
+
+    @Test
+    fun `an irreversible action the user named survives; a hallucinated one is withheld`() {
+        val call = listOf(ScreenStep.Open("Phone"), ScreenStep.Tap("Mom"), ScreenStep.Tap("Call"))
+        assertEquals("'call mom' authorises the Call tap", call, SpendGuard.apply("call mom", call))
+
+        val emptyCart = listOf(ScreenStep.Open("Blinkit"), ScreenStep.Tap("Cart"), ScreenStep.Tap("Remove all"))
+        assertEquals("'empty my cart' authorises Remove", emptyCart, SpendGuard.apply("empty my cart", emptyCart))
+
+        // But a delete nobody asked for is still withheld.
+        val stray = listOf(ScreenStep.Open("Photos"), ScreenStep.Tap("Delete"))
+        assertEquals(listOf(ScreenStep.Open("Photos")), SpendGuard.apply("open my photos", stray))
+        assertEquals("Delete", SpendGuard.stopsAt("open my photos", stray))
+    }
+
+    @Test
     fun `the stop is explained, never silent`() {
         val message = SpendGuard.explain("Checkout")
         assertTrue(message.contains("Checkout"))

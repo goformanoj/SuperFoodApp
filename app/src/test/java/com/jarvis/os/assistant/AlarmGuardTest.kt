@@ -61,6 +61,15 @@ class AlarmGuardTest {
     }
 
     @Test
+    fun `a negated alarm request sets nothing`() {
+        // The word "alarm"/"timer" is present, but the user said NOT to — a
+        // hallucinated marker must be dropped, not honoured.
+        assertFalse(AlarmGuard.asksForAlarm("dont set an alarm"))
+        assertFalse(AlarmGuard.asksForAlarm("do not set a timer"))
+        assertEquals(emptyList<AlarmAction>(), AlarmGuard.apply("dont set an alarm", timer))
+    }
+
+    @Test
     fun `an empty list stays empty and is not an error`() {
         assertEquals(emptyList<AlarmAction>(), AlarmGuard.apply("play Beat It", emptyList()))
         assertEquals(emptyList<AlarmAction>(), AlarmGuard.apply("", emptyList()))

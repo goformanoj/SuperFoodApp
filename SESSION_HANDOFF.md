@@ -12,6 +12,13 @@ on-device PDF test was tried and pulled: it reliably crashed the GitHub emulator
 (runs #222–#225, infra not assertion), so the emulator job is back to its stable 8-test set and real
 `PdfDocument` rendering is a Rule-5 device-only check. **GOTCHA: the CI emulator has a hard capacity — a
 native-heavy instrumented test can flip it from green to reliably red; keep logic in the fast tiers.**
+In progress (branch, build pending): 50 screen-control accuracy scenarios (`ScreenControlAccuracyScenariosTest`)
+that found + fixed two real guard bugs — negation defeating the guards (new pure `assistant/Negation.kt`) and
+`SpendGuard` stripping explicitly-requested `Tap(Send)`/`Call`/`Share`/`Delete` (it truncated at ANY
+irreversible tap, breaking messaging; now **per-action authorization**). **GOTCHA: `SpendGuard` withholds an
+irreversible tap only when the user did NOT name that action un-negated — spend taps need a spend word,
+call/share/delete need their verb, send/post belong to `SendGuard`; the errand loop still confirms multi-step
+irreversibles.** On-device eval prompts live in `docs/SCREEN_CONTROL_EVAL.md`.
 **The test pyramid is COMPLETE** — all six layers live: pure JVM, Robolectric, Python wake-word check,
 emulator (openWakeWord load+detect **and** Compose UI: `InstructionsScreenUiTest` + `JarvisAppUiTest`),
 trace-replay, lint. The screen-control a11y-binding emulator test was deliberately skipped (flaky, no

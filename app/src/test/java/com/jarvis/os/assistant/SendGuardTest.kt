@@ -108,6 +108,18 @@ class SendGuardTest {
     }
 
     @Test
+    fun `a negated send is still only composing`() {
+        // "write it but don't send it yet" mentions "send", but the user forbade it:
+        // this must stay compose-only so the trailing Send is dropped, not kept.
+        assertTrue(SendGuard.composeOnly("write to the group but dont send it yet"))
+        assertTrue(SendGuard.composeOnly("type hello but do not send it"))
+        assertEquals(
+            listOf(openChat, typeHello),
+            SendGuard.apply("write hello but dont send it", listOf(openChat, typeHello, tapSend)),
+        )
+    }
+
+    @Test
     fun `plans with nothing to strip are returned unchanged`() {
         val steps = listOf(openChat, typeHello)
 

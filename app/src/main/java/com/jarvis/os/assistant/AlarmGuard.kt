@@ -44,10 +44,12 @@ object AlarmGuard {
     fun asksForAlarm(utterance: String): Boolean {
         val text = normalise(utterance)
         if (text.isBlank()) return false
-        if (ALARM_WORDS.any { text.contains(it) }) return true
+        // Un-negated matches only: "don't set an alarm" must NOT be read as asking for
+        // one, or a hallucinated alarm marker is kept and goes off later (see Negation).
+        if (ALARM_WORDS.any { Negation.hasUnnegated(text, it) }) return true
         // A bare time on its own is usually an answer to "what time?", which is
         // exactly the turn an alarm gets confirmed on.
-        if (TIME_WORDS.any { containsWord(text, it) } && looksLikeCommand(text)) return true
+        if (TIME_WORDS.any { Negation.hasUnnegated(text, it) } && looksLikeCommand(text)) return true
         return DIGIT_TIME.containsMatchIn(text)
     }
 
@@ -66,14 +68,6 @@ object AlarmGuard {
     private fun looksLikeCommand(text: String): Boolean =
         listOf("set", "make", "put", "wake", "remind", "start", "in ", "at ", "for ")
             .any { text.contains(it) }
-
-    // Same plain-string test SendGuard uses. The regex version this replaced
-    // carried a bare `$` before a closing paren, which is exactly the kind of
-    // construct that compiles in one Kotlin version and not the next — and there
-    // was no reason to reach for a Regex here at all.
-    private fun containsWord(text: String, word: String): Boolean =
-        text == word || text.startsWith("$word ") || text.endsWith(" $word") ||
-            text.contains(" $word ")
 
     private fun normalise(text: String): String = text.lowercase()
         .replace("'", "")

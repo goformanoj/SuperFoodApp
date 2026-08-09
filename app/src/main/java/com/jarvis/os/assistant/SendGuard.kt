@@ -35,9 +35,11 @@ object SendGuard {
      */
     fun composeOnly(utterance: String): Boolean {
         val text = normalise(utterance)
-        val asksCompose = COMPOSE.any { containsWord(text, it) }
-        val asksSend = SEND.any { containsWord(text, it) }
-        val asksSubmit = SUBMIT.any { containsWord(text, it) }
+        // Un-negated matches only: "write it but don't send it" must NOT count as a
+        // send, or the trailing send survives and the message goes out (see Negation).
+        val asksCompose = COMPOSE.any { Negation.hasUnnegated(text, it) }
+        val asksSend = SEND.any { Negation.hasUnnegated(text, it) }
+        val asksSubmit = SUBMIT.any { Negation.hasUnnegated(text, it) }
         return asksCompose && !asksSend && !asksSubmit
     }
 
@@ -66,8 +68,4 @@ object SendGuard {
         .replace(Regex("[^a-z ]"), " ")
         .replace(Regex(" +"), " ")
         .trim()
-
-    /** Whole-word match, so "type" does not fire on "typewriter". */
-    private fun containsWord(text: String, word: String): Boolean =
-        text == word || text.startsWith("$word ") || text.endsWith(" $word") || text.contains(" $word ")
 }

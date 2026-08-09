@@ -2896,3 +2896,35 @@ the emulator job to its proven-green #218 8-test set. Part F stays covered by `A
 + `ArtifactStore` (Robolectric); real `PdfDocument` rendering joins the Rule-5 device-only ceiling.
 Lesson banked: adding a native-heavy instrumented test can tip the CI emulator from green to reliably
 red — treat the emulator tier's capacity as a hard constraint, verify logic in the fast tiers.
+
+### 2026-08-09 — 50 screen-control accuracy scenarios, and two real guard bugs they found
+
+Built a 50-scenario behavioral corpus (`assistant/ScreenControlAccuracyScenariosTest`) — music,
+shopping, messaging, navigation, safety — each pairing a prompt with the plan a correct model would
+emit and asserting the **post-guard executed plan** (parse → AskGuard → SendGuard → SpendGuard, or
+`AgentLoop.parseMove`/`isErrand`). Honest boundary kept explicit: it does NOT test what the LLM emits
+or whether a tap lands in the real app (companion `docs/SCREEN_CONTROL_EVAL.md` is the on-device half).
+
+Designing the scenarios surfaced two genuine defects, both now fixed:
+
+1. **Negation defeated the safety guards (under-block, dangerous).** "add apples but **don't** check
+   out" matched "check out" → `SpendGuard` allowed the checkout; "write it but **don't** send" kept the
+   Send; "**don't** set an alarm" kept a phantom alarm. Fix: new pure `assistant/Negation.kt` — a
+   trigger word within 3 words after a negator (`not`/`dont`/`never`/`without`/…) no longer counts.
+   `SendGuard`/`SpendGuard`/`AlarmGuard` now use whole-word, negation-aware matching. Only ever makes
+   the guards more protective.
+
+2. **`SpendGuard` silently broke messaging (over-block, functional regression).** It reused the whole
+   `Playbook.IRREVERSIBLE` list, which includes "send"/"call"/"share"/"delete", and the engine runs
+   `SpendGuard.apply` on EVERY plan — so `Tap(Send)` on "send mom a message" was truncated and the
+   message never went out (same for "call mom", "share…", "delete…"). SpendGuard was added after
+   messaging was device-confirmed, so this regressed unnoticed. Fix: **per-action authorization** —
+   an irreversible tap is withheld only when the user didn't name that action (un-negated). Spend taps
+   need a spend word; call/share/delete need their verb; send/post belong to `SendGuard`. This still
+   catches a checkout/delete the model reached for on its own, but stops stripping actions the user
+   explicitly asked for. Tests: `NegationTest` + new cases in `Send/Spend/AlarmGuardTest` + the 50 in
+   the corpus. All pure JVM (fast `build` job); no emulator.
+
+Documented, unchanged findings folded into the fix: "call mom"/"delete X"/"share Y" now execute when
+explicitly requested (the errand loop still confirms multi-step irreversibles via
+`AgentLoop.needsConfirmation`); a hallucinated destructive tap the user didn't name is still withheld.
