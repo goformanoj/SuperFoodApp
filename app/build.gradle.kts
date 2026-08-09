@@ -66,6 +66,23 @@ android {
         noCompress += "tflite"
     }
 
+    lint {
+        // Report-only for now: lint runs in CI and uploads its findings, but does
+        // not fail the build. Promote to gating once the existing warnings are
+        // triaged, so a real regression can't hide behind pre-existing noise.
+        abortOnError = false
+        checkReleaseBuilds = false
+    }
+
+    testOptions {
+        unitTests {
+            // Lets JVM unit tests read resources and use Android stubs where needed
+            // (required once Robolectric-backed tests are added).
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

@@ -2619,3 +2619,25 @@ drain — the closest practical thing to Siri's convenience for a third-party ap
 The openWakeWord "Hey Jarvis" stays behind its toggle for users who accept the
 mic/battery/notification cost; its on-device load still needs the 2.17.0 verdict
 (or the Kotlin melspec fallback).
+
+### 2026-08-06 — Building the test pyramid so device round-trips stop being the debugger
+
+The user asked for every rigorous way to test the app so CI catches bugs instead of
+"install this and share a trace". Approved plan: a six-layer pyramid (pure JVM →
+Robolectric → Python owwtest → emulator instrumented → trace-replay → lint), full
+detail in `.claude/plans/`. The device stays the LAST mile (real accent, real
+third-party apps, TTS, OEM behaviour), not the first.
+
+**Phase A1 (this commit):** expanded the pure JVM tier — no new deps.
+- `PipelineReplayTest`: freezes real device failures as fixtures by running
+  `(userText, model reply)` through the exact guard order the engine uses
+  (`ScreenActions.parse` → AskGuard → SendGuard → SpendGuard). Seeded with the
+  ask-and-act, type-vs-send, and checkout cases, plus the errand app-lock. Every
+  future trace the user shares becomes a fixture here.
+- Added `AgentPromptTest` (the terse agent prompt keeps its markers + the earned
+  "stay in the app" rule), `VoiceStateTest`, `ChatTurnTest`.
+- Lint wired into CI as **report-only** (`lint { abortOnError = false }` + a
+  `lintDebug` step that uploads the HTML), to be promoted to gating once the
+  existing warnings are triaged.
+- `testOptions { unitTests { isIncludeAndroidResources = true; isReturnDefaultValues
+  = true } }` added now, ahead of the Robolectric tier.

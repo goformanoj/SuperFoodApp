@@ -44,6 +44,19 @@ jobs:
           path: app/build/reports/tests/
           if-no-files-found: ignore
 
+      # Static analysis. Report-only (lint.abortOnError = false), so it surfaces
+      # manifest/permission/resource/API issues without blocking the build yet.
+      - name: Lint
+        run: ./gradlew lintDebug
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+
       - name: Build debug APK
         env:
           # Injected from repository secrets; empty if a secret is unset.
