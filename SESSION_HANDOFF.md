@@ -41,17 +41,22 @@ check from a trace:** (1) does a real "Hey Jarvis" cross 0.5 — tune `OpenWakeW
 to an always-running service that gates capture rather than start/stop; (3) Realme battery killer —
 exempt JARVIS from battery optimisation. Foreground wake still uses the in-app gate above.
 
-**Wake-word LOAD — was the on-device blocker, now caught + fixed in CI (2026-08-09).** The
-`CONV_2D ... BytesRequired overflowed` crash that kept openWakeWord from loading was NOT fixed by the
-`tensorflow-lite:2.17.0` bump — the emulator load test (`OpenWakeWordInstrumentedTest`) went red on it
-in CI run #208, settling on a real Android runtime, no device, what only a device could settle before.
-**Fix on this branch:** dependency swapped to the maintained **LiteRT** runtime
-(`com.google.ai.edge.litert:litert:1.0.0`) — the successor to `org.tensorflow:tensorflow-lite`, which is
-FROZEN (2.17.0 is Maven Central's last-ever version; all fixes now land only in LiteRT on Google Maven).
-LiteRT is a drop-in for the Interpreter API, so `voice/OpenWakeWord.kt` is untouched; `google()` already
-resolves it. **GOTCHA for future me: do NOT bump `org.tensorflow:tensorflow-lite` hoping for a fix — that
-line is dead; use LiteRT.** The emulator load test now guards this in CI. Detection is covered too
-(`process()` on the user's real recording; Python + emulator). Device-only ceiling left: real accents/noise.
+**Wake-word LOAD — was the on-device blocker, caught in CI then fixed by a Kotlin melspectrogram (2026-08-09).**
+The `CONV_2D ... BytesRequired overflowed` crash that kept openWakeWord from loading is an Android-runtime
+shape-inference bug on the melspectrogram model's DYNAMIC-length input. The emulator load test
+(`OpenWakeWordInstrumentedTest`) proved — no device — that it reproduces on EVERY Android runtime:
+`tensorflow-lite` 2.16.1/2.17.0 (frozen; 2.17.0 is Maven Central's last) AND LiteRT 1.0.0/2.1.0. The
+Python `ai-edge-litert` runtime is the only one that infers this graph correctly. **GOTCHA for future me:
+this is NOT a runtime-version problem — do not keep bumping runtimes hoping for a fix; they all overflow.**
+**Fix:** the melspectrogram (a textbook librosa power-to-db mel: frame→512-tap DFT→power→mel matrix→
+`10log10`/clamp) is reimplemented in pure Kotlin (`voice/MelSpectrogram.kt`) using the model's OWN weights,
+extracted by `scripts/owwtest/extract_melspec_weights.py` into `assets/openwakeword/melspec_weights.bin`
+(the source `melspectrogram.tflite` now lives in `scripts/owwtest/reference_model/`, OUT of the APK, so the
+weights stay reproducible). The two FIXED-shape feature models (embedding, wake word) stay on the standard
+`tensorflow-lite:2.17.0` — they were never the problem. Verified in Python before pushing: the Kotlin math
+matches the model to ~1.5e-5 and gives identical end-to-end detection (0.998 positive / 0.000 silence); the
+`scripts/owwtest/run.py` CI check now runs that exact shipped math. `OpenWakeWord.lastLoadError` records the
+real cause of any future load failure. Emulator load+detect guards it in CI. Device-only ceiling: real accents/noise.
 
 ### ⚠️ Read this first: the screen-control loop is NOT working on a device
 Two device sessions (2026-08-04 Blinkit, 2026-08-05 Zepto) both ended with the errand

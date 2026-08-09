@@ -11,10 +11,14 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Runs on a real Android runtime (emulator in CI) — the ONLY automated place the
- * openWakeWord TFLite models load against the app's real `tensorflow-lite` AAR
- * (where the on-device `CONV_2D ... BytesRequired overflowed` crash reproduces) AND
- * where detection can be exercised end-to-end on a bundled recording.
+ * Runs on a real Android runtime (emulator in CI) — the ONLY automated place the full
+ * openWakeWord engine is exercised on-device: the Kotlin [MelSpectrogram] weights load
+ * from assets and the two feature models load against the app's real `tensorflow-lite`
+ * AAR, then detection runs end-to-end on a bundled recording.
+ *
+ * This test caught, with no device, that the old TFLite `melspectrogram.tflite`
+ * overflowed a CONV_2D at load on every Android runtime — which is why the mel step is
+ * now [MelSpectrogram] (pure Kotlin). The load assertion here is what confirms the fix.
  *
  * The fixture `assets/hey_jarvis.pcm` is one of the user's real "Hey Jarvis"
  * recordings, decoded to 16 kHz mono little-endian int16 PCM.

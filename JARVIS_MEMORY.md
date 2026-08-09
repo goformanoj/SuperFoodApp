@@ -2746,3 +2746,42 @@ it predates the allocator fix, so it overflowed the CONV_2D too. Two changes on 
 ever fails again CI prints the ACTUAL cause (CONV_2D overflow vs missing native lib vs …) instead
 of a generic "unavailable". Lesson: the test was catching the failure but hiding its cause — a
 diagnostic that only says "it broke" costs an extra round-trip; make failures name themselves.
+
+### 2026-08-09 — Wake-word load FIXED: melspectrogram reimplemented in Kotlin (the runtime chase ends)
+
+**The diagnostic paid off.** After LiteRT 1.0.0 still overflowed (run #209), I added
+`OpenWakeWord.lastLoadError` and surfaced it in the emulator test. Run #210 (LiteRT
+2.1.0) then printed the REAL cause: `IllegalStateException: ... BytesRequired number of
+elements overflowed. Node number 3 (CONV_2D) failed to prepare.` — the SAME CONV_2D
+overflow. Tally: **tensorflow-lite 2.16.1, 2.17.0, LiteRT 1.0.0, LiteRT 2.1.0 — all four
+Android runtimes overflow**; only the Python `ai-edge-litert` loads it. So this was never
+a runtime-version problem: it's an Android shape-inference bug on the melspectrogram
+model's dynamic-length input. No bump would ever fix it.
+
+**Why Kotlin, and why it's genuine (not hardcoded).** Inspected the model in Python: it's
+a textbook librosa power-to-db mel spectrogram — frame (win 512, hop 160, valid) → 512-tap
+DFT via two conv bases (cos/sin) → 257 bins → power = re²+im² → mel matrix [257,32] →
+`10·log10(max(·,1e-10))` clamped to `max(·, globalMax−80)`. The conv bias is all zeros.
+I extracted the model's OWN constants (DFT bases + mel matrix) with
+`scripts/owwtest/extract_melspec_weights.py` → `assets/openwakeword/melspec_weights.bin`,
+and reproduced the computation in `voice/MelSpectrogram.kt`. Pre-flight in numpy (Rule 5):
+the reimplementation matches the model to ~1.5e-5, and full pipeline detection on the
+user's real "Hey Jarvis" clip is IDENTICAL to the model — 0.998 positive, 0.000 silence.
+Nothing is hand-tuned or device-specific: it's the model's arithmetic, its weights.
+
+**What changed.**
+- NEW `voice/MelSpectrogram.kt` — pure-Kotlin mel; NEW `MelSpectrogramTest.kt` (pure JVM,
+  reads the shipped blob, checks layout + math). `OpenWakeWord` calls it for step 1; steps
+  2–3 (embedding, wake word — FIXED shapes, always loaded fine) stay on TFLite.
+- Reverted the dependency to the standard **`tensorflow-lite:2.17.0`** (the LiteRT swap was
+  only ever to dodge the melspec overflow, which is now gone).
+- Removed `melspectrogram.tflite` from the shipped assets (→ `scripts/owwtest/reference_model/`,
+  kept for reproducible re-extraction, out of the APK). Net APK size ≈ unchanged.
+- `scripts/owwtest/run.py` now runs the SAME Kotlin-side mel (the shipped `.bin`), so the fast
+  Python CI check validates what actually ships, not the unusable model.
+
+**Lesson.** Two lessons banked. (1) When a fix depends on a fact only a real runtime can
+settle (does it LOAD?), make the test PRINT the fact — the generic "unavailable" assertion
+cost an extra emulator cycle; `lastLoadError` ended the guessing in one. (2) Four runtime
+bumps chasing a runtime bug was three too many; the moment "every runtime fails but Python
+doesn't" was clear, the answer was to own the computation, not to keep shopping for a runtime.

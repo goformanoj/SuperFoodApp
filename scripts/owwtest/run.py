@@ -47,9 +47,38 @@ def _run(it, x):
     return it.get_tensor(it.get_output_details()[0]["index"])
 
 
+# Weights blob layout must match MelSpectrogram.kt / extract_melspec_weights.py.
+_WIN, _HOP, _FREQ, _NMEL, _FRAMES = 512, 160, 257, 32, 8
+
+
+def _load_mel_weights():
+    """cos[257,512], sin[257,512], mel[257,32] from the shipped weights asset."""
+    blob = np.fromfile(os.path.join(MODELS, "melspec_weights.bin"), dtype="<f4")
+    n = _FREQ * _WIN
+    cos = blob[:n].reshape(_FREQ, _WIN)
+    sin = blob[n:2 * n].reshape(_FREQ, _WIN)
+    mel = blob[2 * n:2 * n + _FREQ * _NMEL].reshape(_FREQ, _NMEL)
+    return cos, sin, mel
+
+
+def _melspec(raw, weights):
+    """The SAME melspectrogram MelSpectrogram.kt computes: 1760 samples -> [8, 32]."""
+    cos, sin, mel = weights
+    frames = np.stack([raw[k * _HOP:k * _HOP + _WIN] for k in range(_FRAMES)])
+    power = (frames @ cos.T) ** 2 + (frames @ sin.T) ** 2
+    ld = 10.0 * np.log10(np.maximum(power @ mel, 1e-10))
+    return np.maximum(ld, ld.max() - 80.0)
+
+
 def peak_score(pcm_int16):
-    """Peak 'hey jarvis' score over a clip, mirroring OpenWakeWord.process()."""
-    mel = _interp("melspectrogram.tflite", [1, MEL_INPUT])
+    """Peak 'hey jarvis' score over a clip, mirroring OpenWakeWord.process().
+
+    Uses the Kotlin-side melspectrogram (the shipped `melspec_weights.bin`), NOT the
+    `melspectrogram.tflite` model — that model's dynamic-length input overflows a
+    CONV_2D on every Android TFLite/LiteRT runtime, which is why the mel step moved to
+    Kotlin. So this check validates the exact math the app ships.
+    """
+    weights = _load_mel_weights()
     emb = _interp("embedding_model.tflite", [1, 76, 32, 1])
     ww = _interp("hey_jarvis_v0.1.tflite", [1, 16, 96])
     raw = np.zeros(MEL_INPUT, np.float32)
@@ -59,7 +88,7 @@ def peak_score(pcm_int16):
     for i in range(len(pcm_int16) // CHUNK):
         chunk = pcm_int16[i * CHUNK:(i + 1) * CHUNK].astype(np.float32)
         raw = np.concatenate([raw, chunk])[-MEL_INPUT:]
-        m = _run(mel, raw[None, :])[0, 0] / 10.0 + 2.0
+        m = _melspec(raw, weights) / 10.0 + 2.0
         melbuf = np.vstack([melbuf, m])[-970:]
         if melbuf.shape[0] >= 76:
             e = _run(emb, melbuf[-76:][None, :, :, None])[0, 0, 0]

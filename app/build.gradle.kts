@@ -111,32 +111,22 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // On-device wake word (openWakeWord models run via LiteRT). No key, no account
-    // — the "hey jarvis" model and its two feature models are bundled in assets.
+    // On-device wake word. The embedding + wake-word models (bundled, key-free) run
+    // via TensorFlow Lite; the melspectrogram step runs in pure Kotlin (see below).
     // Lets JARVIS be summoned by voice with the heavy speech recogniser switched
     // off, and (via the hotword service) from any app.
     //
-    // LiteRT, not org.tensorflow:tensorflow-lite: the melspectrogram model has a
-    // dynamic-length audio input, and the frozen tensorflow-lite runtime (2.16.1
-    // AND 2.17.0 — the last versions ever published to Maven Central) overflows a
-    // CONV_2D's byte count while allocating tensors for it at load ("BytesRequired
-    // ... overflowed"). That is a shape-inference bug in the OLD runtime's
-    // allocator, not the model: the maintained LiteRT runtime (TF Lite's renamed
-    // successor, the only line still receiving fixes) loads the identical model
-    // correctly — proven both by the Python ai-edge-litert pipeline check and by
-    // the emulator load test in CI, which caught 2.17.0 still failing. LiteRT is a
-    // drop-in for the Interpreter API (same `org.tensorflow.lite.Interpreter`, no
-    // code change). This is a runtime swap, device-independent, not a per-device
-    // workaround.
-    //
-    // 2.1.0, not 1.0.0: the emulator load test then proved LiteRT 1.0.0 (Dec 2024,
-    // the first Android release) STILL overflowed the CONV_2D at load — that build
-    // predates the allocator fix. The 2.x line is the same runtime generation as the
-    // Python `ai-edge-litert` 2.1.x that loads this exact model cleanly in the
-    // pipeline check, so it carries the fix. Interpreter API stays (the app compiled
-    // unchanged against 1.0.0); the emulator load test is the CI gate that confirms
-    // the load with no device.
-    implementation("com.google.ai.edge.litert:litert:2.1.0")
+    // Only the two FIXED-shape models are on TFLite now, so any runtime loads them —
+    // the on-device `CONV_2D ... BytesRequired overflowed` crash was NEVER these two.
+    // It was the melspectrogram model's DYNAMIC-length input, which overflowed a
+    // CONV_2D at allocate time on EVERY Android runtime we tried — tensorflow-lite
+    // 2.16.1 and 2.17.0 AND LiteRT 1.0.0 and 2.1.0 (each caught on the CI emulator,
+    // no device). Only the Python `ai-edge-litert` runtime infers that graph's shapes
+    // correctly. So the melspectrogram was reimplemented in Kotlin (`MelSpectrogram`,
+    // using the model's own extracted weights, verified against the model in Python),
+    // and the runtime for the remaining fixed-shape models is the standard,
+    // known-good `tensorflow-lite` — no per-device workaround, no dynamic-shape path.
+    implementation("org.tensorflow:tensorflow-lite:2.17.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

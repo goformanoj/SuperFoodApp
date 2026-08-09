@@ -4,18 +4,19 @@ import android.content.Context
 import com.jarvis.os.debug.DebugLog
 import org.tensorflow.lite.Interpreter
 import java.io.FileInputStream
+import java.nio.ByteBuffer
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 
 /**
- * On-device "hey jarvis" wake word, using the openWakeWord models via TensorFlow
- * Lite. No key, no account, no network — the three small models are bundled in
- * assets. The heavy [android.speech.SpeechRecognizer] is not involved, so nothing
- * is transcribed while this listens; it only ever emits a score for one phrase.
+ * On-device "hey jarvis" wake word, using the openWakeWord models. No key, no
+ * account, no network — the assets are bundled. The heavy
+ * [android.speech.SpeechRecognizer] is not involved, so nothing is transcribed
+ * while this listens; it only ever emits a score for one phrase.
  *
  * The pipeline is a direct port of openWakeWord's streaming inference, fed one
  * 80 ms (1280-sample) chunk at a time:
- *   1. melspectrogram model over the last 1760 samples (1280 + 3 hops of look-back)
+ *   1. melspectrogram over the last 1760 samples (1280 + 3 hops of look-back)
  *      → 8 mel frames of 32 bins, transformed by x/10 + 2 (openWakeWord's default);
  *   2. embedding model over the last 76 mel frames → one 96-d embedding;
  *   3. wake-word model over the last 16 embeddings → a score in [0, 1].
@@ -23,12 +24,17 @@ import java.nio.channels.FileChannel
  * window 76 / step 8. Audio is fed as raw int16 values cast to float (NOT
  * normalised to ±1) — that is the scale the models were trained on.
  *
- * Cannot crash the caller: if the models are missing or TFLite fails, [available]
+ * Step 1 runs in pure Kotlin ([MelSpectrogram]) rather than via TFLite: the
+ * melspectrogram model's dynamic-length input overflows a CONV_2D in every Android
+ * TFLite/LiteRT runtime (caught on the CI emulator — see [MelSpectrogram]). Steps 2
+ * and 3 are fixed-shape models that load fine, so they stay on TFLite.
+ *
+ * Cannot crash the caller: if the assets are missing or a model fails, [available]
  * is false and the caller falls back to the in-app wake gate.
  */
 class OpenWakeWord(context: Context) {
 
-    private var melspec: Interpreter? = null
+    private var melspec: MelSpectrogram? = null
     private var embedding: Interpreter? = null
     private var wakeword: Interpreter? = null
 
@@ -38,8 +44,6 @@ class OpenWakeWord(context: Context) {
     private val featBuffer = ArrayDeque<FloatArray>() // each entry = 96-d embedding
 
     // Reused I/O tensors, so a per-chunk call allocates nothing.
-    private val melIn = arrayOf(raw)
-    private val melOut = Array(1) { Array(1) { Array(FRAMES_PER_CHUNK) { FloatArray(MEL_BINS) } } }
     private val embIn = Array(1) { Array(EMBED_WINDOW) { Array(MEL_BINS) { FloatArray(1) } } }
     private val embOut = Array(1) { Array(1) { Array(1) { FloatArray(EMBED_DIM) } } }
     private val wwIn = Array(1) { Array(PREDICT_WINDOW) { FloatArray(EMBED_DIM) } }
@@ -49,8 +53,8 @@ class OpenWakeWord(context: Context) {
 
     /**
      * The exact reason the last load failed ("<exception class>: <message>"), or null
-     * if it loaded. Surfaced so CI/Diagnostics show the real cause (e.g. the CONV_2D
-     * overflow vs a missing native lib) instead of just "unavailable".
+     * if it loaded. Surfaced so CI/Diagnostics show the real cause (e.g. a missing
+     * asset or an unsupported ABI) instead of just "unavailable".
      */
     @Volatile
     var lastLoadError: String? = null
@@ -58,12 +62,7 @@ class OpenWakeWord(context: Context) {
 
     init {
         try {
-            // The melspectrogram model has a dynamic audio-length input; resize it to
-            // our fixed chunk. strict=true is REQUIRED here — without it TFLite 2.16
-            // leaves the downstream tensor shapes symbolic and a CONV_2D overflows
-            // its byte count at prepare time ("BytesRequired ... overflowed"). This
-            // matches openWakeWord's own resize_tensor_input(..., strict=True).
-            melspec = interpreter(context, "openwakeword/melspectrogram.tflite", intArrayOf(1, MEL_INPUT_SAMPLES))
+            melspec = MelSpectrogram(loadAsset(context, "openwakeword/melspec_weights.bin"))
             embedding = interpreter(context, "openwakeword/embedding_model.tflite")
             wakeword = interpreter(context, "openwakeword/hey_jarvis_v0.1.tflite")
             lastLoadError = null
@@ -93,8 +92,7 @@ class OpenWakeWord(context: Context) {
         for (i in 0 until CHUNK) raw[base + i] = chunk[i].toFloat()
 
         // 1) melspectrogram → 8 new frames, transformed and appended.
-        mel.run(melIn, melOut)
-        val frames = melOut[0][0]
+        val frames = mel.process(raw)
         for (f in 0 until FRAMES_PER_CHUNK) {
             val row = FloatArray(MEL_BINS)
             val src = frames[f]
@@ -151,7 +149,6 @@ class OpenWakeWord(context: Context) {
     }
 
     fun close() {
-        try { melspec?.close() } catch (e: Exception) {}
         try { embedding?.close() } catch (e: Exception) {}
         try { wakeword?.close() } catch (e: Exception) {}
         melspec = null
@@ -159,17 +156,14 @@ class OpenWakeWord(context: Context) {
         wakeword = null
     }
 
-    private fun interpreter(context: Context, assetPath: String, inputShape: IntArray? = null): Interpreter {
+    private fun interpreter(context: Context, assetPath: String): Interpreter {
         val options = Interpreter.Options().apply {
             numThreads = 1
             // The XNNPACK delegate failed to apply on these models on-device; the
             // plain CPU kernels are plenty fast for one wake phrase and avoid it.
             setUseXNNPACK(false)
         }
-        return Interpreter(loadModel(context, assetPath), options).apply {
-            if (inputShape != null) resizeInput(0, inputShape, true) // strict — see init
-            allocateTensors()
-        }
+        return Interpreter(loadModel(context, assetPath), options).apply { allocateTensors() }
     }
 
     private fun loadModel(context: Context, assetPath: String): MappedByteBuffer {
@@ -178,6 +172,12 @@ class OpenWakeWord(context: Context) {
                 return input.channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
             }
         }
+    }
+
+    /** Read a bundled asset fully into a heap ByteBuffer (used for the mel weights). */
+    private fun loadAsset(context: Context, assetPath: String): ByteBuffer {
+        val bytes = context.assets.open(assetPath).use { it.readBytes() }
+        return ByteBuffer.wrap(bytes)
     }
 
     companion object {
