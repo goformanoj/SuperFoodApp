@@ -2877,3 +2877,10 @@ in isolation). Classic GitHub-emulator instability under load. Fix is infra, not
 `reactivecircus/android-emulator-runner` more headroom — `ram-size: 4096M`, `heap-size: 576M`,
 `cores: 2`, a `-no-snapshot` clean boot, `swiftshader_indirect` GPU, and `-noaudio -no-boot-anim -no
 camera` so there's less to fall over on. The instrumented tests themselves are unchanged.
+
+Follow-up: resource hardening alone did NOT stop the crash (run #224 still died "device offline" at
+the 4th test). Added the **AndroidX Test Orchestrator** (`testOptions.execution =
+ANDROIDX_TEST_ORCHESTRATOR` + `androidTestUtil orchestrator:1.5.1`) so each instrumented test runs in
+its own process — the theory being cumulative native/graphics state from the PdfDocument + Compose
+tests in one shared process was exhausting the emulator's GPU/host and taking qemu down. If this still
+fails, the fallback is to drop the on-device PDF test and keep Part F at the pure + Robolectric level.

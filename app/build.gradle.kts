@@ -82,6 +82,12 @@ android {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
         }
+        // Run each instrumented test in its OWN process (Android Test Orchestrator).
+        // The suite went from 8 to 10 tests when the PdfDocument test was added and
+        // the emulator started dying with "device offline" a few tests in — cumulative
+        // per-process native/graphics state under load. A fresh process per test (and
+        // cleared package data between) stops one heavy test destabilising the next.
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 
     compileOptions {
@@ -148,6 +154,9 @@ dependencies {
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    // The orchestrator service APK that runs each instrumented test in its own
+    // process (paired with testOptions.execution = ANDROIDX_TEST_ORCHESTRATOR).
+    androidTestUtil("androidx.test:orchestrator:1.5.1")
 
     // Compose UI tests (createComposeRule + node finders/actions). The BOM must be on
     // the androidTest classpath too — androidTestImplementation does NOT extend
