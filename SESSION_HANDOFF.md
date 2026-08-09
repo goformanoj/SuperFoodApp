@@ -5,14 +5,16 @@
 
 ## Current position + immediate next
 
-**`main` @ `37fb8c0`** — green build **#190**, artifact `jarvis-debug-apk` 18.99 MB confirmed.
-Branch `claude/project-onboarding-lcnvi7` carries **unmerged** work: speech now keeps the
-recogniser's n-best alternatives and hands the near misses to the model (`voice/Transcript`,
-JUnit-tested); the custom-instructions screen was rebuilt; and a translucent "JARVIS is
-controlling the screen" tint (accessibility overlay, no new permission) now shows while it drives
-the screen. **Build #195 green (artifact confirmed) for the first two; the tint is a later commit,
-CI pending.** On-screen drawing is device-unconfirmed (Rule 5). New gotcha: memory can hold a
-*typed* fact ("peak") that contradicts an *auto-learned* one ("Pic") from a mishearing — deletable
+**`main` @ `7e05300`** — green build **#211** (all 3 CI jobs: `build`, `wakeword-pipeline`, emulator
+load+detect). Branch `claude/project-onboarding-lcnvi7` is **level with `main`** (just fast-forwarded).
+This position folds in: the wake-word LOAD fix (Kotlin melspectrogram — see the wake-word section below,
+now CI-confirmed on the emulator, no device); speech keeping the recogniser's n-best alternatives
+(`voice/Transcript`, JUnit-tested); the rebuilt custom-instructions screen; and the translucent "JARVIS is
+controlling the screen" tint (accessibility overlay, no new permission). **Next: Phase A2 of the test
+pyramid** — extract `control/ScreenMatch` + widen the Groq/Gemini JSON parsers to `internal`, with unit
+tests (see the plan). On-screen drawing + screen-control loop remain device-unconfirmed (Rule 5). New
+gotcha: memory can hold a *typed* fact ("peak") that contradicts an *auto-learned* one ("Pic") from a
+mishearing — deletable
 on the redesigned instructions screen.
 
 **Wake word is BUILT — in-app asleep/awake (`voice/WakeWord` + engine `awake` flag).** Rebuilt

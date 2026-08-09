@@ -2785,3 +2785,12 @@ settle (does it LOAD?), make the test PRINT the fact — the generic "unavailabl
 cost an extra emulator cycle; `lastLoadError` ended the guessing in one. (2) Four runtime
 bumps chasing a runtime bug was three too many; the moment "every runtime fails but Python
 doesn't" was clear, the answer was to own the computation, not to keep shopping for a runtime.
+
+### 2026-08-09 — Wake-word fix merged to `main` (build #211 green)
+
+Fast-forwarded `main` `aebea4e → 7e05300` (clean 17-commit FF, no merge commit). Build **#211** is the
+green signal: all three CI jobs pass — `build` (unit + Robolectric + lint + APK), `wakeword-pipeline`
+(Python, shipped mel weights), and the emulator `Emulator instrumented tests` (openWakeWord LOADS +
+DETECTS the user's real "Hey Jarvis" clip + rejects silence, all on a real Android runtime, no device).
+Rule 2 done: pushed, artifact present, tests green, `main` fast-forwarded. Next: Phase A2 (free the
+screen-match + JSON-parse pure logic into unit-tested seams).
