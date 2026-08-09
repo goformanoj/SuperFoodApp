@@ -2734,3 +2734,15 @@ LiteRT is a drop-in for the Interpreter API — same `org.tensorflow.lite.Interp
 so `voice/OpenWakeWord.kt` is unchanged. `google()` is already in
 `dependencyResolutionManagement`, so it resolves in CI. Not a per-device workaround —
 a runtime swap that the emulator load test will now verify in CI (no device).
+
+**Follow-up same day — LiteRT 1.0.0 wasn't enough; bumped to 2.1.0 + made the failure legible.**
+Run #209 (`05d814b`): `build` GREEN (LiteRT 1.0.0 resolved and the app compiled unchanged
+against `org.tensorflow.lite.Interpreter` — API compat confirmed) and the Python check GREEN,
+but the emulator load test was STILL red. LiteRT **1.0.0** is the Dec-2024 first Android release;
+it predates the allocator fix, so it overflowed the CONV_2D too. Two changes on the next commit:
+(1) bumped to `com.google.ai.edge.litert:litert:2.1.0` — the 2.x line matches the Python
+`ai-edge-litert` 2.1.x that loads this model cleanly; (2) added `OpenWakeWord.lastLoadError`
+(the real exception string) and surfaced it in the instrumented test's assertion, so if the load
+ever fails again CI prints the ACTUAL cause (CONV_2D overflow vs missing native lib vs …) instead
+of a generic "unavailable". Lesson: the test was catching the failure but hiding its cause — a
+diagnostic that only says "it broke" costs an extra round-trip; make failures name themselves.

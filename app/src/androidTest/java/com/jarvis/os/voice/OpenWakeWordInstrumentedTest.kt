@@ -29,8 +29,8 @@ class OpenWakeWordInstrumentedTest {
         val oww = newDetector()
         try {
             assertTrue(
-                "openWakeWord models failed to load on the Android runtime — this is the " +
-                    "CONV_2D overflow that has been failing on-device.",
+                "openWakeWord models failed to load on the Android runtime. " +
+                    "Actual cause: ${oww.lastLoadError}",
                 oww.available,
             )
         } finally {

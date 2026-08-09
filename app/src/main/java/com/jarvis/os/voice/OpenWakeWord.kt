@@ -47,6 +47,15 @@ class OpenWakeWord(context: Context) {
 
     val available: Boolean get() = melspec != null && embedding != null && wakeword != null
 
+    /**
+     * The exact reason the last load failed ("<exception class>: <message>"), or null
+     * if it loaded. Surfaced so CI/Diagnostics show the real cause (e.g. the CONV_2D
+     * overflow vs a missing native lib) instead of just "unavailable".
+     */
+    @Volatile
+    var lastLoadError: String? = null
+        private set
+
     init {
         try {
             // The melspectrogram model has a dynamic audio-length input; resize it to
@@ -57,10 +66,12 @@ class OpenWakeWord(context: Context) {
             melspec = interpreter(context, "openwakeword/melspectrogram.tflite", intArrayOf(1, MEL_INPUT_SAMPLES))
             embedding = interpreter(context, "openwakeword/embedding_model.tflite")
             wakeword = interpreter(context, "openwakeword/hey_jarvis_v0.1.tflite")
+            lastLoadError = null
             DebugLog.log(DebugLog.Stage.HEARD, "openWakeWord loaded — \"hey jarvis\" ready")
         } catch (e: Throwable) {
             // Any failure (missing asset, unsupported ABI, OOM) → stay unavailable.
-            DebugLog.log(DebugLog.Stage.ERROR, "openWakeWord unavailable: ${e.message ?: e.javaClass.simpleName}")
+            lastLoadError = "${e.javaClass.name}: ${e.message ?: "(no message)"}"
+            DebugLog.log(DebugLog.Stage.ERROR, "openWakeWord unavailable: $lastLoadError")
             close()
         }
     }

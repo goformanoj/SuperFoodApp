@@ -128,7 +128,15 @@ dependencies {
     // drop-in for the Interpreter API (same `org.tensorflow.lite.Interpreter`, no
     // code change). This is a runtime swap, device-independent, not a per-device
     // workaround.
-    implementation("com.google.ai.edge.litert:litert:1.0.0")
+    //
+    // 2.1.0, not 1.0.0: the emulator load test then proved LiteRT 1.0.0 (Dec 2024,
+    // the first Android release) STILL overflowed the CONV_2D at load — that build
+    // predates the allocator fix. The 2.x line is the same runtime generation as the
+    // Python `ai-edge-litert` 2.1.x that loads this exact model cleanly in the
+    // pipeline check, so it carries the fix. Interpreter API stays (the app compiled
+    // unchanged against 1.0.0); the emulator load test is the CI gate that confirms
+    // the load with no device.
+    implementation("com.google.ai.edge.litert:litert:2.1.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
