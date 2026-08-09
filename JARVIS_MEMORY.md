@@ -2884,3 +2884,15 @@ ANDROIDX_TEST_ORCHESTRATOR` + `androidTestUtil orchestrator:1.5.1`) so each inst
 its own process — the theory being cumulative native/graphics state from the PdfDocument + Compose
 tests in one shared process was exhausting the emulator's GPU/host and taking qemu down. If this still
 fails, the fallback is to drop the on-device PDF test and keep Part F at the pure + Robolectric level.
+
+Resolution: the Test Orchestrator did NOT help — run #225 died even earlier (3rd test), still
+"device offline", always during `JarvisAppUiTest` (the heavy full-shell Compose render). So the crash
+is deterministic infra: the GitHub emulator VM reliably falls over once the instrumented suite grew to
+10 tests (longer uptime + heavy swiftshader rendering), not PDF residue and not any assertion. Four
+runs (#222–#225) confirmed the `build` job (all ~44 pure + Robolectric scenario tests) is green every
+time; only the emulator tier crashed. Pragmatic call (same as the flaky a11y screen-control test):
+pulled `ArtifactWriterInstrumentedTest` and reverted the orchestrator + emulator-hardening, returning
+the emulator job to its proven-green #218 8-test set. Part F stays covered by `ArtifactActions` (pure)
++ `ArtifactStore` (Robolectric); real `PdfDocument` rendering joins the Rule-5 device-only ceiling.
+Lesson banked: adding a native-heavy instrumented test can tip the CI emulator from green to reliably
+red — treat the emulator tier's capacity as a hard constraint, verify logic in the fast tiers.

@@ -125,16 +125,7 @@ jobs:
           api-level: 34
           arch: x86_64
           target: default
-          # Reliability hardening: run #222 (with the full 10-test instrumented
-          # suite) saw the emulator go "device offline" mid-run — a VM crash under
-          # load, not a test failure. Give it more RAM, a stable software GPU, a
-          # clean (no-snapshot) boot, and nothing audio/camera to fall over on.
-          ram-size: 4096M
-          heap-size: 576M
-          cores: 2
           disable-animations: true
-          emulator-boot-timeout: 600
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: ./gradlew connectedDebugAndroidTest
 
       - name: Upload instrumented test report
