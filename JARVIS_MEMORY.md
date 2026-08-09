@@ -2706,3 +2706,31 @@ wake-word CI coverage: **load** (emulator, added earlier) + **detection** (now).
 
 Threshold kept at 0.5 (0.99 headroom). Device-only ceiling now genuinely narrow:
 real-world accents/noise beyond these clips.
+
+### 2026-08-09 — The emulator load test earned its keep: caught CONV_2D in CI, fixed by moving to LiteRT
+
+**What the test found (no device needed).** CI run #208 (commit `d12d015`) came back
+with `build` green (Robolectric passes under AGP 9.1) and the Python `wakeword-pipeline`
+green, but the emulator job **red** on exactly the assertion it was built for:
+`OpenWakeWordInstrumentedTest.models_load_on_the_real_android_runtime FAILED —
+openWakeWord models failed to load on the Android runtime` (the `CONV_2D ...
+BytesRequired overflowed` allocator overflow). Detection + silence tests SKIPPED via
+`assumeTrue(available)`. This is the payoff of the pyramid: the on-device load crash
+that used to cost an install now turns CI red instead, and it **proved the 2.17.0
+bump did NOT fix the load** — the thing that could only ever be settled on a real
+Android runtime, settled without the user's phone.
+
+**Why 2.17.0 couldn't fix it.** `org.tensorflow:tensorflow-lite` is *frozen* — Maven
+Central's newest (and last) version is 2.17.0; TensorFlow moved the maintained runtime
+to **LiteRT** (`com.google.ai.edge.litert`, on Google Maven), which is the only line
+still receiving fixes. The melspectrogram model's dynamic-length input overflows a
+CONV_2D byte count in the OLD allocator's shape inference; the LiteRT runtime infers it
+correctly — the same runtime that loads the identical model cleanly in the Python
+`ai-edge-litert` pipeline check.
+
+**The fix (genuine, device-independent, near-zero code).** Swapped the dependency
+`org.tensorflow:tensorflow-lite:2.17.0` → `com.google.ai.edge.litert:litert:1.0.0`.
+LiteRT is a drop-in for the Interpreter API — same `org.tensorflow.lite.Interpreter`,
+so `voice/OpenWakeWord.kt` is unchanged. `google()` is already in
+`dependencyResolutionManagement`, so it resolves in CI. Not a per-device workaround —
+a runtime swap that the emulator load test will now verify in CI (no device).

@@ -39,8 +39,19 @@ One-owner by lifecycle: engine starts it in `pause()` only when backgrounded + a
 check from a trace:** (1) does a real "Hey Jarvis" cross 0.5 — tune `OpenWakeWord.DETECT_THRESHOLD`;
 (2) `ForegroundServiceStartNotAllowedException` on the `pause()` start (Android 12+) — if so, switch
 to an always-running service that gates capture rather than start/stop; (3) Realme battery killer —
-exempt JARVIS from battery optimisation. Foreground wake still uses the in-app gate above. No JUnit
-test (needs TFLite native libs); validated in Python against the reference instead.
+exempt JARVIS from battery optimisation. Foreground wake still uses the in-app gate above.
+
+**Wake-word LOAD — was the on-device blocker, now caught + fixed in CI (2026-08-09).** The
+`CONV_2D ... BytesRequired overflowed` crash that kept openWakeWord from loading was NOT fixed by the
+`tensorflow-lite:2.17.0` bump — the emulator load test (`OpenWakeWordInstrumentedTest`) went red on it
+in CI run #208, settling on a real Android runtime, no device, what only a device could settle before.
+**Fix on this branch:** dependency swapped to the maintained **LiteRT** runtime
+(`com.google.ai.edge.litert:litert:1.0.0`) — the successor to `org.tensorflow:tensorflow-lite`, which is
+FROZEN (2.17.0 is Maven Central's last-ever version; all fixes now land only in LiteRT on Google Maven).
+LiteRT is a drop-in for the Interpreter API, so `voice/OpenWakeWord.kt` is untouched; `google()` already
+resolves it. **GOTCHA for future me: do NOT bump `org.tensorflow:tensorflow-lite` hoping for a fix — that
+line is dead; use LiteRT.** The emulator load test now guards this in CI. Detection is covered too
+(`process()` on the user's real recording; Python + emulator). Device-only ceiling left: real accents/noise.
 
 ### ⚠️ Read this first: the screen-control loop is NOT working on a device
 Two device sessions (2026-08-04 Blinkit, 2026-08-05 Zepto) both ended with the errand

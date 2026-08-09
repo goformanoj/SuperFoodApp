@@ -111,17 +111,24 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // On-device wake word (openWakeWord models run via TensorFlow Lite). No key,
-    // no account — the "hey jarvis" model and its two feature models are bundled
-    // in assets. Lets JARVIS be summoned by voice with the heavy speech recogniser
-    // switched off, and (via the hotword service) from any app.
+    // On-device wake word (openWakeWord models run via LiteRT). No key, no account
+    // — the "hey jarvis" model and its two feature models are bundled in assets.
+    // Lets JARVIS be summoned by voice with the heavy speech recogniser switched
+    // off, and (via the hotword service) from any app.
     //
-    // 2.17.0, not 2.16.1: on 2.16.1 the melspectrogram model's dynamic-length input
-    // overflowed a CONV_2D at prepare time on-device ("BytesRequired ... overflowed")
-    // — a shape-inference bug in that runtime's allocator, not the model (the newer
-    // LiteRT runtime handles the identical model). This is a runtime version bump,
-    // device-independent, not a per-device workaround.
-    implementation("org.tensorflow:tensorflow-lite:2.17.0")
+    // LiteRT, not org.tensorflow:tensorflow-lite: the melspectrogram model has a
+    // dynamic-length audio input, and the frozen tensorflow-lite runtime (2.16.1
+    // AND 2.17.0 — the last versions ever published to Maven Central) overflows a
+    // CONV_2D's byte count while allocating tensors for it at load ("BytesRequired
+    // ... overflowed"). That is a shape-inference bug in the OLD runtime's
+    // allocator, not the model: the maintained LiteRT runtime (TF Lite's renamed
+    // successor, the only line still receiving fixes) loads the identical model
+    // correctly — proven both by the Python ai-edge-litert pipeline check and by
+    // the emulator load test in CI, which caught 2.17.0 still failing. LiteRT is a
+    // drop-in for the Interpreter API (same `org.tensorflow.lite.Interpreter`, no
+    // code change). This is a runtime swap, device-independent, not a per-device
+    // workaround.
+    implementation("com.google.ai.edge.litert:litert:1.0.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
