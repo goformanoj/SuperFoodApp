@@ -2838,3 +2838,32 @@ Finished the pyramid's last tier — the Compose UI layer of the emulator job.
 
 Pyramid status: **all six layers live** — pure JVM, Robolectric, Python wake-word check, emulator
 (openWakeWord load+detect **and** Compose UI), trace-replay, lint. Device is now the last mile, not the first.
+
+### 2026-08-09 — Rigorous scenario tests for Parts A, B, C, F (screen control, work session, files)
+
+User asked to rigorously test Parts A/B/C/F, especially screen-control accuracy across many
+scenarios and long continuous tasks. Mapped each part (3 explore agents): the accuracy-critical
+logic is already lifted into pure objects, so it's driveable in CI without a device. Added ~50
+scenario tests over those pure seams (device-only ceiling per Rule 5 is unchanged: real taps on
+real third-party app layouts, the LLM's PICK choice).
+
+- **`assistant/ScreenControlScenarioTest`** (Part A + C, 20 tests) — two harnesses mirroring the
+  engine: `plan()` = the one-shot guard chain (`ScreenActions.parse` → AskGuard → SendGuard →
+  SpendGuard), and `driveErrand()` = the one-action-at-a-time `AgentLoop.parseMove` loop with
+  accumulating `taken`/`avoid`/`stayInApp`. Covers full multi-step search chains, compose-vs-send,
+  unrequested-checkout withholding vs authorised purchase, ask-and-act suppression, and — the "long
+  continuous task" cases — a happy 5-step errand to DONE, the app-lock stopping a wander into another
+  app mid-errand, repeat/stall break, the step budget, and an irreversible step pausing to ask.
+- **`control/ScreenMatchAccuracyTest`** (Part C, 10 tests) — "pick the right control among distractors":
+  exact beats prefix beats substring, visible text beats content-description, icon-only nodes are
+  findable, nothing-matches stays below the `GOOD_SCORE` gate, plus OTP/password redaction accuracy.
+- **`assistant/WorkSessionScenarioTest`** (Part B, 7 tests) — one long hands-free lifecycle asserting the
+  single mic owner at every transition (visible→background→media-yield→Talk→resume→stop), plus broad
+  stop-phrase and wake-word tables (tolerant of recogniser noise, no false fires).
+- **Part F** — `files/ArtifactStoreRobolectricTest` (5, the JSON index: newest-first, missing-file
+  filtering, delete, replace, corrupt fallback), `files/ArtifactActionsScenarioTest` (6, multi-block,
+  case-insensitive kind, title/body clamps, safe filename), and `androidTest .../ArtifactWriterInstrumentedTest`
+  (2, on the emulator — a real %PDF file and a markdown note actually written and registered).
+
+Honest scope note recorded for the user: Part F's flow-chart/diagram generation and image generation
+are NOT built (EXECUTION_PLAN was stale), so they can't be "tested"; the text/PDF path is covered.
