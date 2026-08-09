@@ -196,7 +196,7 @@ class AssistantEngine(context: Context) {
                         systemOverride = AGENT_PROMPT,
                         tier = Tier.SMART,
                     )
-                    AgentLoop.parseMove(answer, avoid = failedStep, stayInApp = AgentLoop.appOf(stepsTaken))
+                    AgentLoop.parseMove(answer, avoid = failedStep, stayInApp = AgentLoop.appOf(stepsTaken), goal = currentGoal)
                 } catch (e: Exception) {
                     DebugLog.log(DebugLog.Stage.ERROR, "agent step failed: ${e.message ?: e.javaClass.simpleName}")
                     AgentMove.Blocked(e.message ?: "no answer")
@@ -732,8 +732,11 @@ class AssistantEngine(context: Context) {
                 val (afterAlarm, rawAlarms) = AlarmActions.parse(afterCal)
                 // An alarm nobody asked for is a real noise at a real time, and
                 // the user finds out when it goes off. A trace had "play Beat It"
-                // set a ten-minute timer called "nap".
-                val alarms = AlarmGuard.apply(userText, rawAlarms)
+                // set a ten-minute timer called "nap". The previous assistant turn is
+                // passed so a bare "6 o'clock" confirms an alarm JARVIS just asked the
+                // time for — another trace dropped exactly that and never set it.
+                val priorPrompt = history.lastOrNull { it.role == ChatTurn.ASSISTANT }?.content.orEmpty()
+                val alarms = AlarmGuard.apply(userText, rawAlarms, priorPrompt)
                 if (alarms.size != rawAlarms.size) {
                     DebugLog.log(
                         DebugLog.Stage.MARKERS,
@@ -1128,7 +1131,7 @@ class AssistantEngine(context: Context) {
                     systemOverride = AGENT_PROMPT,
                     tier = Tier.SMART,
                 )
-                AgentLoop.parseMove(answer, avoid = lastFailed, taken = errandSteps, stayInApp = app)
+                AgentLoop.parseMove(answer, avoid = lastFailed, taken = errandSteps, stayInApp = app, goal = goal)
             } catch (e: Exception) {
                 DebugLog.log(DebugLog.Stage.ERROR, "agent step failed: ${e.message ?: e.javaClass.simpleName}")
                 AgentMove.Blocked(e.message ?: "no answer")

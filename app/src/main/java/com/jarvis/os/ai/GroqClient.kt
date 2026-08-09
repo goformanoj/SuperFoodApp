@@ -122,8 +122,9 @@ object GroqClient {
         Never explain, never add words, never invent an option that is not listed.
         Prefer the item the user would actually want: for "the first video result", choose the
         first actual content item, never the search box, a tab, a filter chip or a navigation button.
-        When asked for a SONG or a VIDEO, prefer a single track or video over a playlist, album,
-        artist page or "mix" — those open a list instead of playing the thing that was asked for.
+        When asked for a REEL, STORY, SHORT, POST, SONG or VIDEO, choose an actual piece of content —
+        never the tab named "Reels", "Shorts", "Stories" or "Home", and never a playlist, album,
+        artist page or "mix"; those open a list or a section instead of the thing that was asked for.
     """.trimIndent()
 
     private data class Outcome(val text: String?, val reason: String?, val retryable: Boolean)

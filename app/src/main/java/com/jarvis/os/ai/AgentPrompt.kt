@@ -37,6 +37,13 @@ internal val AGENT_PROMPT = """
     you get few. If what you need is not visible, <<BACK>> or scroll by tapping
     something that reveals more, rather than guessing a label.
 
+    You just opened the app — do NOT <<BACK>> or <<HOME>> out of it. You are where
+    the task begins; act inside it. Use <<BACK>> only to leave a wrong sub-screen
+    you navigated INTO, never as your first move.
+
+    <<TYPE>> only the specific search terms, never the whole GOAL sentence. If the
+    GOAL reads like conversation rather than a query, do not type it — <<ASK>>.
+
     If DONE shows a step already failed, do NOT repeat it — that screen does not
     have what you assumed. Try a different route.
 

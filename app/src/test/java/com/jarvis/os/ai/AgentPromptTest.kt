@@ -28,6 +28,21 @@ class AgentPromptTest {
     }
 
     @Test
+    fun `the do-not-back-out-of-a-just-opened-app rule survives`() {
+        // Earned from the trace where "opened Facebook" was immediately followed by
+        // <<BACK>>, backing straight out of the app the errand needed.
+        val p = AGENT_PROMPT.lowercase()
+        assertTrue(p.contains("just opened") && p.contains("back"))
+    }
+
+    @Test
+    fun `the type-only-the-query rule survives`() {
+        // Earned from the trace where the user's conversational sentence became the
+        // goal and got typed verbatim into a search box.
+        assertTrue(AGENT_PROMPT.lowercase().contains("never the whole goal"))
+    }
+
+    @Test
     fun `agentStep lays out the goal, history and screen`() {
         val q = agentStep(goal = "play music", done = "opened Amazon Music", screen = "[Play] [Shuffle]")
         assertTrue(q.contains("GOAL: play music"))

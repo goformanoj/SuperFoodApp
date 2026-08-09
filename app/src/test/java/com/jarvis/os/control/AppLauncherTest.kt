@@ -57,4 +57,16 @@ class AppLauncherTest {
     fun `case and spacing do not matter`() {
         assertEquals("WhatsApp", pick("  WHATSAPP  ", listOf("Chrome", "WhatsApp")))
     }
+
+    @Test
+    fun `an on-screen control name is not mistaken for an app`() {
+        // Device trace: the model emitted <<OPEN|Search>>, treating a UI control as an
+        // app. Control words must resolve to nothing, so the Open step now fails
+        // honestly (ScreenControlService calls failed() on a null resolution) instead
+        // of silently advancing as if the app had opened.
+        val installed = listOf("WhatsApp", "Chrome", "Instagram", "YouTube", "Phone", "Settings")
+        assertNull(pick("Search", installed))
+        assertNull(pick("Menu", installed))
+        assertNull(pick("Reels", installed))
+    }
 }

@@ -86,8 +86,11 @@ object AgentLoop {
     /** Reason given when the loop tried to leave for an unrelated app. */
     const val LEFT_APP = "tried to switch to a different app"
 
+    /** Reason given when the model backs out of the app it only just opened. */
+    const val JUST_ARRIVED = "backing out of the app it just opened"
+
     /** Blocked reasons JARVIS produced itself, which must never be read aloud. */
-    val INTERNAL_REASONS = setOf(NO_STEP, ALREADY_FAILED, GOING_IN_CIRCLES, LEFT_APP)
+    val INTERNAL_REASONS = setOf(NO_STEP, ALREADY_FAILED, GOING_IN_CIRCLES, LEFT_APP, JUST_ARRIVED)
 
     /**
      * True when [step] has been chosen too often already.
@@ -99,6 +102,29 @@ object AgentLoop {
      */
     fun repeats(step: ScreenStep, taken: List<ScreenStep>): Boolean =
         taken.lastOrNull() == step || taken.count { it == step } >= REPEAT_LIMIT
+
+    /**
+     * True once the errand has done something INSIDE the app — a tap, a keystroke,
+     * a submit or a pick. Opening the app does not count: right after an Open there
+     * is no sub-screen to go back from, which is what makes a first-move [JUST_ARRIVED]
+     * <<BACK>> a mistake rather than navigation.
+     */
+    private fun hasActedInApp(taken: List<ScreenStep>): Boolean =
+        taken.any {
+            it is ScreenStep.Tap || it is ScreenStep.Type ||
+                it == ScreenStep.Enter || it is ScreenStep.Pick
+        }
+
+    /**
+     * True when [text] is the whole [goal] sentence being typed verbatim. Guarded on
+     * a word count so a short, genuine "type good morning" is never mistaken for the
+     * anti-pattern — only a sentence-length goal echoed into a field is refused.
+     */
+    private fun echoesWholeGoal(text: String, goal: String?): Boolean {
+        val g = goal?.trim() ?: return false
+        if (g.split(Regex("\\s+")).count { it.isNotBlank() } < 5) return false
+        return text.trim().equals(g, ignoreCase = true)
+    }
 
     /**
      * True when [steps] describe an errand inside an app rather than one action.
@@ -163,6 +189,7 @@ object AgentLoop {
         avoid: ScreenStep? = null,
         taken: List<ScreenStep> = emptyList(),
         stayInApp: String? = null,
+        goal: String? = null,
     ): AgentMove {
         ASK.find(reply)?.let { match ->
             val question = match.groupValues[1].trim()
@@ -180,6 +207,16 @@ object AgentLoop {
         // redundant relaunches); only a genuinely different app is blocked.
         if (first is ScreenStep.Open && stayInApp != null && !sameApp(first.app, stayInApp)) {
             return AgentMove.Blocked(LEFT_APP)
+        }
+
+        // A <<BACK>> or <<HOME>> as the very first move of an errand undoes the
+        // Open that just succeeded — there is nothing on this fresh screen to go
+        // back FROM. A device trace shows exactly this: "opened Facebook" then
+        // <<BACK>>, then again in Zomato, backing straight out of the app the task
+        // needs and stalling. Once some in-app action has happened there is a
+        // sub-screen worth leaving, so this only bites before the first tap/type.
+        if ((first is ScreenStep.Back || first is ScreenStep.Home) && !hasActedInApp(taken)) {
+            return AgentMove.Blocked(JUST_ARRIVED)
         }
 
         // Never re-run the step that just failed. The prompt asks for this and a
@@ -207,6 +244,15 @@ object AgentLoop {
             } else {
                 AgentMove.Blocked(ScreenActions.parse(reply).clean.ifBlank { NO_STEP })
             }
+        }
+
+        // Typing the WHOLE goal sentence into a field is never a real query — it is
+        // the model echoing a conversational utterance that got recycled as the goal.
+        // A device trace typed "vate karna padta hai thoda Jyada…" (the user thinking
+        // aloud in Hindi) straight into a search box, over and over. Only bites when
+        // the goal is a sentence, so a genuine "type good morning" is untouched.
+        if (first is ScreenStep.Type && echoesWholeGoal(first.text, goal)) {
+            return AgentMove.Blocked(NO_STEP)
         }
 
         if (needsConfirmation(first)) {

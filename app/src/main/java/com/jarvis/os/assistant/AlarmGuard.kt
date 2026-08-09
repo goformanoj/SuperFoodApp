@@ -40,8 +40,19 @@ object AlarmGuard {
         "midnight", "morning", "evening", "tonight", "tomorrow",
     )
 
-    /** True when the user's words are plausibly about setting an alarm or timer. */
-    fun asksForAlarm(utterance: String): Boolean {
+    /**
+     * True when the user's words are plausibly about setting an alarm or timer.
+     *
+     * [priorPrompt] is JARVIS's previous turn, so a bare answer like "6 o'clock"
+     * counts when the question that preceded it was "what time?". Without it, the
+     * device trace dropped a genuinely-requested alarm: the user said "set an alarm
+     * for tomorrow", JARVIS asked the time, the user said "6 o'clock" — and that
+     * confirming turn, seen in isolation, has no alarm word so the alarm was
+     * suppressed and never set. The context only ever makes the guard say "yes" to a
+     * time answer JARVIS itself invited; negation still wins, so it can never revive
+     * a "don't set an alarm".
+     */
+    fun asksForAlarm(utterance: String, priorPrompt: String = ""): Boolean {
         val text = normalise(utterance)
         if (text.isBlank()) return false
         // Un-negated matches only: "don't set an alarm" must NOT be read as asking for
@@ -50,7 +61,10 @@ object AlarmGuard {
         // A bare time on its own is usually an answer to "what time?", which is
         // exactly the turn an alarm gets confirmed on.
         if (TIME_WORDS.any { Negation.hasUnnegated(text, it) } && looksLikeCommand(text)) return true
-        return DIGIT_TIME.containsMatchIn(text)
+        if (DIGIT_TIME.containsMatchIn(text)) return true
+        // JARVIS just asked for the alarm time and this turn is a bare time answer
+        // ("6 o'clock", "6", "half past six") — honour it even without an alarm word.
+        return awaitingAlarmTime(priorPrompt) && looksLikeBareTime(text)
     }
 
     /**
@@ -58,9 +72,17 @@ object AlarmGuard {
      *
      * The whole list goes or none of it does: a reply that invented one alarm
      * marker out of nowhere has not earned the benefit of the doubt on a second.
+     *
+     * [priorPrompt] lets a bare time answer confirm an alarm JARVIS just asked about
+     * (see [asksForAlarm]); it defaults to none, so single-utterance callers and the
+     * existing tests are unaffected.
      */
-    fun apply(utterance: String, alarms: List<AlarmAction>): List<AlarmAction> =
-        if (alarms.isEmpty() || asksForAlarm(utterance)) alarms else emptyList()
+    fun apply(
+        utterance: String,
+        alarms: List<AlarmAction>,
+        priorPrompt: String = "",
+    ): List<AlarmAction> =
+        if (alarms.isEmpty() || asksForAlarm(utterance, priorPrompt)) alarms else emptyList()
 
     /** "7:30", "07 30", "at 7" — a time the user might be confirming. */
     private val DIGIT_TIME = Regex("""\b\d{1,2}[:.]\d{2}\b|\bat \d{1,2}\b""")
@@ -68,6 +90,37 @@ object AlarmGuard {
     private fun looksLikeCommand(text: String): Boolean =
         listOf("set", "make", "put", "wake", "remind", "start", "in ", "at ", "for ")
             .any { text.contains(it) }
+
+    /**
+     * True when JARVIS's previous turn was a question about an alarm/timer time —
+     * i.e. the user's next turn is expected to be the time. Deliberately narrow: it
+     * must be a question ("?") that names the mechanism or asks the time, so an
+     * ordinary assistant remark ("I'll set the alarm for 6…") does not keep re-arming
+     * on later stray turns like "it is done".
+     */
+    private fun awaitingAlarmTime(priorPrompt: String): Boolean {
+        if (priorPrompt.isBlank()) return false
+        val p = priorPrompt.lowercase()
+        if (!p.contains("?")) return false
+        return listOf("alarm", "timer", "what time", "which time", "when ", "wake")
+            .any { p.contains(it) }
+    }
+
+    /** A turn that is nothing but a time: "6 o'clock", "6", "half past six", "7:30". */
+    private fun looksLikeBareTime(text: String): Boolean {
+        if (DIGIT_TIME.containsMatchIn(text)) return true
+        if (TIME_WORDS.any { Negation.hasUnnegated(text, it) }) return true
+        val tokens = text.split(" ").filter { it.isNotEmpty() }
+        val loneNumber = tokens.singleOrNull()?.toIntOrNull()
+        if (loneNumber != null && loneNumber in 1..12) return true
+        return tokens.size == 1 && tokens.single() in NUMBER_WORDS
+    }
+
+    /** Spelled-out clock numbers, for a bare answer like "six". */
+    private val NUMBER_WORDS = setOf(
+        "one", "two", "three", "four", "five", "six", "seven",
+        "eight", "nine", "ten", "eleven", "twelve",
+    )
 
     private fun normalise(text: String): String = text.lowercase()
         .replace("'", "")

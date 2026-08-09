@@ -18,6 +18,9 @@ class AlarmGuardScenarioTest {
     private fun alarms(userText: String, modelReply: String): List<AlarmAction> =
         AlarmGuard.apply(userText, AlarmActions.parse(modelReply).second)
 
+    private fun alarms(userText: String, priorPrompt: String, modelReply: String): List<AlarmAction> =
+        AlarmGuard.apply(userText, AlarmActions.parse(modelReply).second, priorPrompt)
+
     @Test
     fun `a timer invented during a music request is dropped`() {
         val kept = alarms("play Beat It", "Playing it now. <<ALARM|TIMER|600|nap>>")
@@ -48,6 +51,32 @@ class AlarmGuardScenarioTest {
     fun `an alarm invented while asking to open an app is dropped`() {
         // No time words anywhere in "open spotify" → the marker was hallucinated.
         val kept = alarms("open spotify", "Opening it. <<ALARM|TIMER|300|focus>>")
+        assertEquals(emptyList<AlarmAction>(), kept)
+    }
+
+    @Test
+    fun `the two-turn confirm from the device trace now sets the alarm`() {
+        // Turn 1 "set an alarm for tomorrow" → JARVIS asks the time. Turn 2 "6 o'clock"
+        // + the model's <<ALARM|SET|06:00|Wake Up>>. Before the fix this whole list was
+        // dropped ("nothing in '6 o'clock' asked for one") and no alarm was ever set.
+        val kept = alarms(
+            userText = "6 o'clock",
+            priorPrompt = "What time would you like the alarm to go off tomorrow?",
+            modelReply = "I'll set the alarm for 6 o'clock tomorrow morning. <<ALARM|SET|06:00|Wake Up>>",
+        )
+        assertEquals(1, kept.size)
+        assertTrue(kept.single() is AlarmAction.SetAlarm)
+    }
+
+    @Test
+    fun `a stray repeat marker after the alarm is set is still dropped`() {
+        // The trace kept re-emitting the marker on "it is done" / "Jarvis is a done".
+        // Those have no pending time question, so they must not re-fire the alarm.
+        val kept = alarms(
+            userText = "it is done",
+            priorPrompt = "I'll set the alarm for 6 o'clock tomorrow morning.",
+            modelReply = "Sending that now: <<ALARM|SET|06:00|Wake Up>>",
+        )
         assertEquals(emptyList<AlarmAction>(), kept)
     }
 }

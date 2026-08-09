@@ -83,3 +83,18 @@ becomes a new frozen scenario in the automated suite.
 | E8 | "don't set an alarm, just remind me tomorrow" | sets **no** alarm | |
 | E9 | a request it can't do on this screen | says so plainly (doesn't go silent) | |
 | E10 | a screen showing an OTP/password | never reads the code aloud or sends it off-device | |
+
+## F · Regressions fixed in code (2026-08-09 device trace) — re-verify these
+
+These are the exact failures from the shared trace. Each now has a frozen unit test, but the
+**model + real-app** half still needs an on-device pass. Mark ✅/⚠️/❌ and share a trace for any non-✅.
+
+| # | Prompt / flow | Expected (post-fix) | Result |
+|---|---|---|---|
+| F1 | "set an alarm for tomorrow" → it asks the time → "6 o'clock" | the alarm **is set** (the bare time is honoured as the answer) | |
+| F2 | after F1, stray "it is done" / "okay" | sets **no** extra alarm | |
+| F3 | "open Facebook" then "open Tech talks…" (errand) | acts **inside** Facebook — never `<<BACK>>`/`<<HOME>>` straight out of the app it just opened | |
+| F4 | "find a place for chola bhatura on Zomato" | drives inside Zomato without backing out or looping in circles | |
+| F5 | "tell me the best reel here" (in Facebook/Instagram) | opens an **actual reel**, not the "Reels" nav tab | |
+| F6 | speak conversational filler mid-errand (not a command) | does **not** type your whole sentence into a search box | |
+| F7 | a misheard `<<OPEN|Search>>`-style command | fails honestly ("no app named …") instead of silently pretending it opened | |

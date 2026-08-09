@@ -204,8 +204,18 @@ class ScreenControlService : AccessibilityService() {
                     handler.postDelayed({ runStep(steps, index + 1, target, token, onDone) }, STEP_MS)
                 } else {
                     val pkg = AppLauncher.launch(this, step.app)
-                    // Give the app a moment to come to the foreground before the next step.
-                    handler.postDelayed({ runStep(steps, index + 1, pkg, token, onDone) }, APP_OPEN_MS)
+                    if (pkg == null) {
+                        // No installed app matched. From a device trace the model emitted
+                        // <<OPEN|Search>>, treating an on-screen control as an app; Open was
+                        // the ONE step type that advanced as if it had worked instead of
+                        // failing. Now it fails honestly like every other step, so recovery
+                        // (or an errand's own loop) gets the screen back rather than pressing
+                        // on against an app that never opened.
+                        failed("no app named \"${step.app}\" is installed")
+                    } else {
+                        // Give the app a moment to come to the foreground before the next step.
+                        handler.postDelayed({ runStep(steps, index + 1, pkg, token, onDone) }, APP_OPEN_MS)
+                    }
                 }
             }
             is ScreenStep.Tap ->
@@ -235,7 +245,12 @@ class ScreenControlService : AccessibilityService() {
                 // The one step that looks before it decides. Everything else was
                 // committed to a label when the plan was written, before the
                 // target screen existed.
-                val options = tappableLabels()
+                //
+                // Navigation chrome (a "Reels"/"Shorts"/"Home" tab) is dropped before
+                // the chooser sees it: a trace matched <<PICK|the top Reel>> to the
+                // "Reels" tab and opened it instead of playing a reel. Content only,
+                // unless the screen is nothing but chrome (then the full set stands).
+                val options = PickFilter.preferContent(tappableLabels())
                 val resolver = onPick
                 when {
                     options.isEmpty() -> failed("nothing tappable on screen to choose from")

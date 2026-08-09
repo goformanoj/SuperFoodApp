@@ -61,6 +61,39 @@ class AlarmGuardTest {
     }
 
     @Test
+    fun `a bare time confirms an alarm JARVIS just asked the time for`() {
+        // The device trace this fixes: "set an alarm for tomorrow" → JARVIS asks
+        // "What time…?" → "6 o'clock". Seen alone that last turn has no alarm word,
+        // so the alarm was suppressed and never set. With the question as context it
+        // is honoured.
+        val ask = "What time would you like the alarm to go off tomorrow?"
+        assertTrue(AlarmGuard.asksForAlarm("6 o'clock", ask))
+        assertTrue(AlarmGuard.asksForAlarm("6", ask))
+        assertTrue(AlarmGuard.asksForAlarm("six", ask))
+        assertTrue(AlarmGuard.asksForAlarm("half past six", ask))
+        assertEquals(alarm, AlarmGuard.apply("6 o'clock", alarm, ask))
+    }
+
+    @Test
+    fun `a bare time with no pending question is still not an alarm`() {
+        // "6 o'clock" out of nowhere (or after an ordinary remark, not a question)
+        // must NOT arm an alarm — that is how the trace's stray "it is done" /
+        // "Jarvis is a done" turns kept re-emitting the marker.
+        assertFalse(AlarmGuard.asksForAlarm("6 o'clock"))
+        assertFalse(AlarmGuard.asksForAlarm("6 o'clock", "I'll set the alarm for 6 o'clock tomorrow morning."))
+        assertFalse(AlarmGuard.asksForAlarm("it is done", "What time would you like the alarm?"))
+        assertEquals(emptyList<AlarmAction>(), AlarmGuard.apply("6 o'clock", alarm))
+    }
+
+    @Test
+    fun `context never revives a negated alarm`() {
+        // Even mid follow-up, "don't set an alarm" must stay dropped.
+        val ask = "What time would you like the alarm to go off?"
+        assertFalse(AlarmGuard.asksForAlarm("dont set an alarm", ask))
+        assertEquals(emptyList<AlarmAction>(), AlarmGuard.apply("dont set an alarm", alarm, ask))
+    }
+
+    @Test
     fun `a negated alarm request sets nothing`() {
         // The word "alarm"/"timer" is present, but the user said NOT to — a
         // hallucinated marker must be dropped, not honoured.

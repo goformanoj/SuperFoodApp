@@ -193,6 +193,60 @@ class AgentLoopTest {
     }
 
     @Test
+    fun `backing out of the app it just opened is refused`() {
+        // The device trace this fixes: "opened Facebook" then <<BACK>>, backing
+        // straight out of the app the errand needs; then the same in Zomato. Right
+        // after the Open there is nothing to go back FROM. taken holds only the Open
+        // (exactly what the engine seeds errandSteps with), so the guard bites.
+        val opened = listOf<ScreenStep>(ScreenStep.Open("Facebook"))
+        val back = AgentLoop.parseMove("<<BACK>>", taken = opened, stayInApp = "Facebook")
+        assertTrue("must not back out of a just-opened app, got $back", back is AgentMove.Blocked)
+        assertEquals(AgentLoop.JUST_ARRIVED, (back as AgentMove.Blocked).reason)
+
+        val home = AgentLoop.parseMove("<<HOME>>", taken = opened, stayInApp = "Facebook")
+        assertTrue("HOME as the first move is the same mistake, got $home", home is AgentMove.Blocked)
+    }
+
+    @Test
+    fun `back is allowed once inside the app, to leave a wrong sub-screen`() {
+        // After a tap there IS a sub-screen worth leaving, so BACK is legitimate.
+        val navigated = listOf(ScreenStep.Open("Settings"), ScreenStep.Tap("Network"))
+        val move = AgentLoop.parseMove("<<BACK>>", taken = navigated, stayInApp = "Settings")
+        assertEquals(AgentMove.Act(ScreenStep.Back), move)
+    }
+
+    @Test
+    fun `a first-move back with no app context is still refused`() {
+        // Even outside an errand lock, a bare BACK before anything has been done has
+        // nothing to undo.
+        assertTrue(AgentLoop.parseMove("<<BACK>>") is AgentMove.Blocked)
+    }
+
+    @Test
+    fun `typing the whole conversational goal into a field is refused`() {
+        // Device trace: the user's Hindi thinking-aloud got recycled as the goal and
+        // typed verbatim into a search box. A sentence-length goal echoed into a field
+        // is never a real query.
+        val goal = "vate karna padta hai thoda Jyada complete Karta Hai FIR aapko bolna"
+        val move = AgentLoop.parseMove("<<TYPE|$goal>>", goal = goal)
+        assertTrue("must not type the whole goal, got $move", move is AgentMove.Blocked)
+    }
+
+    @Test
+    fun `typing a real query drawn from the goal is allowed`() {
+        // The normal case: the model types the specific terms, not the whole sentence.
+        val move = AgentLoop.parseMove("<<TYPE|chola bhatura>>", goal = "find a good place to buy chola bhatura")
+        assertEquals(AgentMove.Act(ScreenStep.Type("chola bhatura")), move)
+    }
+
+    @Test
+    fun `a short goal typed verbatim is still fine`() {
+        // "type good morning" → <<TYPE|good morning>>: short, genuine, untouched.
+        val move = AgentLoop.parseMove("<<TYPE|good morning>>", goal = "type good morning")
+        assertEquals(AgentMove.Act(ScreenStep.Type("good morning")), move)
+    }
+
+    @Test
     fun `a step that just succeeded is not chosen again`() {
         // The thrashing was NOT failed steps. Open(Zepto) "succeeded" three times
         // running, each logged "already in Zepto — not relaunching". Success is

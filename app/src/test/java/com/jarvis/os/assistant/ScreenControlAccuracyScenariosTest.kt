@@ -36,6 +36,10 @@ class ScreenControlAccuracyScenariosTest {
     private fun alarms(prompt: String, reply: String): List<AlarmAction> =
         AlarmGuard.apply(prompt, AlarmActions.parse(reply).second)
 
+    // Same, with JARVIS's previous turn as context (the two-turn alarm confirm).
+    private fun alarms(prompt: String, priorPrompt: String, reply: String): List<AlarmAction> =
+        AlarmGuard.apply(prompt, AlarmActions.parse(reply).second, priorPrompt)
+
     private fun steps(reply: String) = ScreenActions.parse(reply).steps
 
     // ============================== A · Music & media (10) ==============================
@@ -162,6 +166,11 @@ class ScreenControlAccuracyScenariosTest {
         assertEquals("exhausted", driveErrand(null, ('A'..'I').map { "<<TAP|$it>>" }))
         // D10 an in-app follow-up (no open) → batch.
         assertFalse("D10 in-app follow-up is not an errand", AgentLoop.isErrand(steps("<<TAP|Mom>>")))
+        // D11 device trace: "opened Facebook" then <<BACK>> backed straight out of the
+        // app. Right after the Open there is nothing to go back from — refuse it.
+        assertEquals("blocked:${AgentLoop.JUST_ARRIVED}", driveErrand("Facebook", listOf("<<OPEN|Facebook>>", "<<BACK>>")))
+        // D12 same failure again in Zomato — the guard is app-agnostic.
+        assertEquals("blocked:${AgentLoop.JUST_ARRIVED}", driveErrand("Zomato", listOf("<<OPEN|Zomato>>", "<<HOME>>")))
     }
 
     // ==================== E · Safety / ask-or-act / irreversible (10) ====================
@@ -186,6 +195,14 @@ class ScreenControlAccuracyScenariosTest {
         assertTrue(AgentLoop.parseMove("I can't see a cart on this screen.") is AgentMove.Blocked)
         // E10 an on-screen one-time code is masked before it leaves the device.
         assertEquals("your code is ***", ScreenMatch.redactSensitive("your code is 481922", isPassword = false))
+        // E11 device trace: "set an alarm for tomorrow" → "What time?" → "6 o'clock".
+        // The confirming turn has no alarm word; with the question as context it is kept.
+        assertEquals(
+            1,
+            alarms("6 o'clock", "What time would you like the alarm to go off tomorrow?", "<<ALARM|SET|06:00|Wake Up>>").size,
+        )
+        // …but the same "6 o'clock" with no pending question sets nothing.
+        assertEquals(emptyList<AlarmAction>(), alarms("6 o'clock", "<<ALARM|SET|06:00|Wake Up>>"))
     }
 
     // --- errand driver (success path), copied from ScreenControlScenarioTest ---
