@@ -2641,3 +2641,24 @@ third-party apps, TTS, OEM behaviour), not the first.
   existing warnings are triaged.
 - `testOptions { unitTests { isIncludeAndroidResources = true; isReturnDefaultValues
   = true } }` added now, ahead of the Robolectric tier.
+
+### 2026-08-06 — Test pyramid A3: Robolectric (app-resolution, prefs, stores on the JVM)
+
+Added the Robolectric tier so Android-framework code runs in CI without a device.
+Deps: `org.robolectric:robolectric:4.14.1` + `androidx.test:core` (test), and
+`androidx.test` core/ext-junit/runner (androidTest, for the emulator tier), plus
+`testInstrumentationRunner = AndroidJUnitRunner`. Tests pinned to `@Config(sdk=[34])`.
+
+- **`AppLauncherRobolectricTest`** — the point of this tier: `resolvePackage` run
+  end-to-end against a FAKE installed-app set via `shadowOf(packageManager)`.
+  "Amazon Music" → Amazon Music (not the shop/Music), "Amazon" → the shop, unknown
+  → null. This catches the exact class of device bug at the PackageManager level.
+- **`UserPreferencesRobolectricTest`** — learned-fact dedup/cap/oldest-out eviction,
+  background-wake default, custom-instructions persistence (real SharedPreferences +
+  org.json).
+- **`ConversationStoreRobolectricTest`** — JSON round-trip, clear, corrupt-JSON
+  fallback to empty.
+
+Risk noted: AGP 9.1.0 is very new; Robolectric 4.14.1 config against it is
+unverified locally (no Gradle here) — CI is the check. The emulator load test
+(Phase C) follows.

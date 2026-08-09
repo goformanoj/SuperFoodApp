@@ -23,6 +23,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
         buildConfigField("String", "GROQ_API_KEY", "\"$groqApiKey\"")
     }
@@ -127,4 +128,17 @@ dependencies {
     // Plain JVM unit tests for the pure-Kotlin logic (marker parsers, session
     // state machine). No device or emulator needed — these run in CI on every push.
     testImplementation("junit:junit:4.13.2")
+
+    // Robolectric runs Android-framework code (SharedPreferences, PackageManager,
+    // org.json, Intents) on the JVM, so app-resolution, preferences and the JSON
+    // stores can be tested in CI without a device.
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
+
+    // Instrumented tests that need the REAL Android runtime (the openWakeWord TFLite
+    // load). Run on an emulator in a separate CI job. Compose-UI test deps are added
+    // later alongside the UI tests, with the Compose BOM on the androidTest classpath.
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
