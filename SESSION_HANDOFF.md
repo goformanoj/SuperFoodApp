@@ -5,20 +5,24 @@
 
 ## Current position + immediate next
 
-**`main` @ `553bf7a`** — green build **#226** (all 3 CI jobs). Branch `claude/project-onboarding-lcnvi7`
-is **level with `main`** (just fast-forwarded). Latest: ~50 rigorous A/B/C/F scenario tests added (screen
-control accuracy + long errands, work-session lifecycle, phantom-alarm, files) — all green in `build`. An
-on-device PDF test was tried and pulled: it reliably crashed the GitHub emulator VM under the fuller load
-(runs #222–#225, infra not assertion), so the emulator job is back to its stable 8-test set and real
-`PdfDocument` rendering is a Rule-5 device-only check. **GOTCHA: the CI emulator has a hard capacity — a
-native-heavy instrumented test can flip it from green to reliably red; keep logic in the fast tiers.**
-In progress (branch, build pending): 50 screen-control accuracy scenarios (`ScreenControlAccuracyScenariosTest`)
-that found + fixed two real guard bugs — negation defeating the guards (new pure `assistant/Negation.kt`) and
-`SpendGuard` stripping explicitly-requested `Tap(Send)`/`Call`/`Share`/`Delete` (it truncated at ANY
-irreversible tap, breaking messaging; now **per-action authorization**). **GOTCHA: `SpendGuard` withholds an
-irreversible tap only when the user did NOT name that action un-negated — spend taps need a spend word,
-call/share/delete need their verb, send/post belong to `SendGuard`; the errand loop still confirms multi-step
-irreversibles.** On-device eval prompts live in `docs/SCREEN_CONTROL_EVAL.md`.
+**`main` @ `a8db5b7`** — green build **#234** (all 3 CI jobs; emulator green on attempt 1 after dropping
+`JarvisAppUiTest`, whose HudOrb animation reliably crashed the VM). Branch `claude/project-onboarding-lcnvi7`.
+**In progress (branch, build pending): five device-trace bugs fixed in code.** An on-device eval surfaced
+real failures; each now has a frozen regression test. (1) **Alarm across turns** — `AlarmGuard.apply` now
+takes the prior assistant turn so "set an alarm for tomorrow" → "6 o'clock" is honoured (it was dropped
+because the guard only saw the latest utterance). (2) **Phantom `<<BACK>>`/`<<HOME>>` out of a just-opened
+app** — new `AgentLoop.JUST_ARRIVED` guard refuses a Back/Home before any in-app tap/type. (3) **Typed the
+user's conversational sentence** — `parseMove` refuses a `<<TYPE>>` echoing the whole sentence-length goal.
+(4) **`<<OPEN|non-app>>` silent success** — `ScreenControlService` Open branch now `failed()`s on null
+resolution. (5) **PICK chose the "Reels" nav tab** — new pure `control/PickFilter` strips nav chrome before
+the chooser. **GOTCHA: a guard tested only on single utterances is untested for two-turn flows** (alarms,
+confirmations, "which one?" answers live on the SECOND turn — pass the prior turn as context). **GOTCHA: the
+errand test harness's leading `<<OPEN|app>>` reply already IS the engine's `errandSteps = opens` seed — write
+Open-then-move scenarios; do NOT pre-seed `taken` (it doubles the Open and trips the repeat/count guards).**
+Earlier this session (merged to `main`): negation-aware guards (`assistant/Negation.kt`) and `SpendGuard`
+per-action authorization. **GOTCHA: `SpendGuard` withholds an irreversible tap only when the user did NOT name
+that action un-negated — spend taps need a spend word, call/share/delete need their verb, send/post belong to
+`SendGuard`.** On-device eval prompts + a §F regression re-verify list live in `docs/SCREEN_CONTROL_EVAL.md`.
 **The test pyramid is COMPLETE** — all six layers live: pure JVM, Robolectric, Python wake-word check,
 emulator (openWakeWord load+detect **and** Compose UI: `InstructionsScreenUiTest`),
 trace-replay, lint. The screen-control a11y-binding emulator test was deliberately skipped (flaky, no

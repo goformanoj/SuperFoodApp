@@ -393,6 +393,50 @@ pre-check (executeScreen no longer runs before speaking).
 User confirmed: JARVIS spoke, opened YouTube, tapped Search, clean handoff —
 voice + brain + memory + calendar + screen control all working on-device.
 
+### 2026-08-09 — Device trace → five screen-control/alarm bugs fixed, and WHY the 50-scenario suite missed them
+The user ran the on-device eval and shared a trace full of real failures, asking —
+fairly — "why are there sooo many bugs, didn't you do rigorous tests". The honest
+answer is that the failures split into three kinds, and only naming each makes them
+"not appear again":
+
+**Two were deterministic bugs the suite SHOULD have caught.**
+- **Alarm never set.** "set an alarm for tomorrow" → JARVIS asks the time → "6 o'clock"
+  → `alarm suppressed: nothing in "6 o'clock" asked for one`. `AlarmGuard.asksForAlarm`
+  only ever saw the latest utterance, and every test fed it ONE string. The two-turn
+  confirm — the normal way an alarm is set — was untested. WHY it matters: the fix
+  passes the prior assistant turn; a bare time answer now confirms an alarm JARVIS
+  itself asked the time for, and negation still wins so "don't set an alarm" stays
+  dropped. Evidence: new two-turn cases in `AlarmGuardTest`/`AlarmGuardScenarioTest`.
+- **Phantom `<<BACK>>` backed out of the app it just opened** ("opened Facebook" then
+  `<<BACK>>`, again in Zomato). `parseMove` had no guard for it — LEFT_APP only fires
+  on Open, ALREADY_FAILED needs a prior failure, GOING_IN_CIRCLES needs a repeat. New
+  `JUST_ARRIVED` guard: a Back/Home before any in-app tap/type has nothing to go back
+  from. WHY the corpus missed it: no scenario fed Open→BACK. (It did NOT miss it for
+  the reason I first assumed — the harness feeds the leading `<<OPEN|app>>` as the
+  first reply, so `taken` already mirrors the engine's seeded `errandSteps`; the guard
+  fires on it. Naive re-seeding would DOUBLE the Open and break the happy-path count
+  assertions, so I did not do it.)
+
+**One was a silent executor gap with no test.** `<<OPEN|Search>>` (the model treating a
+UI control as an app) "succeeded": `ScreenControlService`'s Open branch was the only
+step type that advanced on a null resolution instead of calling `failed()`. Now it
+fails honestly. Contract pinned in `AppLauncherTest` (control names → null).
+
+**Two are model-layer, which a unit test can guard the CONSEQUENCE of but not prevent.**
+- Chooser picked the **"Reels" nav tab** for "the top Reel" — the option list is every
+  clickable label incl. tabs, and "the top Reel" string-matches "Reels". New pure
+  `control/PickFilter` drops nav-chrome before the chooser (never emptying the list);
+  `CHOOSER_PROMPT` now names reel/story/short/post. `PickFilterTest`.
+- Recovery **typed the user's Hindi thinking-aloud** into a search box: `currentGoal =
+  userText` verbatim → the model typed the whole goal. `parseMove` now refuses a
+  `<<TYPE>>` echoing the whole sentence-length goal; prompt says type only the query.
+
+GOTCHA banked: **a guard tested only on single utterances is not tested for a two-turn
+flow.** Alarms, confirmations and "which one?" answers all live on the SECOND turn —
+test the guard with the prior turn as context, or it will drop the real thing while
+looking green. And: **the errand test harness's leading `<<OPEN|app>>` reply IS the
+`errandSteps = opens` seed** — write Open-then-move scenarios, don't pre-seed `taken`.
+
 ## Guiding principles (learned the hard way this session)
 1. One small change -> one green build -> test on device -> next change.
 2. Never stack a fragile feature on a working one without a fallback / known-good baseline.
