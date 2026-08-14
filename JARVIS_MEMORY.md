@@ -3058,6 +3058,16 @@ alarm rationale and the narration rationale into the KDoc, per the project's own
 rule that **a prompt is billed on every request and a comment is billed never**.
 5,914 chars, under the tested 6,000 ceiling.
 
+**One more, found by reading rather than from the trace.** The playbook-replay
+path in `ask()` set `pendingGoal` and `pendingScreen` but never reset `agentSteps`
+or `stepsTaken`, which the model path has always done. A replay still runs through
+`runSteps` with recovery enabled, and recovery consults the agent budget — so a
+budget left high by a previous errand could refuse to recover a replayed route
+before it had taken a single step. Latent rather than visible in this trace, but
+the same shape as the 2026-08-04 bug where `stepsTaken` was seeded with the whole
+plan and the first agent move logged as "step 10/10". **When a second path is added
+to a feature, check which of the first path's invariants it also owes.**
+
 **Left undone deliberately, and the user asked for it:** the agent still cannot
 deliberately **scroll**. "Could you scroll down into my playlist and play Cut"
 made the loop thrash — `Tap(Peak) → Tap(Find) → Tap(View Library) → Tap(Peak) →

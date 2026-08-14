@@ -722,6 +722,12 @@ class AssistantEngine(context: Context) {
             pendingGoal = userText
             pendingScreen = plan
             replayingRoute = true
+            // Reset the same counters the model path resets. A replay still runs
+            // through the service with recovery enabled, and recovery consults the
+            // agent budget — left over from a previous errand, it could refuse to
+            // recover a replayed route before it had taken a single step.
+            stepsTaken = steps
+            agentSteps = 0
             addTurn(ChatTurn(ChatTurn.ASSISTANT, plan.clean))
             DebugLog.log(DebugLog.Stage.SPOKE, plan.clean)
             set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = plan.clean) }
