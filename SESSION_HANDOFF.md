@@ -5,8 +5,50 @@
 
 ## Current position + immediate next
 
-**`main` @ `b1158b6`** — green build **#237** (all 3 CI jobs; emulator green on attempt 1). Branch
-`claude/project-onboarding-lcnvi7` is **level with `main`** (fast-forwarded). Tree clean, nothing unmerged.
+**`main` @ `9a8b09b`** — green build **#240**. Session branch `claude/jarvis-os-files-ata1ho`
+carries **eight fixes from the 2026-08-14 device trace** (pushed, CI pending, NOT yet merged).
+
+### 2026-08-14 device trace — eight bugs fixed, one race behind most of them
+**The root cause: the errand loop decided its first move ~1s after launching an app, before the
+app had drawn.** The proof is one line — `choosing … from 1 on-screen options` one second after
+`Open(YouTube)`, whose feed has dozens. The model was handed a splash screen and answered the only
+ways it could: a reflexive `<<BACK>>` or a `<<PICK>>` against a list of one. Three errands died on
+their opening move. Fixed with `AgentLoop.looksUnrendered()` + a bounded re-look, applied **only
+before the first action**. Then: `JUST_ARRIVED` joins `GOING_IN_CIRCLES` in `AgentLoop.NUDGEABLE`
+(a first-move Back is a habit, not a dead end); a failed leading `Open` now stops the errand and
+says so (`couldNotOpenMessage`) instead of driving on; **`say()` now sets `busy`** (TTS rides the
+music stream, so the media check was hearing JARVIS and yielding the mic after every agent-loop
+line); a marker that was a sentence's subject no longer leaves a headless spoken fragment;
+stripped marker chains no longer leave blank-line holes; the playbook no longer learns **or
+replays** complaints and no longer re-learns its own replays; and search-box chrome (`Clear`,
+`Cancel`, …) is kept from the `<<PICK>>` chooser. Prompt gained "ask only what you need to act
+now, never for details you cannot set" (five turns were lost to delivery-slot/address questions
+`AskGuard` correctly dropped). 24 frozen regressions in `DeviceTrace0814Test`.
+
+**GOTCHA: reporting a failure honestly is only half the job — something has to READ the report.**
+`Open(app=Search)` failed exactly as the 2026-08-09 fix intended, and `runSteps(opens) { ok, _ -> }`
+ignored `ok` and drove the errand anyway.
+
+**GOTCHA: a guard that depends on a flag is only as good as the paths that set it.** `mediaCheck`'s
+`!busy` guard against hearing JARVIS's own TTS was written on 2026-07-28 and was correct for
+`ask()` and `speakAck()` — and `say()`, the agent loop's only speech path, never set the flag at all.
+
+**GOTCHA: an app is FOREGROUND long before it has DRAWN.** `APP_OPEN_MS` (1200ms) buys the former,
+not the latter. Anything that reads the screen right after a launch must check it is worth reading.
+
+**⏭️ Asked for and NOT built: deliberate scrolling.** "Could you scroll down into my playlist and
+play Cut" made the loop thrash `Tap(Peak) → Tap(Find) → Tap(View Library) → Tap(Peak) → …` until
+the repeat guard stopped it. `<<TAP>>` scrolls only while hunting a *named* label, so a list cannot
+be browsed. There is no scroll verb in `AGENT_PROMPT`. This is the obvious next feature.
+
+**Doc correction (2026-08-14):** the "recreate `SpeechRecognizer` per turn" gotcha below is **stale**.
+The shipped `VoiceController.stopListening()` calls `cancel()` and reuses one instance — because the
+voice loop was deleted and rebuilt that way on 2026-07-26, and *that* rebuild is the version the user
+confirmed working. The real culprits were the custom silence hints and a divergent "Yes?" hand-off,
+both long gone. Do not "fix" it back.
+
+### Previous position (2026-08-09)
+**`main` @ `b1158b6`** — green build **#237** (all 3 CI jobs; emulator green on attempt 1).
 **Shipped & merged this session: five device-trace bugs fixed in code.** An on-device eval surfaced
 real failures; each now has a frozen regression test. (1) **Alarm across turns** — `AlarmGuard.apply` now
 takes the prior assistant turn so "set an alarm for tomorrow" → "6 o'clock" is honoured (it was dropped

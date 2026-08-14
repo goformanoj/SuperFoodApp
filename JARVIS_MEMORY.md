@@ -2977,6 +2977,97 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-14 — A device session, and the one-second bug underneath most of it
+
+The user ran a long session on the realme (Android 15) and shared the trace: an
+attempted Blinkit order, an Amazon Music playlist, and a YouTube search. Almost
+nothing worked. Reading it before theorising (Rule 4) paid off, because the
+obvious diagnosis — "the model is bad at this" — was wrong.
+
+**The root cause is a race, and one line of the trace proves it:**
+
+    16:40:36  SCREEN  step 1/1 Open(app=YouTube)
+    16:40:37  SCREEN  choosing "first tutorial video" from 1 on-screen options
+
+One second after launching YouTube, the screen had **one** tappable label.
+YouTube's home feed has dozens. `APP_OPEN_MS` (1200ms) is long enough for the app
+to become *foreground* and nowhere near long enough for it to have *drawn*. So
+`driveErrand` was handing the model a splash screen and asking for its next move,
+and the model answered the only ways it could: a reflexive `<<BACK>>`, or a
+`<<PICK>>` against a list of one. Three separate errands died on their first move
+with `backing out of the app it just opened`.
+
+That single fault explains the Blinkit repeat, the Amazon Music dead end, and the
+YouTube flailing. **The intelligent component was being asked to think about a
+blank screen.** New pure `AgentLoop.looksUnrendered()` (blank / remembered-rather-
+than-live / fewer than `READY_ITEMS` interactive items) and a bounded re-look. It
+applies **only before the first action**: later in an errand a sparse screen is
+real information, not a rendering delay, and waiting on it would be a hang.
+
+**Seven more, each quoting the line that caused it.**
+
+- **A first-move `<<BACK>>` ended the whole errand.** `GOING_IN_CIRCLES` got one
+  nudge; `JUST_ARRIVED` got none, so a single reflexive Back killed the run and
+  the user heard "I can't see what to do from this screen" before JARVIS had
+  tried anything. Both are habits rather than dead ends, so both are now in
+  `AgentLoop.NUDGEABLE`. `ALREADY_FAILED` and `LEFT_APP` deliberately are not —
+  those name a route already known to be wrong, so re-asking invites the same
+  answer.
+- **A failed launch blamed the screen.** `Open(app=Search) FAILED — no app named
+  "Search" is installed` and the loop drove on regardless, into a screen JARVIS
+  had never left. The Fix-4 honest failure from 2026-08-09 worked exactly as
+  designed and then nothing consumed it: `runSteps(opens) { ok, _ -> }` ignored
+  `ok`. Lesson worth keeping: **reporting a failure honestly is only half the
+  job; something has to read the report.**
+- **`say()` never set `busy`, so JARVIS heard itself.** TTS goes out through the
+  music stream, so `isMusicActive` is true while JARVIS speaks — the exact gotcha
+  already written down on 2026-07-28 and guarded by `!busy` in `mediaCheck`.
+  `ask()` and `speakAck()` set the flag; `say()`, the agent loop's *only* speech
+  path, did not. The trace shows `audio started — pausing listening` two seconds
+  after every single agent-loop message, so the microphone was yielded precisely
+  when JARVIS had just asked the user a question. **A guard that depends on a flag
+  is only as good as the paths that set it** — this one had been correct for two
+  of three callers for weeks.
+- **A marker that was a sentence's subject left a headless reply.** `<<TAP|Add to
+  wishlist>> isn't the right control…` was SPOKEN starting at "isn't". Fixed
+  narrowly: only when the reply *begins* with a marker (so an ordinary reply that
+  merely opens in lower case survives) and only up to the first sentence end (so
+  nothing is deleted wholesale — trading a clumsy sentence for silence is worse).
+- **Stripped marker chains left a hole** — one reply was displayed with six blank
+  lines through the middle of it.
+- **The playbook learned a complaint, replayed it, and re-learned it.**
+  `replaying known route "you didnt do anything" (used 2x)` followed two seconds
+  later by `learned route "you didnt do anything"`. Two independent bugs: a
+  complaint is not a task (whatever steps follow one belong to the request
+  *before* it), and **a replayed route was being written back to the playbook**,
+  so a bad template reinforced itself on every use. `Playbook.isComplaint()`
+  blocks learning AND matching — the latter matters because the poisoned entry is
+  already on the user's phone and replaying it would look exactly like the bug
+  persisting. A replay is also no longer re-driven as an errand, which would have
+  thrown away the very steps it was stored for.
+- **The chooser answered "Clear"** for "how it works" — the search box's
+  clear-text button. Added the search-surface chrome to `PickFilter`.
+
+**And a prompt rule, paid for by a trim.** Five turns of this session were lost to
+`AskGuard` because the model kept appending a question to an otherwise-complete
+plan — and the questions were for *delivery slots and addresses*, which JARVIS
+cannot set at all. The guard was right every time; the model was asking for
+information it could never use. The prompt now says to ask only what is needed to
+act now and never for details it cannot set itself. Paid for by moving the phantom
+alarm rationale and the narration rationale into the KDoc, per the project's own
+rule that **a prompt is billed on every request and a comment is billed never**.
+5,914 chars, under the tested 6,000 ceiling.
+
+**Left undone deliberately, and the user asked for it:** the agent still cannot
+deliberately **scroll**. "Could you scroll down into my playlist and play Cut"
+made the loop thrash — `Tap(Peak) → Tap(Find) → Tap(View Library) → Tap(Peak) →
+Tap(View Library)` — until the repeat guard stopped it. `<<TAP>>` scrolls only
+while hunting a named label; there is no scroll verb in the agent vocabulary, so
+a list cannot be browsed. That is a feature, not one of these bugs, and it is the
+obvious next piece.
+
+24 frozen regressions in `DeviceTrace0814Test`, each naming its trace line.
+
 ### 2026-08-09 — Root-caused the emulator flakiness: JarvisAppUiTest (HudOrb animation) crashed the VM
 
 The "device offline" emulator crash was NOT ~50% random — a 3x-retry run showed all THREE fresh
