@@ -133,7 +133,11 @@ jobs:
           arch: x86_64
           target: default
           disable-animations: true
-          script: ./gradlew connectedDebugAndroidTest
+          # The E2E tap probe is deliberately EXCLUDED here and runs in its own
+          # job below. This suite has a demonstrated capacity ceiling — it
+          # reliably crashed the VM at ten tests — so its proven-green set must
+          # not grow just because a new instrumented test was added.
+          script: ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.jarvis.os.e2e.A11yProbeTest
 
       - name: Run instrumented tests on an emulator (attempt 2)
         id: emu2
@@ -145,7 +149,11 @@ jobs:
           arch: x86_64
           target: default
           disable-animations: true
-          script: ./gradlew connectedDebugAndroidTest
+          # The E2E tap probe is deliberately EXCLUDED here and runs in its own
+          # job below. This suite has a demonstrated capacity ceiling — it
+          # reliably crashed the VM at ten tests — so its proven-green set must
+          # not grow just because a new instrumented test was added.
+          script: ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.jarvis.os.e2e.A11yProbeTest
 
       - name: Run instrumented tests on an emulator (attempt 3)
         if: steps.emu1.outcome == 'failure' && steps.emu2.outcome == 'failure'
@@ -155,12 +163,75 @@ jobs:
           arch: x86_64
           target: default
           disable-animations: true
-          script: ./gradlew connectedDebugAndroidTest
+          # The E2E tap probe is deliberately EXCLUDED here and runs in its own
+          # job below. This suite has a demonstrated capacity ceiling — it
+          # reliably crashed the VM at ten tests — so its proven-green set must
+          # not grow just because a new instrumented test was added.
+          script: ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.jarvis.os.e2e.A11yProbeTest
 
       - name: Upload instrumented test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: instrumented-test-report
+          path: app/build/reports/androidTests/
+          if-no-files-found: ignore
+
+  # The missing tier: a test that actually drives a TAP.
+  #
+  # Every other layer of the pyramid verifies logic given a screen; none of them
+  # verify that a tap lands on a real one. That gap is why the 2026-08-14 device
+  # trace could contain integration bugs no pure test could catch (planning
+  # against an unrendered screen, a failed launch nobody read, a first-move Back
+  # ending an errand).
+  #
+  # This is a PROBE, not yet a suite: one test settling whether the accessibility
+  # service can be enabled from a test at all, and whether an androidTest-APK
+  # Activity presents a package the executor is willing to act on.
+  #
+  # NON-GATING on purpose (continue-on-error). The team already found
+  # a11y-in-emulator flaky, and the emulator tier has a hard capacity ceiling, so
+  # until this is proven stable it must never red the proven-green pyramid.
+  e2e-tap:
+    name: E2E tap probe (non-gating)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the E2E tap probe on an emulator
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.jarvis.os.e2e.A11yProbeTest
+
+      - name: Upload E2E probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-tap-probe-report
           path: app/build/reports/androidTests/
           if-no-files-found: ignore

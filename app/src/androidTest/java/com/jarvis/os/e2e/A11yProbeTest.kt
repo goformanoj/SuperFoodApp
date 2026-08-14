@@ -1,0 +1,173 @@
+package com.jarvis.os.e2e
+
+import android.content.Intent
+import android.os.ParcelFileDescriptor
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.jarvis.os.control.ScreenControlService
+import com.jarvis.os.control.ScreenStep
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+/**
+ * The PROBE for the end-to-end tap tier — deliberately one test, not a suite.
+ *
+ * The test pyramid has six layers and **not one of them drives a tap**. The two
+ * existing instrumented tests load a model and render a single Compose screen. That
+ * gap is exactly why the 2026-08-14 device trace could contain integration bugs no
+ * pure test could catch: the loop planning against an unrendered screen, a failed
+ * launch nobody read, a first-move Back ending an errand.
+ *
+ * Before building a suite on this, two things have to be settled, and only a real
+ * Android runtime can settle them:
+ *
+ *  1. **Can the accessibility service be enabled from a test at all?** It needs the
+ *     `enabled_accessibility_services` secure setting written via shell.
+ *  2. **Does an androidTest-APK Activity present a different package?**
+ *     `ScreenControlService.awaitApp` and `userAppRoot` both refuse to act when the
+ *     foreground package is JARVIS's own, so if the fixture reads as
+ *     `com.jarvis.os` the whole approach is dead and the fallback is a separate
+ *     `:fixtures` module installed by CI.
+ *
+ * Both are asserted here explicitly rather than assumed, so a failure names which
+ * one broke instead of just saying a tap did not land.
+ *
+ * **Kept to one test on purpose.** The emulator tier has a demonstrated hard
+ * ceiling — the suite reliably crashed the GitHub VM at ten tests, and
+ * `JarvisAppUiTest` took down three fresh emulators in a row. This runs in its own
+ * non-gating CI job so that if a11y-in-emulator turns out to be as flaky as the
+ * team already found it, it cannot red the proven-green pyramid.
+ */
+@RunWith(AndroidJUnit4::class)
+class A11yProbeTest {
+
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+    @After
+    fun disableService() {
+        // Leave the emulator as we found it, so a later test in the same run is not
+        // surprised by a live accessibility service.
+        shell("settings put secure enabled_accessibility_services \"\"")
+        shell("settings put secure accessibility_enabled 0")
+    }
+
+    @Test
+    fun the_service_binds_and_a_real_tap_reaches_a_third_party_fixture() {
+        // --- 1. Enable the real ScreenControlService -------------------------
+        shell(
+            "settings put secure enabled_accessibility_services " +
+                "com.jarvis.os/com.jarvis.os.control.ScreenControlService",
+        )
+        shell("settings put secure accessibility_enabled 1")
+
+        val bound = waitFor(BIND_TIMEOUT_MS) { ScreenControlService.isRunning() }
+        assertTrue(
+            "the accessibility service never bound — enabling it by shell setting " +
+                "is the foundation of this tier; without it the E2E approach needs " +
+                "rethinking, not debugging",
+            bound,
+        )
+        val service = ScreenControlService.instance
+        assertNotNull("isRunning() was true but instance was null", service)
+
+        // --- 2. Put the fixture in front -------------------------------------
+        val context = instrumentation.targetContext
+        context.startActivity(
+            Intent(context, FixtureActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+        )
+
+        // THE constraint. If this reads com.jarvis.os, awaitApp/userAppRoot will
+        // refuse every step and the androidTest-APK approach cannot work.
+        val front = waitForValue(FOREGROUND_TIMEOUT_MS) {
+            service!!.rootInActiveWindow?.packageName?.toString()
+        }
+        assertEquals(
+            "the fixture must present a DIFFERENT package than the app under test — " +
+                "ScreenControlService refuses to act on its own package, so if this " +
+                "is com.jarvis.os the fallback is a separate :fixtures module",
+            FixtureActivity.FIXTURE_PACKAGE,
+            front,
+        )
+
+        // --- 3. Drive one real tap through the public executor ---------------
+        val done = CountDownLatch(1)
+        var reportedOk = false
+        instrumentation.runOnMainSync {
+            service!!.runSteps(
+                steps = listOf(ScreenStep.Tap(FixtureActivity.TAP_TARGET)),
+                // No model is reachable from a test, so a failed step must fail
+                // rather than call out for a replacement plan.
+                recover = false,
+            ) { ok, _ ->
+                reportedOk = ok
+                done.countDown()
+            }
+        }
+        assertTrue(
+            "runSteps never called back within ${STEP_TIMEOUT_MS}ms",
+            done.await(STEP_TIMEOUT_MS, TimeUnit.MILLISECONDS),
+        )
+        assertTrue("the executor reported the tap as failed", reportedOk)
+
+        // The assertion that actually matters: the FIXTURE's own click handler ran.
+        // Trusting the executor's own "ok" would only re-test its bookkeeping — the
+        // exact false-success class that once announced "Playing the Thriller
+        // video" four times while doing nothing.
+        val tapped = waitForValue(CALLBACK_TIMEOUT_MS) { FixtureActivity.Recorder.lastTapped() }
+        assertEquals(
+            "the fixture's own click callback did not fire for the target control",
+            FixtureActivity.TAP_TARGET,
+            tapped,
+        )
+        // And it hit the right one: "Add to wishlist" shares a word with the target
+        // and sits right beside it.
+        assertTrue(
+            "the decoy must not have been tapped",
+            FixtureActivity.Recorder.lastTapped() != FixtureActivity.DECOY,
+        )
+    }
+
+    // --- helpers -------------------------------------------------------------
+
+    /**
+     * Runs [command] as shell and waits for it to finish.
+     *
+     * The output is read to the end rather than the descriptor simply being
+     * closed: `executeShellCommand` runs asynchronously, and closing early can
+     * return before the setting has actually been written — which would show up
+     * later as the far more confusing "the service never bound".
+     */
+    private fun shell(command: String) {
+        ParcelFileDescriptor.AutoCloseInputStream(
+            instrumentation.uiAutomation.executeShellCommand(command),
+        ).use { it.readBytes() }
+    }
+
+    private fun waitFor(timeoutMs: Long, condition: () -> Boolean): Boolean =
+        waitForValue(timeoutMs) { if (condition()) true else null } == true
+
+    /** Polls [read] until it returns non-null, or the timeout expires. */
+    private fun <T> waitForValue(timeoutMs: Long, read: () -> T?): T? {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            read()?.let { return it }
+            Thread.sleep(POLL_MS)
+        }
+        return read()
+    }
+
+    private companion object {
+        const val BIND_TIMEOUT_MS = 15_000L
+        const val FOREGROUND_TIMEOUT_MS = 10_000L
+        const val STEP_TIMEOUT_MS = 20_000L
+        const val CALLBACK_TIMEOUT_MS = 5_000L
+        const val POLL_MS = 200L
+    }
+}

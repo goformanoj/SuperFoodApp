@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifest for the androidTest APK only. Nothing here ships in the app.
+
+  It exists to register FixtureActivity, the stand-in "third-party app" the
+  end-to-end tap tier drives. The fixture must live here rather than in
+  src/debug because ScreenControlService deliberately refuses to act on
+  JARVIS's own package (awaitApp / userAppRoot both reject it), so a fixture
+  sharing com.jarvis.os could never be tapped. This APK's package is
+  com.jarvis.os.test, which is a different package as far as the accessibility
+  service is concerned.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <activity
+            android:name="com.jarvis.os.e2e.FixtureActivity"
+            android:exported="true"
+            android:label="JARVIS Test Fixture"
+            android:theme="@android:style/Theme.Material.Light" />
+    </application>
+
+</manifest>
