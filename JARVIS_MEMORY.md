@@ -2977,6 +2977,57 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-14 — The E2E tap probe failed, and my own CI wiring hid it
+
+Built the first piece of the E2E tap tier — the layer the pyramid has never had,
+since not one of its six layers drives a tap. Deliberately a **probe**: one test,
+settling the two assumptions the whole tier rests on, before any suite is built on
+them.
+
+**It failed, and that is the probe working.**
+
+    A11yProbeTest > the_service_binds_and_a_real_tap_reaches_a_third_party_fixture FAILED
+      the accessibility service never bound
+
+Writing `enabled_accessibility_services` by shell did not get `ScreenControlService`
+bound within 15s on an API 34 `default` emulator image. Everything downstream — does
+an androidTest-APK Activity present a package the executor will act on, does a real
+tap reach the fixture's own click handler — never ran, so **both are still open**.
+One test and four minutes bought that, rather than ten tests resting on a false
+premise. This is exactly what the handoff meant by "de-risk with a 1-test PROBE
+first", and the value showed up on the first run.
+
+**The worse finding is my own.** I set `continue-on-error: true` on the probe
+**step** as well as its job. GitHub then reports that step's `conclusion` as
+`success` even when it failed — so the jobs API showed all four jobs green, and I
+came within one API call of telling the user the probe had passed. The failure was
+visible only in the raw log.
+
+That is the same shape as "in progress is not evidence of progress", which this file
+already records: **I used the signal the API handed me first instead of the one that
+was true.** The instrumentation I had just written to answer a question was the thing
+that made the answer unreadable. `continue-on-error` now lives on the **job** only —
+the job still does not gate the run, and the step now reports honestly.
+
+**The second defect was the assertion itself.** It said "never bound" and named no
+cause, which is precisely the setup that cost six red builds (#163–#169) in July,
+when `--stacktrace` buried the one line that mattered and three diagnoses were
+guessed instead of read. So before chasing the cause at all, the failure was made to
+carry the facts: whether the secure-settings write actually stuck, what
+`AccessibilityManager` reports as enabled and as installed, and which processes the
+test and target are running in. Those distinguish "the shell write failed" from "the
+write worked and the system still refused to bind" — completely different fixes.
+Bind window 15s → 40s, since the old number was a guess about a cold emulator.
+
+**No cause is claimed here.** The rule this project already paid for — *do not name
+a cause you have not seen* — applies directly: a plausible explanation found while
+searching is not evidence that it is THE explanation. The next run reports facts.
+
+Two gotchas banked. **`continue-on-error` on a step makes the jobs API lie about
+that step; put it on the job.** And **a probe is only worth running if its failure
+names which assumption broke** — otherwise it costs an emulator cycle and returns
+"something is wrong", which is what you already knew.
+
 ### 2026-08-14 — A device session, and the one-second bug underneath most of it
 
 The user ran a long session on the realme (Android 15) and shared the trace: an

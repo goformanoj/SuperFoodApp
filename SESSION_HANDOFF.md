@@ -9,6 +9,29 @@
 green). Session branch `claude/jarvis-os-files-ata1ho` is **level with `main`** (fast-forwarded).
 Tree clean, nothing unmerged. **Eight fixes from the 2026-08-14 device trace are MERGED.**
 
+### ⏭️ E2E tap tier — probe built, RAN, and FAILED at assumption #1
+`A11yProbeTest` (branch only, non-gating job `e2e-tap`) reported **"the accessibility
+service never bound"**: writing `enabled_accessibility_services` by shell did not bind
+`ScreenControlService` within 15s on an API 34 `default` image. The two questions after
+it — does an androidTest-APK Activity present a package the executor will act on, does a
+real tap reach the fixture's click handler — **never ran and are still open**. Cause is
+**not** diagnosed and deliberately not guessed; the probe now reports whether the settings
+write stuck, what `AccessibilityManager` lists as enabled/installed, and the test/target
+processes, and waits 40s. **Next session: read those facts first.** If the write stuck and
+the service is installed but never bound, the settings route is not enough on this image
+and the tier needs a different way in (the recorded fallback is a separate `:fixtures`
+module + an `adb install` CI step, but that fallback was for the PACKAGE constraint, not
+this one — do not reach for it before the facts are in).
+
+**GOTCHA: `continue-on-error` on a STEP makes the jobs API report that step as `success`
+even when it failed.** It was set on both the probe step and its job, so all four jobs
+looked green while the test was red; the failure was visible only in the raw log. Put it
+on the **job** only. Same family as "in progress is not evidence of progress" — trusting
+the signal the API offers first over the one that is true.
+
+**GOTCHA: a probe whose failure does not name which assumption broke is barely worth the
+emulator cycle.** "Never bound" cost a whole run and said only "something is wrong".
+
 ### 2026-08-14 device trace — eight bugs fixed, one race behind most of them
 **The root cause: the errand loop decided its first move ~1s after launching an app, before the
 app had drawn.** The proof is one line — `choosing … from 1 on-screen options` one second after
