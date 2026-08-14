@@ -50,6 +50,25 @@ object ScreenActions {
      */
     private val NARRATION = Regex("""[^.!?]*:\s*""")
 
+    /**
+     * A sentence fragment left behind when a marker was the SUBJECT of the sentence
+     * around it.
+     *
+     * From a device trace, the model replied:
+     *   `<<TAP|Add to wishlist>> isn't the right control to add to cart, so I'll
+     *   look for the right one and try again. To add brown bread…`
+     * Stripping the marker left JARVIS saying "isn't the right control to add to
+     * cart, so I'll look for the right one and try again." out loud — a headless
+     * sentence about a control the user never heard named.
+     *
+     * English sentences do not begin with a lowercase word, so after stripping,
+     * a reply that starts mid-word is a fragment by construction. It is dropped up
+     * to and including the first sentence end. Bounded on purpose: if there is no
+     * sentence end the text is left alone rather than deleted wholesale, since
+     * removing the entire reply would trade a clumsy sentence for silence.
+     */
+    private val HEADLESS_FRAGMENT = Regex("""^[a-z][^.!?]*[.!?]+\s*""")
+
     // "…the steps: ." -> "…the steps."
     private val DANGLING_PUNCTUATION = Regex("""[:,]\s*(?=[.!?])""")
     private val SPACE_BEFORE_PUNCTUATION = Regex("""\s+([.!?,])""")
@@ -82,6 +101,11 @@ object ScreenActions {
             .replace(MARKER, "")
             .replace(MARKER_RESIDUE, "")
 
+        // Only a marker at the very START of the reply can leave a headless
+        // sentence behind. Requiring that is what keeps an ordinary reply which
+        // merely happens to open in lower case ("ok, opening YouTube.") intact.
+        val openedWithMarker = reply.trimStart().startsWith("<<")
+
         val clean = stripped
             // The user should hear what JARVIS is doing, never how it plans to do
             // it. "Here are the steps: ." was genuinely spoken aloud on a device.
@@ -90,8 +114,14 @@ object ScreenActions {
             .replace(SPACE_BEFORE_PUNCTUATION, "$1")
             .replace(DOUBLED_PUNCTUATION, "$1")
             .replace(Regex(" {2,}"), " ")
+            // Markers sit on their own lines, so stripping a chain of them leaves
+            // a hole. A device trace shows one reply displayed with six blank
+            // lines through the middle of it. TTS ignores them, but the Chat
+            // screen shows the reply exactly as it is stored.
+            .replace(Regex("[ \t]*\n[ \t]*(?:\n[ \t]*)+"), "\n\n")
             .replace(TRAILING_COLON, "")
             .trim()
+            .let { if (openedWithMarker) it.replace(HEADLESS_FRAGMENT, "").trim() else it }
         return Plan(clean, steps)
     }
 }

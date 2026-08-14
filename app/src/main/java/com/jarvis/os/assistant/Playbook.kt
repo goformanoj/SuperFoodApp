@@ -80,6 +80,13 @@ object Playbook {
 
         val request = normalise(utterance)
         if (request.length < MIN_TEMPLATE_CHARS) return null
+        // A complaint is not a task. From a device trace: "you didn't do anything"
+        // was stored as a route and thereafter REPLAYED — so the next time the user
+        // said JARVIS had failed, it silently re-ran an old Amazon Music sequence
+        // instead of listening. Whatever steps happen to follow a complaint belong
+        // to the request BEFORE it, so a template built from one is meaningless and
+        // fires on exactly the turns where the user is already unhappy.
+        if (isComplaint(request)) return null
 
         val markers = markersOf(steps)
         val typed = steps.filterIsInstance<ScreenStep.Type>().firstOrNull()?.text
@@ -106,6 +113,13 @@ object Playbook {
      */
     fun match(utterance: String, route: Route): List<ScreenStep>? {
         val request = normalise(utterance)
+        // Refuse to replay on a complaint even if a poisoned route is already
+        // stored on the device. The learning bug above is fixed, but the bad
+        // entries a user already has are not — and replaying one is precisely the
+        // failure that looks like the bug persisting: JARVIS re-runs an old
+        // sequence, without asking the model, on the turn where the user is
+        // telling it that it got things wrong.
+        if (isComplaint(request)) return null
         if (!route.template.contains(SLOT)) {
             return if (request == route.template) parse(route.markers) else null
         }
@@ -141,6 +155,30 @@ object Playbook {
             ScreenStep.Back -> "<<BACK>>"
             ScreenStep.Home -> "<<HOME>>"
         }
+    }
+
+    /**
+     * Phrases that mean "that went wrong", not "do this".
+     *
+     * Matched as a substring of the normalised utterance, because a complaint is
+     * usually wrapped in other words ("hey you didn't do anything at all").
+     */
+    private val COMPLAINTS = listOf(
+        "didnt do anything", "did not do anything", "didnt work", "did not work",
+        "doesnt work", "does not work", "nothing happened", "you didnt", "you did not",
+        "not working", "thats wrong", "that is wrong", "wrong thing", "try again",
+        "you failed", "didnt add", "did not add", "didnt open", "did not open",
+        "didnt play", "did not play", "still not", "thats not",
+    )
+
+    /**
+     * True when [utterance] is the user reporting a failure rather than asking for
+     * something. [normalise] is idempotent, so callers may pass raw or normalised
+     * text.
+     */
+    fun isComplaint(utterance: String): Boolean {
+        val text = normalise(utterance)
+        return COMPLAINTS.any { text.contains(it) }
     }
 
     /** True when a label or phrase names something that cannot be undone. */

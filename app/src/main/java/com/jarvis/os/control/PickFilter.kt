@@ -33,6 +33,12 @@ object PickFilter {
         "feed", "following", "for you", "subscriptions", "library", "inbox",
         "activity", "shop", "marketplace", "groups", "friends", "watch", "settings",
         "account", "cart", "back", "upgrade",
+        // Search-surface chrome. From a device trace: asked to pick "how it works"
+        // from a YouTube suggestion list, the chooser answered "Clear" — the search
+        // box's clear-text button. These act ON the screen rather than being a thing
+        // on it, so they are never what a <<PICK>> is after.
+        "clear", "cancel", "close", "dismiss", "done", "edit", "filter", "filters",
+        "sort", "voice search", "clear search",
     )
 
     /** The options worth choosing from: content first, chrome dropped when content remains. */

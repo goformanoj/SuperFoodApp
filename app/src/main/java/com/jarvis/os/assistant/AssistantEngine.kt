@@ -136,6 +136,19 @@ class AssistantEngine(context: Context) {
     // against the goal rather than against the step that failed.
     private var currentGoal: String = ""
 
+    /**
+     * True while the pending plan came from the [Playbook] rather than the model.
+     *
+     * Two things follow from it, and a trace shows why both are needed. A replayed
+     * route must not be LEARNED again: the trace has JARVIS replay
+     * "you didnt do anything" and then immediately log
+     * `learned route "you didnt do anything"`, so a bad template reinforces itself
+     * every time it fires. And a replayed route must be RUN, not re-driven: routing
+     * it through the errand loop would throw away the very steps that were stored
+     * because they worked.
+     */
+    private var replayingRoute = false
+
     init {
         voice.onReady = { if (!busy) set { it.copy(orb = idleOrb(), status = idleStatus()) } }
         voice.onPartial = { text ->
@@ -640,6 +653,7 @@ class AssistantEngine(context: Context) {
         // the removeCallbacks below and re-armed when it next returns to listening.
         awake = true
         pendingScreen = null
+        replayingRoute = false
         voice.stopListening()
         main.removeCallbacksAndMessages(null)
 
@@ -707,6 +721,7 @@ class AssistantEngine(context: Context) {
             val plan = ScreenActions.Plan(clean = "On it.", steps = steps)
             pendingGoal = userText
             pendingScreen = plan
+            replayingRoute = true
             addTurn(ChatTurn(ChatTurn.ASSISTANT, plan.clean))
             DebugLog.log(DebugLog.Stage.SPOKE, plan.clean)
             set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = plan.clean) }
@@ -967,7 +982,9 @@ class AssistantEngine(context: Context) {
             if (session.needsForegroundService) WorkSessionService.start(appContext)
             main.post { applyMicOwner() }
         }
-        if (plan.needsAccessibility && AgentLoop.isErrand(plan.steps)) {
+        // A replayed route is already known to work — run it as the sequence it was
+        // stored as. Driving it would discard exactly the steps it was kept for.
+        if (plan.needsAccessibility && !replayingRoute && AgentLoop.isErrand(plan.steps)) {
             // An errand inside an app is not planned, it is driven. Everything
             // after the first step was guessed against a screen that did not
             // exist yet — which is why a Blinkit trace kept tapping a control
@@ -987,14 +1004,30 @@ class AssistantEngine(context: Context) {
             // three times running before stalling out.
             errandSteps = opens
             val token = errandToken
-            ScreenControlService.instance?.runSteps(opens, recover = false) { _, _ ->
-                main.post { driveErrand(goal, token, lastFailed = null, app = errandApp) }
+            ScreenControlService.instance?.runSteps(opens, recover = false) { ok, _ ->
+                main.post {
+                    // The launch itself failed — there is no app to drive. A trace
+                    // shows <<OPEN|Search>> (a control mistaken for an app) failing
+                    // honestly and the loop carrying on regardless, into a screen
+                    // JARVIS had never left, where it promptly got stuck. Report
+                    // the real reason instead of the loop's generic dead end.
+                    if (!ok) {
+                        DebugLog.log(DebugLog.Stage.SCREEN, "errand abandoned — the app never opened")
+                        say(AgentLoop.couldNotOpenMessage(errandApp))
+                        return@post
+                    }
+                    driveErrand(goal, token, lastFailed = null, app = errandApp)
+                }
             }
             return ScreenOutcome.DISPATCHED
         }
         if (plan.needsAccessibility) {
             // Run the whole ordered sequence (open -> tap -> type -> enter) via the service.
             val goal = pendingGoal
+            // A route that came FROM the playbook must not be written back into it.
+            // Re-learning a replay makes a template reinforce itself on every use,
+            // which is how "you didnt do anything" reached two uses in one session.
+            val learnable = !replayingRoute
             ScreenControlService.instance?.runSteps(plan.steps) { ok, ranClean ->
                 // The sequence is over — stop showing the control tint.
                 main.post { ScreenControlService.instance?.setControlOverlay(false) }
@@ -1005,7 +1038,7 @@ class AssistantEngine(context: Context) {
                 // reports success, so a trace shows three routes learned in one
                 // session — "did you are", "search box" — each stored from a
                 // sequence whose typing step had just failed.
-                if (ok && ranClean && goal.isNotBlank()) {
+                if (ok && ranClean && learnable && goal.isNotBlank()) {
                     Playbook.learn(goal, plan.steps)?.let {
                         playbook.remember(it, System.currentTimeMillis())
                         DebugLog.log(
@@ -1090,6 +1123,7 @@ class AssistantEngine(context: Context) {
         stalls: Int = 0,
         lastScreen: String = "",
         nudges: Int = 0,
+        renderWaits: Int = 0,
     ) {
         // A newer command has taken over. Without this the old loop kept picking
         // steps while the new one ran, and two loops fought over one screen.
@@ -1105,6 +1139,25 @@ class AssistantEngine(context: Context) {
             return
         }
         val screen = service.describeScreen()
+        // The app was launched a moment ago and is very likely still drawing.
+        // Deciding now hands the model a splash screen and asks for its next move,
+        // which a trace shows it answering with a reflexive <<BACK>> or a <<PICK>>
+        // against a list of one. Only before the first action: after that, a sparse
+        // screen is real information rather than a rendering delay.
+        if (agentSteps == 0 && renderWaits < AgentLoop.MAX_RENDER_WAITS &&
+            AgentLoop.looksUnrendered(screen)
+        ) {
+            DebugLog.log(
+                DebugLog.Stage.SCREEN,
+                "errand: waiting for the app to finish opening " +
+                    "(${renderWaits + 1}/${AgentLoop.MAX_RENDER_WAITS})",
+            )
+            main.postDelayed(
+                { driveErrand(goal, token, lastFailed, app, stalls, lastScreen, nudges, renderWaits + 1) },
+                RENDER_WAIT_MS,
+            )
+            return
+        }
         // Nothing moved. Acting again from an identical screen is how the loop
         // produced eighteen taps that changed nothing.
         val stalled = if (screen == lastScreen) stalls + 1 else 0
@@ -1172,13 +1225,19 @@ class AssistantEngine(context: Context) {
                         say(move.question)
                     }
                     is AgentMove.Blocked -> {
-                        // Choosing a step it has already taken is usually a
-                        // harmless habit — re-opening an app that is already in
-                        // front, say — so it gets ONE more chance to pick
-                        // something else before the errand ends. It costs a
-                        // round trip and no taps.
-                        if (move.reason == AgentLoop.GOING_IN_CIRCLES && nudges == 0) {
-                            DebugLog.log(DebugLog.Stage.SCREEN, "errand: repeated itself — asking once more")
+                        // A refused move is usually a habit rather than a dead end
+                        // — re-opening an app already in front, or going Back the
+                        // instant it arrives — so it gets ONE more chance to pick
+                        // something else before the errand ends. It costs a round
+                        // trip and no taps. A trace shows three errands in a row
+                        // dying on their FIRST move to JUST_ARRIVED, each telling
+                        // the user JARVIS could not see the screen before it had
+                        // tried anything at all.
+                        if (move.reason in AgentLoop.NUDGEABLE && nudges == 0) {
+                            DebugLog.log(
+                                DebugLog.Stage.SCREEN,
+                                "errand: ${move.reason} — asking once more",
+                            )
                             driveErrand(goal, token, lastFailed, app, stalled, lastScreen, nudges = 1)
                         } else {
                             DebugLog.log(DebugLog.Stage.SCREEN, "errand stuck: ${move.reason}")
@@ -1201,6 +1260,16 @@ class AssistantEngine(context: Context) {
         // Reaching here ends an errand (done, asked, blocked, or out of steps), so
         // JARVIS is no longer driving the screen — drop the control tint.
         ScreenControlService.instance?.setControlOverlay(false)
+        // Mark the turn busy for exactly the same reason [ask] and [speakAck] do.
+        // TTS comes out of the MUSIC stream, so while this line is being spoken
+        // `AudioManager.isMusicActive` is true; [mediaCheck] skips its own speech
+        // only via this flag. Without it the check heard JARVIS talking, concluded
+        // the user had started media, and yielded the microphone — a trace shows
+        // "audio started — pausing listening" two seconds after every single
+        // agent-loop message, so the user could not answer the question JARVIS
+        // had just asked them. It also stops the sleep timer firing mid-sentence.
+        busy = true
+        voice.stopListening()
         addTurn(ChatTurn(ChatTurn.ASSISTANT, line))
         DebugLog.log(DebugLog.Stage.SPOKE, line)
         set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = line) }
@@ -1220,6 +1289,11 @@ class AssistantEngine(context: Context) {
         const val MAX_CONTEXT_TURNS = 10 // turns sent to the AI as context
         const val MAX_STORED_TURNS = 200 // turns kept on disk
         const val MEDIA_POLL_MS = 2000L // how often to check whether audio is playing
+
+        // How long to wait before looking again at an app that has been launched
+        // but has not drawn yet. Five of these is ~3s, which covers a cold start
+        // without leaving the user waiting on a silent phone.
+        const val RENDER_WAIT_MS = 600L
 
         // Wake-word idle timeout: after this long awake with nothing said, JARVIS
         // returns to sleep and needs "Hey JARVIS" again. Long enough to think

@@ -93,6 +93,59 @@ object AgentLoop {
     val INTERNAL_REASONS = setOf(NO_STEP, ALREADY_FAILED, GOING_IN_CIRCLES, LEFT_APP, JUST_ARRIVED)
 
     /**
+     * Blocked reasons worth ONE more question before the errand is abandoned.
+     *
+     * Both of these are habits rather than dead ends: re-opening an app already in
+     * front, or reflexively going Back on arrival. A device trace shows three
+     * errands in a row — Blinkit, Amazon Music, and a failed launch — dying on
+     * their very first move to [JUST_ARRIVED], each telling the user "I can't see
+     * what to do from this screen" before JARVIS had tried anything at all. The
+     * model is told the refusal and usually picks a real action; it costs one round
+     * trip and no taps.
+     *
+     * [ALREADY_FAILED] and [LEFT_APP] are deliberately absent: those name a route
+     * that is known wrong, so asking again invites the same answer.
+     */
+    val NUDGEABLE = setOf(GOING_IN_CIRCLES, JUST_ARRIVED)
+
+    /**
+     * How many interactive items a live screen must show before the loop will
+     * plan against it.
+     *
+     * An app that has been launched is "foreground" long before it has drawn
+     * anything. A device trace makes this unmistakable: one second after
+     * `Open(YouTube)` the executor logged *"choosing … from 1 on-screen options"* —
+     * YouTube's home feed has dozens. The model was being handed a splash screen
+     * and asked for its next move, and it answered the only ways it could: a
+     * reflexive `<<BACK>>`, or a `<<PICK>>` against a list of one.
+     */
+    const val READY_ITEMS = 3
+
+    /** How many times the loop will wait for a screen to finish drawing. */
+    const val MAX_RENDER_WAITS = 5
+
+    /**
+     * True when [screen] is not yet worth planning against — blank, remembered
+     * rather than live, or still nearly empty.
+     *
+     * Only consulted before the loop's FIRST action, when an app has just been
+     * launched and a wait genuinely means "it is still opening". Later in an
+     * errand a sparse screen is real information, not a rendering delay.
+     *
+     * Deliberately cheap to be wrong about: waiting on a screen that really is
+     * sparse costs a few hundred milliseconds, bounded by [MAX_RENDER_WAITS],
+     * while not waiting costs the whole errand, planned against a splash.
+     */
+    fun looksUnrendered(screen: String): Boolean {
+        if (screen.isBlank()) return true
+        // describeScreen only opens with "App:" when it read the live foreground
+        // app. Anything else is its remembered-screen fallback, which means the
+        // app being launched is not in front yet.
+        if (!screen.trimStart().startsWith("App:")) return true
+        return screen.count { it == '[' } < READY_ITEMS
+    }
+
+    /**
      * True when [step] has been chosen too often already.
      *
      * The `avoid` check only ever caught the step that FAILED. Most of the
@@ -288,6 +341,24 @@ object AgentLoop {
     fun exhaustedMessage(goal: String): String =
         "I've taken $MAX_STEPS steps towards \"$goal\" and I'm not there yet, so I've " +
             "stopped rather than keep guessing. Tell me what to do next."
+
+    /**
+     * What to say when the errand's own app never opened.
+     *
+     * Distinct from [blockedMessage] on purpose: "I can't see what to do from this
+     * screen" is actively misleading when the truth is that JARVIS never got to a
+     * screen at all. A trace has `<<OPEN|Search>>` — a control mistaken for an app —
+     * failing honestly, and the user then hearing the generic dead-end line.
+     */
+    fun couldNotOpenMessage(app: String): String {
+        val named = app.trim()
+        return if (named.isEmpty()) {
+            "I couldn't open the app for that, so I've stopped. Which app should I use?"
+        } else {
+            "I couldn't find an app called \"$named\" on your phone, so I've stopped. " +
+                "Which app should I use?"
+        }
+    }
 
     /**
      * What to say when the loop cannot find a next step.
