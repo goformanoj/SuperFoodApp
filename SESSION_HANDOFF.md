@@ -5,8 +5,9 @@
 
 ## Current position + immediate next
 
-**`main` @ `9a8b09b`** — green build **#240**. Session branch `claude/jarvis-os-files-ata1ho`
-carries **eight fixes from the 2026-08-14 device trace** (pushed, CI pending, NOT yet merged).
+**`main` @ `a3503d1`** — green build **#242** (`jarvis-debug-apk` present; unit tests, lint and APK
+green). Session branch `claude/jarvis-os-files-ata1ho` is **level with `main`** (fast-forwarded).
+Tree clean, nothing unmerged. **Eight fixes from the 2026-08-14 device trace are MERGED.**
 
 ### 2026-08-14 device trace — eight bugs fixed, one race behind most of them
 **The root cause: the errand loop decided its first move ~1s after launching an app, before the
