@@ -218,8 +218,12 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # NOTE: continue-on-error lives on the JOB, deliberately NOT on this step.
+      # With it here too, the jobs API reports this step's conclusion as "success"
+      # even when the test failed, so the probe's whole point — telling us which
+      # assumption broke — became unreadable from outside. The job still does not
+      # gate the run; the step now says what actually happened.
       - name: Run the E2E tap probe on an emulator
-        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34

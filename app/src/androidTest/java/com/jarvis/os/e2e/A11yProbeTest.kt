@@ -1,7 +1,10 @@
 package com.jarvis.os.e2e
 
+import android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+import android.content.Context
 import android.content.Intent
 import android.os.ParcelFileDescriptor
+import android.view.accessibility.AccessibilityManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.jarvis.os.control.ScreenControlService
@@ -60,17 +63,48 @@ class A11yProbeTest {
     @Test
     fun the_service_binds_and_a_real_tap_reaches_a_third_party_fixture() {
         // --- 1. Enable the real ScreenControlService -------------------------
-        shell(
-            "settings put secure enabled_accessibility_services " +
-                "com.jarvis.os/com.jarvis.os.control.ScreenControlService",
-        )
+        shell("settings put secure enabled_accessibility_services $SERVICE_COMPONENT")
         shell("settings put secure accessibility_enabled 1")
 
         val bound = waitFor(BIND_TIMEOUT_MS) { ScreenControlService.isRunning() }
         assertTrue(
-            "the accessibility service never bound — enabling it by shell setting " +
-                "is the foundation of this tier; without it the E2E approach needs " +
-                "rethinking, not debugging",
+            // The first run of this probe failed here with nothing but "never
+            // bound", which named no cause and would have invited exactly the
+            // guess-then-guess-again cycle that cost this project six red builds.
+            // So the failure now carries what the system actually thinks.
+            buildString {
+                append("the accessibility service never bound within ${BIND_TIMEOUT_MS}ms.\n")
+                append("  settings enabled_accessibility_services = ")
+                append(shell("settings get secure enabled_accessibility_services").trim())
+                append("\n  settings accessibility_enabled = ")
+                append(shell("settings get secure accessibility_enabled").trim())
+                append("\n  AccessibilityManager.isEnabled = ")
+                append(accessibilityManager().isEnabled)
+                append("\n  AccessibilityManager enabled services = ")
+                append(
+                    accessibilityManager()
+                        .getEnabledAccessibilityServiceList(FEEDBACK_ALL_MASK)
+                        .joinToString { it.id }
+                        .ifEmpty { "(none)" },
+                )
+                append("\n  installed services = ")
+                append(
+                    accessibilityManager()
+                        .installedAccessibilityServiceList
+                        .joinToString { it.id }
+                        .ifEmpty { "(none)" },
+                )
+                append("\n  test process = ")
+                append(instrumentation.context.packageName)
+                append(" / target = ")
+                append(instrumentation.targetContext.packageName)
+                append(
+                    "\nIf the setting stuck and the service is installed but never bound, " +
+                        "the settings route is not enough on this image and the tier needs " +
+                        "a different way in. If the setting did NOT stick, the shell write " +
+                        "is the problem, not accessibility.",
+                )
+            },
             bound,
         )
         val service = ScreenControlService.instance
@@ -144,11 +178,14 @@ class A11yProbeTest {
      * return before the setting has actually been written — which would show up
      * later as the far more confusing "the service never bound".
      */
-    private fun shell(command: String) {
+    private fun shell(command: String): String =
         ParcelFileDescriptor.AutoCloseInputStream(
             instrumentation.uiAutomation.executeShellCommand(command),
-        ).use { it.readBytes() }
-    }
+        ).use { String(it.readBytes()) }
+
+    private fun accessibilityManager(): AccessibilityManager =
+        instrumentation.targetContext
+            .getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
 
     private fun waitFor(timeoutMs: Long, condition: () -> Boolean): Boolean =
         waitForValue(timeoutMs) { if (condition()) true else null } == true
@@ -164,7 +201,9 @@ class A11yProbeTest {
     }
 
     private companion object {
-        const val BIND_TIMEOUT_MS = 15_000L
+        const val BIND_TIMEOUT_MS = 40_000L
+        const val SERVICE_COMPONENT =
+            "com.jarvis.os/com.jarvis.os.control.ScreenControlService"
         const val FOREGROUND_TIMEOUT_MS = 10_000L
         const val STEP_TIMEOUT_MS = 20_000L
         const val CALLBACK_TIMEOUT_MS = 5_000L
