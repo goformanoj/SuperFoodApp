@@ -5,9 +5,9 @@
 
 ## Current position + immediate next
 
-**`main` @ `a8db5b7`** — green build **#234** (all 3 CI jobs; emulator green on attempt 1 after dropping
-`JarvisAppUiTest`, whose HudOrb animation reliably crashed the VM). Branch `claude/project-onboarding-lcnvi7`.
-**In progress (branch, build pending): five device-trace bugs fixed in code.** An on-device eval surfaced
+**`main` @ `b1158b6`** — green build **#237** (all 3 CI jobs; emulator green on attempt 1). Branch
+`claude/project-onboarding-lcnvi7` is **level with `main`** (fast-forwarded). Tree clean, nothing unmerged.
+**Shipped & merged this session: five device-trace bugs fixed in code.** An on-device eval surfaced
 real failures; each now has a frozen regression test. (1) **Alarm across turns** — `AlarmGuard.apply` now
 takes the prior assistant turn so "set an alarm for tomorrow" → "6 o'clock" is honoured (it was dropped
 because the guard only saw the latest utterance). (2) **Phantom `<<BACK>>`/`<<HOME>>` out of a just-opened
@@ -23,6 +23,57 @@ Earlier this session (merged to `main`): negation-aware guards (`assistant/Negat
 per-action authorization. **GOTCHA: `SpendGuard` withholds an irreversible tap only when the user did NOT name
 that action un-negated — spend taps need a spend word, call/share/delete need their verb, send/post belong to
 `SendGuard`.** On-device eval prompts + a §F regression re-verify list live in `docs/SCREEN_CONTROL_EVAL.md`.
+
+### ⏭️ NEXT UP — designed, NOT started (awaiting one decision): E2E test pipeline + learning layer + 100 scenarios
+The user asked for (a) an **automated end-to-end test that exercises real screen tapping** (so a commercial
+product isn't validated by hand-running 50 prompts), (b) JARVIS to **learn apps/buttons/symbols**
+(chosen: **pre-seed a curated set + learn from successful runs**), and (c) **100 more accuracy scenarios**.
+A full plan was researched (3 Explore agents mapped the a11y mechanics, the learning substrate, and the
+build/test infra). **Key finding: the pyramid has NO emulator test that drives a tap** — the two
+instrumented tests only load a model + render one Compose screen. Three mergeable phases:
+
+- **Phase 1 — E2E fixture tap tier (the missing pipeline).** Enable the real `ScreenControlService` on the
+  emulator via `uiAutomation.executeShellCommand("settings put secure enabled_accessibility_services
+  com.jarvis.os/com.jarvis.os.control.ScreenControlService")` + `accessibility_enabled 1`, poll
+  `isRunning()`, then drive hand-built `List<ScreenStep>` through the public `runSteps(...)` (`:115`)
+  against fake-app fixtures, asserting the fixture's own click callbacks fired (the `InstructionsScreenUiTest`
+  `onSave` pattern). **HARD CONSTRAINT: fixtures must present a DIFFERENT package than `com.jarvis.os`** —
+  `awaitApp`(`:597`)/`userAppRoot`(`:357`) reject `frontPkg == packageName`, so `src/debug` fixtures (same
+  package) fail for taps. Use androidTest-APK activities (package `com.jarvis.os.test`) — **de-risk with a
+  1-test PROBE first** asserting `rootInActiveWindow.packageName == "com.jarvis.os.test"` + one Tap fires;
+  fallback = a separate `:fixtures` module (`com.jarvis.os.fixtures`) + `adb install` CI step. Needs
+  `androidx.test.uiautomator:uiautomator` + `androidx.test:rules` added to `androidTestImplementation`.
+  `Pick` needs an `onPick` stub (no LLM); don't use `Open` in fixtures (it launches a real app).
+  **⚠️ The team ALREADY tried a11y-in-emulator and found it flaky, with a hard ~8-test VM capacity ceiling
+  (10 crashed it; orchestrator+hardening reverted).** So: keep the E2E suite SMALL (≤~15), fixtures render
+  **no HudOrb/infinite animation**, put it in a **SEPARATE `instrumented-e2e` CI job that is
+  `continue-on-error` (non-gating) until proven stable**. The value calculus changed — the recent executor
+  bugs (phantom BACK, PickFilter, silent OPEN, typed-goal) are integration bugs pure `ScreenMatch` tests
+  can't catch — but the flakiness constraint is real.
+- **Phase 2 — learning layer (build FIRST among features, per the user).** Generalise the `Playbook` route
+  model (SharedPreferences+JSON, learns only clean non-irreversible runs). New `control/AppRegistry` (+store):
+  spoken-name/alias → canonical app; pre-seed inline (youtube/yt, insta, blinkit…), learn from clean OPENs,
+  **plug into `AppLauncher.resolvePackage`** (`:35`, before the live `rank`) → makes nicknames deterministic
+  (today they only work via a prompt-injected fact) + validates OPEN targets (reinforces the Fix-4 honest
+  failure). New `control/ControlVocabulary` (+store): `(package,intent) → the literal label that worked`
+  (e.g. Blinkit `search` → `"Search for atta, dal, coke and more"` — the case in `AgentLoop.kt:130`);
+  pre-seed + learn from clean drives; **plug in at resolve-time** in `ScreenControlService` before `seek`
+  (`:614`), rewriting a generic `Tap("Search")` to the learned literal (kills the "tapped Search, missed
+  the real box" class; skips an LLM round-trip). Symbols = extend nav-label set + a contentDescription
+  synonym table (**no vision** — user didn't pick it). Capture rides the SAME gate as `Playbook`
+  (`ok && ranClean`, `AssistantEngine.kt:1002`). Stores follow the prefs+JSON+companion-object pattern
+  (Robolectric + plain-JUnit split).
+- **Phase 3 — 100 scenarios**: ~80 deterministic (tier 1, incl. the learning layer) + ~10–15 E2E fixture
+  flows (tier 2) + expand `docs/SCREEN_CONTROL_EVAL.md` to ~100 and mark rows now covered so the human list
+  shrinks + an OPTIONAL non-gating LLM-plan-quality eval job (real Groq, marker-shape assertions, reports a %).
+
+**⚠️ OPEN DECISION before starting:** the user said "learning feature first" but then pushed hard on the
+testing pipeline. I recommend **Phase 1 (E2E harness) first** (it's test infra that also verifies the
+learning layer on real taps), then Phase 2, then Phase 3 — but Phases 1 & 2 are independent, so confirm the
+order with the user before building. Each phase is its own mergeable increment (Rule 2). Honest boundary
+that survives all of it: no CI test can cover **the LLM choosing a good plan on the real Spotify/Blinkit** —
+that stays device-eval; the E2E tier owns the **execution/tap** layer, tier 1 owns the deterministic logic.
+
 **The test pyramid is COMPLETE** — all six layers live: pure JVM, Robolectric, Python wake-word check,
 emulator (openWakeWord load+detect **and** Compose UI: `InstructionsScreenUiTest`),
 trace-replay, lint. The screen-control a11y-binding emulator test was deliberately skipped (flaky, no
