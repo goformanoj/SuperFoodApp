@@ -2977,6 +2977,73 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-16 — You could not interrupt him, and the button was the easy part
+
+Asked how to add barge-in and a Gemini-style overlay. Built barge-in first (the overlay was
+descoped mid-session). What I expected to be "make the orb clickable while Speaking" turned out to
+be third in a list of three, and the two ahead of it were both capable of shipping a regression
+worse than the missing feature.
+
+**1. `speaker.stop()` deadlocked the loop — the feature was impossible, not merely absent.**
+`Speaker`'s `UtteranceProgressListener` overrode `onStart`, `onDone` and `onError`, but not
+`onStop`. Android delivers **`onStop`, not `onDone`,** for an utterance that is cut short. So
+stopping mid-sentence produced *no callback whatsoever*: `onSpokenDone()` never ran, `busy` stayed
+`true`, and `applyMicOwner()` returned early from then on. **The first interruption would have been
+the last thing JARVIS ever heard.** The codebase half-knew this already — `resume()` clears `busy`
+partly to un-stick exactly this state.
+
+**2. `QUEUE_FLUSH` makes "speech ended" ambiguous, and the naive fix is silent JARVIS.**
+`speak()` flushes, so a second reply cuts off the first — and the platform then reports the *first*
+as ended, **after the second has started**. Override `onStop` without telling utterances apart and
+every flushed reply fires "the reply is over" for a turn already gone. That calls `applyMicOwner()`
+→ `listen()` → `muteEarcon()`, which mutes `STREAM_MUSIC`. TTS plays on `STREAM_MUSIC`. The user
+would hear him stop dead halfway through his own answer, with nothing in the trace saying why.
+Every utterance now carries a monotonic sequence; anything that is not the current one is discarded
+twice over (once in `Speaker`, once in `TurnState`).
+
+**3. `busy` was one boolean doing three unrelated jobs.** Mic gate; "the sound on the speaker is
+JARVIS, not the user's music" for `mediaCheck`; and holding off the sleep timer. Barge-in needs the
+*first* cleared while the other two stay set — which a single flag cannot express. Now `TurnState`,
+pure Kotlin in the manner of `WorkSession`, with the three meanings named
+(`micGated` / `ownVoiceOnStream` / `suppressSleep`) and a test pinning them together so changing
+one becomes a deliberate act instead of an accident.
+
+**Why interruption is synchronous.** `tts.stop()` only produces a callback when an utterance was
+actually in progress; ask an idle engine to stop and nothing comes back at all. So `interrupt()`
+moves to IDLE immediately rather than waiting to be told — anything that waits for confirmation
+waits forever, which is finding #1 again by another route. `pause()` now does the same.
+
+**The subtle one.** `interrupt()` clears `pendingScreen`. Without it, cutting him off would *look*
+like it worked — he goes quiet — and then the phone would jump to another app a second later
+anyway, because the app switch was queued behind the speech. And the stop report that arrives after
+an interruption must **not** end the turn "successfully", or that same queued work runs. That is
+one of the 14 tests.
+
+**Found while in there:** `restartSoon()` reached `voice.startListening()` **directly**, bypassing
+`applyMicOwner` — while the KDoc two functions above asserted there was no other path. Its guard is
+now a whitelist of owners rather than `!= NONE`, so a future `MicOwner` cannot inherit permission to
+listen while JARVIS is speaking. Also: `Speaker`'s sequence-less `onDone` is **deleted**, not kept —
+once flushing is possible nothing can use it correctly, and leaving it would have been an invitation.
+
+**Evidence — and a genuinely new capability for this repo.** `CLAUDE.md` Rule 5 says Gradle cannot
+fetch through the proxy. That is only half true: **Maven Central is reachable; it is Google's Maven
+(`dl.google.com`) that the policy 403s.** Since the 50 non-UI sources reference nothing in `ui/` or
+`R`, they can be type-checked against the real Android 16 framework via `org.robolectric:android-all`
+off-device, and the 45 pure-JVM test classes compiled and ran before I pushed:
+**402 tests, 0 failures** (388 existing + 14 new). That is the first time this project has had a
+real compile-and-test gate before a push rather than after. The Compose layer still cannot be built
+here — `androidx` is Google-Maven-only — so `HomeScreen`/`MainActivity` were reviewed by hand; their
+diff is one defaulted lambda threaded through three functions plus a `clickable` predicate.
+
+**Deliberately not built: voice-triggered barge-in.** My first design was an energy VAD with
+`AcousticEchoCanceler`. That was wrong and would have failed only on a device. There is no AEC in
+this codebase and no CI here can prove one works; platform AEC references the *communication*
+downlink, and TTS on `STREAM_MUSIC` frequently is not in it, so `create()` returns non-null, reports
+enabled, and cancels nothing. With the speaker ~4cm from the mic, JARVIS arrives 20–30 dB above the
+user: the VAD would detect *him*, every time — speak → hear self → stop → listen → silence → sleep.
+The right trigger is the **wake word**, which is self-echo immune because JARVIS never utters
+"Hey Jarvis", and which already ships and is already CI-verified two ways.
+
 ### 2026-08-16 — Teaching the executor what a control is CALLED
 
 The single most quoted line in this project's failure history is that Blinkit's

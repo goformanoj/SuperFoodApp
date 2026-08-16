@@ -5,11 +5,49 @@
 
 ## Current position + immediate next
 
-**`main` @ `bcb599b`** — green build **#248** (`build`, `wakeword-pipeline` and `instrumented` all
-green; `e2e-tap` is non-gating and still being brought up). **Eight fixes from the 2026-08-14 device
-trace are MERGED and installable.** The session branch `claude/jarvis-os-files-ata1ho` is **ahead of
-`main`** with the E2E tap tier and the ControlVocabulary layer — hold the merge until the probe run
-is green, since the E2E job is the one thing not yet proven.
+**`main` @ `070d22d`** — the session branch `claude/jarvis-os-files-ata1ho` is **6 commits ahead**
+@ `470ba71`, awaiting the `jarvis-debug-apk` artifact for that commit. On the branch: the E2E tap
+tier, the ControlVocabulary layer, the Orbit theme (+ its four device-reported fixes), and newest —
+**barge-in, part one: JARVIS can be cut off mid-sentence by tapping the orb while he speaks.**
+
+### 🎙️ Barge-in — tap works; voice deliberately not built yet
+`TurnState` (pure, 14 tests) replaced the `busy` boolean, which was doing three unrelated jobs at
+once. `Speaker` now overrides **`onStop`** and numbers every utterance. `engine.interrupt()` stops
+speech, idles the turn *synchronously*, clears `pendingScreen`, and starts listening.
+**NEXT on this (stages 1.5–1.7 of the plan):** `MicOwner.BARGE_IN` in `WorkSession`, a
+`BargeInListener` modelled on `HotwordService.audioLoop`, then wiring. **Trigger on the wake word,
+not an energy VAD** — see the memory entry for 2026-08-16 for why an energy VAD would detect JARVIS
+himself every time.
+
+**GOTCHA: `tts.stop()` fires `onStop` only if an utterance is actually in progress.** Stop an idle
+engine and you get no callback at all. Anything that waits for confirmation that speech ended waits
+forever — so state must be cleared synchronously by the caller.
+
+**GOTCHA: `speak()` uses `QUEUE_FLUSH`, so "speech ended" is ambiguous without a sequence number.**
+The platform reports the *flushed* utterance as ended *after* its replacement has started. Acting on
+that late report opens the mic mid-sentence — and `VoiceController.startListening()` mutes
+`STREAM_MUSIC` to hide the recogniser earcon, which is the very stream TTS plays on. **Opening the
+recogniser while JARVIS speaks makes him inaudible.** This is the constraint that rules out using
+`SpeechRecognizer` for acoustic barge-in at all.
+
+**GOTCHA: a watchdog must not live on the engine's `main` Handler.** `ask()` and `pause()` both call
+`main.removeCallbacksAndMessages(null)`, which would silently bin it — precisely in the situations
+where something had already gone wrong enough to clear the queue. It has its own `guard` Handler.
+
+### 🔬 Gradle CAN fetch here — Maven Central works, Google's Maven does not
+`CLAUDE.md` Rule 5's "Gradle cannot fetch through the proxy" is only half true. **Maven Central is
+reachable; `dl.google.com` 403s on the network policy**, which is why `androidx`/Compose and the real
+`tensorflow-lite` cannot be resolved. But the **50 non-UI sources reference nothing in `ui/` or `R`**,
+so they type-check off-device against the real framework, and the 45 pure-JVM test classes run:
+**402 tests, 0 failures.** Recipe — a plain `kotlin("jvm")` Gradle project with
+`sourceSets["main"].kotlin.setSrcDirs(listOf("<repo>/app/src/main/java", "stubs"))`, excluding
+`**/com/jarvis/os/ui/**` and `MainActivity.kt`, `compileOnly("org.robolectric:android-all:16-robolectric-13921718")`
++ `kotlinx-coroutines-core`, and ~30 lines of stubs for `BuildConfig`, `ContextCompat`,
+`org.tensorflow.lite.Interpreter`, `MainActivity`, and the three `androidx.compose.runtime` symbols
+`AssistantEngine` uses (`State`, `MutableState`, `mutableStateOf`). Set the test task's `workingDir`
+to the repo root or `MelSpectrogramTest` cannot find its weights blob. **Use this before every push.**
+Caveats: only JDK 21 is present (set `jvmTarget` to match), the Compose layer is still unverifiable
+here, and `org.tensorflow:tensorflow-lite` on Central is a placeholder that is not a valid zip.
 
 ### 🧠 Learning layer — half built
 `control/ControlVocabulary` (pure, 9 tests) translates a generic label the model asks
