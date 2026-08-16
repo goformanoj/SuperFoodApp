@@ -156,15 +156,27 @@ class A11yProbeTest {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
         )
 
+        // Wait for the FIXTURE specifically, not merely for something readable.
+        //
+        // The previous run failed here reading `com.android.launcher3`: the poll
+        // returned on its first read because `rootInActiveWindow` is non-null
+        // immediately — it was just still the launcher. That is precisely the bug
+        // this whole tier exists to catch, committed by the test that was meant to
+        // catch it: an app is in front long before it is the app you asked for, so
+        // wait for the state you need rather than the first state available.
+        waitFor(FOREGROUND_TIMEOUT_MS) {
+            service!!.rootInActiveWindow?.packageName?.toString() == FixtureActivity.FIXTURE_PACKAGE
+        }
+        val front = service!!.rootInActiveWindow?.packageName?.toString()
+
         // THE constraint. If this reads com.jarvis.os, awaitApp/userAppRoot will
         // refuse every step and the androidTest-APK approach cannot work.
-        val front = waitForValue(FOREGROUND_TIMEOUT_MS) {
-            service!!.rootInActiveWindow?.packageName?.toString()
-        }
         assertEquals(
             "the fixture must present a DIFFERENT package than the app under test — " +
                 "ScreenControlService refuses to act on its own package, so if this " +
-                "is com.jarvis.os the fallback is a separate :fixtures module",
+                "is com.jarvis.os the fallback is a separate :fixtures module. " +
+                "If it is a launcher or another app, the fixture simply never came " +
+                "to the front.",
             FixtureActivity.FIXTURE_PACKAGE,
             front,
         )
