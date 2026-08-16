@@ -9,7 +9,28 @@
 green). Session branch `claude/jarvis-os-files-ata1ho` is **level with `main`** (fast-forwarded).
 Tree clean, nothing unmerged. **Eight fixes from the 2026-08-14 device trace are MERGED.**
 
-### ⏭️ E2E tap tier — probe built, RAN, and FAILED at assumption #1
+### ⏭️ E2E tap tier — root cause FOUND (`ba056e2`), verification run pending
+The probe's diagnostics diagnosed it in one cycle: the settings write **stuck**, the
+service was **installed**, accessibility was **globally on**, and the enabled-services
+list was **empty**. Nothing failed — something switched it off. That something is
+**`UiAutomation`, which suppresses every other accessibility service by default**, and
+the probe's own `shell()` helper is what connected it. The instrumentation used to
+enable the service was disabling it. Fixed with
+`getUiAutomation(FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)` behind one accessor.
+
+**GOTCHA: `UiAutomation` suppresses all other accessibility services.** Any instrumented
+test needing a real `AccessibilityService` bound MUST use
+`getUiAutomation(UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)` and must never
+touch the unflagged `instrumentation.uiAutomation` first — the flag applies only as the
+connection is created, so one unflagged call anywhere reintroduces the suppression.
+
+**The app was never at fault** — no manifest, `exported`, permission or timeout change was
+needed, and each of those was a plausible thing to have guessed at. Next: confirm the run
+is green, then grow the suite to the classes pure tests cannot reach (unrendered screen,
+failed `Open`, first-move `Back`, right control among decoys), keeping it ≤~8 tests and
+non-gating.
+
+### Previously — probe built, RAN, and FAILED at assumption #1
 `A11yProbeTest` (branch only, non-gating job `e2e-tap`) reported **"the accessibility
 service never bound"**: writing `enabled_accessibility_services` by shell did not bind
 `ScreenControlService` within 15s on an API 34 `default` image. The two questions after

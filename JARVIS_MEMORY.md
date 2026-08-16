@@ -2977,6 +2977,49 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-14 — The test harness was disabling the service it was enabling
+
+The improved probe answered its own question on the next run, which is the entire
+argument for making a failure carry facts:
+
+    the accessibility service never bound within 40000ms.
+      settings enabled_accessibility_services = com.jarvis.os/…ScreenControlService
+      settings accessibility_enabled          = 1
+      AccessibilityManager.isEnabled          = true
+      AccessibilityManager enabled services   = (none)
+      installed services                      = …, com.jarvis.os/.control.ScreenControlService
+      test process = com.jarvis.os.test / target = com.jarvis.os
+
+Read that carefully and it diagnoses itself. The shell write **stuck**. The service
+is **installed**. Accessibility is **globally on**. And the enabled list is
+**empty**. Nothing failed — something actively switched it off between the write
+and the check.
+
+That something is **`UiAutomation`**: connecting it suppresses every other
+accessibility service unless it is asked not to, and the probe's own `shell()`
+helper is what connected it. **The instrumentation used to turn the service on was
+turning it off.** Fixed by taking the connection with
+`FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES`, through one accessor used by every
+shell call — the flag only applies as the connection is created, so a single
+unflagged call anywhere would bring the suppression straight back.
+
+**The app was never at fault.** No manifest change, no `exported` attribute, no
+service permission, no timeout — and every one of those was a plausible thing to
+try. The earlier version of this assertion said only "never bound", and that is
+exactly the input that produces three confident wrong diagnoses in a row; this
+project has the receipts (builds #163–#169, where `--stacktrace` hid the one line
+that mattered and a bare `$` was reported as the fix and was not).
+
+The lesson is not "UiAutomation suppresses services" — that is a fact to look up.
+It is that **the cost of a diagnostic is paid once and the cost of guessing is paid
+every cycle.** Adding six lines of state to a failure message turned an open-ended
+hunt into a single-cycle answer, and the six lines cost one emulator run to write.
+
+GOTCHA banked: **`UiAutomation` suppresses all other accessibility services by
+default.** Any instrumented test that needs a real `AccessibilityService` bound must
+obtain it via `getUiAutomation(FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)`, and must
+never touch the unflagged accessor first.
+
 ### 2026-08-14 — The E2E tap probe failed, and my own CI wiring hid it
 
 Built the first piece of the E2E tap tier — the layer the pyramid has never had,
