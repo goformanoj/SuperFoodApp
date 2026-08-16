@@ -27,6 +27,7 @@ object ThemeArt {
         OrbStyle.Filigree -> FORGE
         OrbStyle.Machine -> CORE
         OrbStyle.Nebula -> NEBULA
+        OrbStyle.Orbit -> ORBIT
     }
 
     /** The colour the reference has at [fraction] of its radius, interpolated. */
@@ -45,6 +46,9 @@ object ThemeArt {
         OrbStyle.Filigree -> Color(0xFF341A1E)
         OrbStyle.Machine -> Color(0xFF421F36)
         OrbStyle.Nebula -> Color(0xFF4B2E42)
+        // Near-black: the reference is deep space with one lit object in it, so
+        // there is no corner colour to measure the way the other six have.
+        OrbStyle.Orbit -> Color(0xFF071426)
     }
 
     private fun lerp(a: Color, b: Color, t: Float): Color {
@@ -82,6 +86,33 @@ object ThemeArt {
         Color(0xFFD493BB), Color(0xFFBD749C), Color(0xFF8D5674), Color(0xFF96596E),
         Color(0xFF925472), Color(0xFF8C4367),
     )
+
+    /**
+     * Orbit — sampled centre-outward from the 2026-08-16 mockup: a white-hot
+     * core, cyan through the body, then violet out at the widest orbital rings.
+     * The cyan-to-violet swing across the radius is what distinguishes this from
+     * the other blue themes, which run cyan to blue and stay there.
+     *
+     * The outermost stops are deliberately BRIGHT, like every other ramp here.
+     * A first draft ended on near-black because that is what the reference's
+     * corners look like — but this table colours the orb's own geometry at each
+     * radius, not the space behind it (that is [backdrop]). A dark final stop
+     * made the widest, most characteristic rings almost invisible, and the
+     * ramp-brightness test caught it before it shipped.
+     */
+    private val ORBIT = listOf(
+        Color(0xFFF2FBFF),
+        Color(0xFFBDEEFF),
+        Color(0xFF6FDCFF),
+        Color(0xFF34C8FF),
+        Color(0xFF1FA6F5),
+        Color(0xFF2B7BE4),
+        Color(0xFF4A5BDA),
+        Color(0xFF6B4CD0),
+        Color(0xFF8A6BE8),
+        Color(0xFFA98CF5),
+    )
+
     private val NEBULA = listOf(
         Color(0xFFC297B1), Color(0xFFBD88C1), Color(0xFFB87FBD), Color(0xFFAF77B9),
         Color(0xFFBA7FB6), Color(0xFFC18FB6), Color(0xFFA46B84), Color(0xFFB07792),

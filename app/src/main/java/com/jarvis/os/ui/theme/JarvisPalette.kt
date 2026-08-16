@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.Color
  * centrepiece, not just its own colours — a hexagonal crystal lattice does not
  * become a filigree disc by recolouring it.
  */
-enum class OrbStyle { Reactor, Lattice, Prism, Filigree, Machine, Nebula }
+enum class OrbStyle { Reactor, Lattice, Prism, Filigree, Machine, Nebula, Orbit }
 
 /**
  * A selectable look: a full colour set plus the shape of the orb.
@@ -105,6 +105,24 @@ enum class JarvisPalette(
         background = Color(0xFF0F0518),
         surface = Color(0xFF1C0C2B),
         orbStyle = OrbStyle.Nebula,
+    ),
+    Orbit(
+        id = "orbit",
+        displayName = "Orbit",
+        blurb = "A lit world under wide orbital rings, over a planet horizon.",
+        // Sampled from the reference: the sphere's rim runs cyan and its far side
+        // falls to violet, which is why the accent and secondary are a cyan/violet
+        // pair rather than the cyan/blue every other blue theme uses. That pair is
+        // also what the greeting gradient is cut from.
+        accent = Color(0xFF29D6FF),
+        secondary = Color(0xFF7A5CFF),
+        highlight = Color(0xFFB98CFF),
+        wordmark = Color(0xFFCDE9FF),
+        // Darker than any other theme on purpose: the design is mostly empty space
+        // with one bright object in it, and a lighter ground would flatten the glow.
+        background = Color(0xFF03070F),
+        surface = Color(0xFF091426),
+        orbStyle = OrbStyle.Orbit,
     ),
     ;
 

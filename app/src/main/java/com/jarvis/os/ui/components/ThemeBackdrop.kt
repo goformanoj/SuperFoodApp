@@ -87,6 +87,15 @@ fun ThemeBackdrop(
                 nebulaClouds(w, h, palette.accent, palette.secondary)
                 circuitFloor(h * 0.66f, palette.accent)
             }
+
+            OrbStyle.Orbit -> {
+                // The element no other theme has: a planet limb across the bottom,
+                // lit along its edge, with city lights on the dark side. It is what
+                // puts the orb in space rather than on a background, and it is the
+                // thing the eye reads first after the orb itself.
+                planetHorizon(w, h, palette.accent, palette.highlight)
+                hudBrackets(palette.accent)
+            }
         }
 
         starField(w, h, palette.highlight, palette.orbStyle == OrbStyle.Nebula)
@@ -276,3 +285,64 @@ private fun DrawScope.strokeProjected(
 }
 
 private fun colour(c: Color, alpha: Float) = c.copy(alpha = alpha)
+
+/**
+ * A planet's limb across the bottom of the screen: the curve of a world, a thin
+ * lit atmosphere along its edge, and scattered city lights on the dark side.
+ *
+ * Drawn as a circle far larger than the screen whose top edge crosses the lower
+ * third, which is what gives the shallow, almost-straight curve of a horizon seen
+ * from orbit — a small circle would read as a ball sitting on the screen.
+ *
+ * The lights are placed from [OrbMath.unitRandom] rather than a random, for the
+ * reason this project has already paid for once: a Canvas redraws every frame, so
+ * anything deciding WHERE a light sits is asked sixty times a second, and a real
+ * random re-scatters them into static instead of a city.
+ */
+private fun DrawScope.planetHorizon(w: Float, h: Float, edge: Color, warm: Color) {
+    // A very large circle whose top sits just below the waveform.
+    val horizonY = h * 0.82f
+    val planetRadius = w * 2.6f
+    val centre = Offset(w * 0.5f, horizonY + planetRadius)
+
+    // The dark body itself, so stars do not shine through the planet.
+    drawCircle(color = Color(0xFF01050C), radius = planetRadius, center = centre)
+
+    // City lights: only just inside the limb, where a night side is actually lit.
+    val lights = 140
+    for (i in 0 until lights) {
+        val a = OrbMath.unitRandom(i * 3 + 1)          // along the limb
+        val d = OrbMath.unitRandom(i * 3 + 2)          // depth below it
+        val b = OrbMath.unitRandom(i * 3 + 3)          // brightness
+        val angle = (-0.5f + a) * 1.15f            // radians either side of straight up
+        val depth = planetRadius * (0.002f + d * 0.05f)
+        val x = centre.x + kotlin.math.sin(angle) * (planetRadius - depth)
+        val y = centre.y - kotlin.math.cos(angle) * (planetRadius - depth)
+        if (y < horizonY - 4f || y > h) continue
+        drawCircle(
+            color = warm.copy(alpha = 0.10f + b * 0.45f),
+            radius = 0.7f + b * 1.5f,
+            center = Offset(x, y),
+        )
+    }
+
+    // The atmosphere: a bright hairline on the limb over a soft outward bloom.
+    drawCircle(
+        color = edge.copy(alpha = 0.10f),
+        radius = planetRadius + h * 0.020f,
+        center = centre,
+        style = Stroke(width = h * 0.040f),
+    )
+    drawCircle(
+        color = edge.copy(alpha = 0.30f),
+        radius = planetRadius + h * 0.004f,
+        center = centre,
+        style = Stroke(width = h * 0.010f),
+    )
+    drawCircle(
+        color = Color.White.copy(alpha = 0.55f),
+        radius = planetRadius,
+        center = centre,
+        style = Stroke(width = 1.6f),
+    )
+}

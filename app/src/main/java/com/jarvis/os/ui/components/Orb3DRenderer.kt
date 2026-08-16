@@ -383,7 +383,11 @@ private fun lerpColor(a: Color, b: Color, t: Float): Color {
  * Per-theme geometry. The references differ in what their rings DO, so the specs
  * differ in tilt, count and precession rather than only in colour.
  */
-private fun specFor(style: OrbStyle): Orb3DSpec = when (style) {
+// internal, not private, so the motion contract can be unit-tested. The same
+// reason ScreenMatch and the Groq/Gemini parsers were widened: a value-in,
+// value-out function that decides how something behaves should be reachable by a
+// test rather than only by the eye.
+internal fun specFor(style: OrbStyle): Orb3DSpec = when (style) {
     // Arc Reactor: many rings at steep opposing tilts, churning.
     OrbStyle.Reactor -> Orb3DSpec(
         rings = listOf(
@@ -433,6 +437,44 @@ private fun specFor(style: OrbStyle): Orb3DSpec = when (style) {
             Ring3D(0.42f, 0.40f, -0.35f, 0.90f, 2.30f, 0.70f, 2.4f, 0.42f),
         ),
         motes = 30, coreSize = 0.13f, spokes = 16, shards = 8,
+    )
+    // Orbit: one bright world under wide ellipses swung right around it — and the
+    // liveliest of the seven, deliberately.
+    //
+    // The reference is not an assembly of concentric rings like the other themes:
+    // it is a single lit sphere with a few long orbital paths, several passing
+    // well outside the body. So the core is the largest of any theme and the rings
+    // are few, wide, and two of them sit beyond radius 1.0 because in the artwork
+    // the widest orbits clearly clear the sphere.
+    //
+    // MOTION is the point here, so the speeds are not decorative — they follow
+    // real orbital mechanics: the inner ring is the fastest and the widest is the
+    // slowest, the way actual orbits behave. That single choice is what makes the
+    // rings visibly separate, converge and cross rather than turning as one rigid
+    // assembly, and it is why this reads as a system in motion instead of a
+    // spinning graphic. Directions alternate so crossings are head-on, and every
+    // period is a non-round multiple of its neighbour's, so the whole pattern
+    // takes a long time to repeat.
+    //
+    // A first draft set `arc` to 0.80-0.92, which lit almost the whole ring and
+    // left the travelling highlight with nowhere to travel — the least animated
+    // theme of the seven, in the one design that is all about movement. The arcs
+    // are ~0.5 now: enough unlit ring for a bright sweep to be seen running round
+    // it, while depth shading keeps the rest of the ellipse continuous.
+    OrbStyle.Orbit -> Orb3DSpec(
+        rings = listOf(
+            // Widest and slowest — the long outer orbit.
+            Ring3D(1.26f, 0.30f, -0.16f, 0.42f, 0.62f, 0.00f, 1.7f, arc = 0.62f, band = 0.05f),
+            // Counter-rotating, so it scissors against the one above.
+            Ring3D(1.08f, -0.44f, 0.34f, -0.71f, -1.18f, 0.55f, 2.0f, arc = 0.58f, band = 0.06f),
+            // Steeply tilted, faster again.
+            Ring3D(0.90f, 0.64f, 0.10f, 1.13f, 1.79f, 0.85f, 1.6f, arc = 0.54f, band = 0.05f),
+            // The tight HUD arc hugging the body: innermost, fastest, counter-spun.
+            Ring3D(0.70f, 0.09f, 0.05f, -1.67f, -2.63f, 0.20f, 1.2f, arc = 0.46f, band = 0.04f),
+        ),
+        // The heaviest dust field of any theme — it is a scene in space, and the
+        // motes are what make the volume around the sphere read as occupied.
+        motes = 120, coreSize = 0.34f,
     )
     // Nebula: wide sweeping rings and a heavy star field.
     OrbStyle.Nebula -> Orb3DSpec(
