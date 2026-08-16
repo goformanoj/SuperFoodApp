@@ -143,9 +143,16 @@ class A11yProbeTest {
         assertNotNull("isRunning() was true but instance was null", service)
 
         // --- 2. Put the fixture in front -------------------------------------
-        val context = instrumentation.targetContext
-        context.startActivity(
-            Intent(context, FixtureActivity::class.java)
+        // The Intent must be built from the TEST context, not the target one.
+        // The fixture is declared in the androidTest APK (com.jarvis.os.test);
+        // building it from targetContext aimed the explicit component at
+        // com.jarvis.os/…FixtureActivity, which does not exist — the first run
+        // after the binding fix died exactly there with ActivityNotFoundException.
+        // That error is itself the first hard evidence the two packages really are
+        // distinct, which is what the assertion below goes on to require.
+        val testContext = instrumentation.context
+        testContext.startActivity(
+            Intent(testContext, FixtureActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
         )
 
