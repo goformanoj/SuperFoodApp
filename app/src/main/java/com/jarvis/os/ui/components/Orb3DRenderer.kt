@@ -474,7 +474,15 @@ internal fun specFor(style: OrbStyle): Orb3DSpec = when (style) {
         ),
         // The heaviest dust field of any theme — it is a scene in space, and the
         // motes are what make the volume around the sphere read as occupied.
-        motes = 120, coreSize = 0.34f,
+        //
+        // coreSize is far larger than any other theme (next is 0.19) because the
+        // reference is a SPHERE with rings around it, not a ring assembly with a
+        // spark at the middle. The first build shipped 0.34 and the device
+        // screenshot showed exactly what that is: a small dim blob with thin
+        // ellipses dominating it — the rings had become the subject. The body has
+        // to be the biggest, brightest thing on screen for this to read as the
+        // design at all.
+        motes = 120, coreSize = 0.55f,
     )
     // Nebula: wide sweeping rings and a heavy star field.
     OrbStyle.Nebula -> Orb3DSpec(

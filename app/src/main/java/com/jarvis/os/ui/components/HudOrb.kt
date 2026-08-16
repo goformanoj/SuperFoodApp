@@ -50,6 +50,21 @@ fun HudOrb(
     size: Dp = 300.dp,
     palette: JarvisPalette = LocalPalette.current,
     showLabel: Boolean = true,
+    /**
+     * Whether this orb runs its clocks.
+     *
+     * The theme picker draws one of these per theme, and every one of them was
+     * animating whether or not it was the one being looked at — seven infinite
+     * transitions each invalidating a Canvas at 60fps, which is what made the
+     * Settings screen lag badly enough for the user to raise it twice. Only the
+     * selected card moves now.
+     *
+     * The trade is real and worth naming: three of these themes differ mainly in
+     * how they MOVE, so a still card shows less than a moving one. Tapping a card
+     * selects it and it starts moving, which keeps that information reachable at
+     * the cost of one tap instead of a permanently janky screen.
+     */
+    animated: Boolean = true,
 ) {
     val targetAccent = when (orb) {
         OrbState.Listening -> palette.accent
@@ -60,21 +75,34 @@ fun HudOrb(
     }
     val accent by animateColorAsState(targetAccent, tween(400), label = "accent")
 
-    val transition = rememberInfiniteTransition(label = "orb")
     val busy = orb == OrbState.Thinking
     // One master clock. Every ring multiplies it, so they keep a fixed
     // relationship however fast the whole assembly is running. Long period,
     // because each ring's own multiplier does the visible work.
-    val drift by transition.animateFloat(
-        0f, 360f,
-        infiniteRepeatable(tween(if (busy) 7000 else 20000, easing = LinearEasing)),
-        label = "drift",
-    )
-    val breathe by transition.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "breathe",
-    )
+    // The transition is only created when it will actually be used. A
+    // rememberInfiniteTransition that exists but is ignored still schedules
+    // frames, so gating the VALUES rather than the transition would have saved
+    // nothing.
+    val drift: Float
+    val breathe: Float
+    if (animated) {
+        val transition = rememberInfiniteTransition(label = "orb")
+        drift = transition.animateFloat(
+            0f, 360f,
+            infiniteRepeatable(tween(if (busy) 7000 else 20000, easing = LinearEasing)),
+            label = "drift",
+        ).value
+        breathe = transition.animateFloat(
+            0f, 1f,
+            infiniteRepeatable(tween(2800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "breathe",
+        ).value
+    } else {
+        // A frozen frame chosen off the zero mark, so a still card shows rings
+        // crossing rather than the degenerate moment where they all line up.
+        drift = STILL_DRIFT
+        breathe = STILL_BREATHE
+    }
 
     val amp = amplitude.coerceIn(0f, 1f)
     // Held across frames: the picker draws six of these at once, and rebuilding
@@ -120,7 +148,12 @@ fun HudOrb(
  * the design the card exists to show.
  */
 @Composable
-fun OrbPreview(palette: JarvisPalette, size: Dp = 92.dp, modifier: Modifier = Modifier) {
+fun OrbPreview(
+    palette: JarvisPalette,
+    size: Dp = 92.dp,
+    modifier: Modifier = Modifier,
+    animated: Boolean = true,
+) {
     CompositionLocalProvider(LocalPalette provides palette) {
         HudOrb(
             modifier = modifier,
@@ -129,6 +162,11 @@ fun OrbPreview(palette: JarvisPalette, size: Dp = 92.dp, modifier: Modifier = Mo
             size = size,
             palette = palette,
             showLabel = false,
+            animated = animated,
         )
     }
 }
+
+/** Where a still orb is frozen — mid-crossing, not at the aligned zero mark. */
+private const val STILL_DRIFT = 84f
+private const val STILL_BREATHE = 0.45f

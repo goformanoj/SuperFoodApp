@@ -106,7 +106,9 @@ fun ThemesScreen(
                     modifier = Modifier.size(112.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    OrbPreview(palette = palette, size = previewSize)
+                    // Only the chosen card runs its clocks — seven live orbs is what made
+                    // this screen lag. Tap a card and it comes to life.
+                    OrbPreview(palette = palette, size = previewSize, animated = selected)
                 }
                 Spacer(Modifier.size(14.dp))
                 Column(Modifier.weight(1f)) {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -58,6 +59,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -107,6 +109,16 @@ private enum class Dest(val label: String, val icon: ImageVector, val blurb: Str
     Settings("Settings", Icons.Filled.Settings, "Voice and appearance."),
     Diagnostics("Diagnostics", Icons.Filled.BugReport, "Self-checks, a typed command box, and the shareable trace."),
 }
+
+/**
+ * How far the top-of-screen pull must travel before it returns to Home.
+ *
+ * Generous on purpose: this gesture competes with the notification shade, so a
+ * short flick is far more likely to be the user reaching for that than asking to
+ * navigate. Better to need a deliberate pull than to bounce someone home when
+ * they wanted their notifications.
+ */
+private const val PULL_HOME_PX = 140f
 
 /** Task row accents, led by the theme so the card is not stuck on cyan. */
 @Composable
@@ -170,6 +182,10 @@ fun JarvisApp(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        // Orbit has no drawer, so its edge-swipe must not summon one. Leaving the
+        // gesture live meant a right-swipe opened a side menu the theme had
+        // deliberately replaced — the drawer was still there, just invisible.
+        gesturesEnabled = !bottomDashboard,
         drawerContent = {
             JarvisDrawer(
                 selected = current,
@@ -224,13 +240,38 @@ fun JarvisApp(
                         .size(26.dp),
                 )
             } else {
-                // The collapsed bar stays on every destination, not just Home: it
-                // is the only way to navigate in this theme, so hiding it anywhere
-                // would strand the user on that screen with nothing but Back.
-                DashboardBar(
-                    onOpen = { dashboardOpen = true },
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
+                // Home only. Drawn over Settings it landed on top of the theme
+                // picker and read as a rendering fault — every other destination
+                // has its own scrolling layout that owns the bottom of the screen,
+                // and a floating bar over it is not navigation, it is debris.
+                if (current == Dest.Home) {
+                    DashboardBar(
+                        onOpen = { dashboardOpen = true },
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                } else {
+                    // With the bar gone from other screens, the way back is a pull
+                    // down from the top — the gesture that replaces it. Confined to
+                    // a strip so it cannot fight the vertical scrolling below.
+                    Box(
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(72.dp)
+                            .pointerInput(current) {
+                                var travelled = 0f
+                                detectVerticalDragGestures(
+                                    onDragStart = { travelled = 0f },
+                                    onDragEnd = {
+                                        if (travelled > PULL_HOME_PX) current = Dest.Home
+                                    },
+                                ) { change, dragAmount ->
+                                    if (dragAmount > 0f) travelled += dragAmount
+                                    change.consume()
+                                }
+                            },
+                    )
+                }
 
                 if (dashboardOpen) {
                     // Tapping away closes, which is what every sheet on the
