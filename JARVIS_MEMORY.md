@@ -2977,6 +2977,40 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-16 — I fixed the E2E probe by declaring a dependency, which is not the same as shipping one
+
+The probe failed again with the identical error I "fixed" two days ago:
+`NoClassDefFoundError: kotlin.jvm.internal.Intrinsics` at `FixtureActivity$Recorder.tapped`. I had
+added `androidTestImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.10")`, watched the build go
+green, and reported it as done without ever seeing the probe run.
+
+The diagnosis was right and the mechanism was wrong. The log names it:
+
+```
+Process: com.jarvis.os.test, PID: 2416
+DexPathList[[zip file ".../com.jarvis.os.test-.../base.apk"]]
+```
+
+The fixture runs in **its own process** whose dex path is the test APK **alone** — and **AGP strips
+from the test APK every dependency already present in the app APK.** That is normally correct,
+because an instrumentation test usually shares the app's classloader; here it does not. So the
+declaration was honoured, resolved, and then deliberately excluded from packaging. A green build
+told me nothing, because nothing about it was ever going to fail.
+
+The lesson is not "check the artifact" (Rule 2 already says that). It is that **a dependency
+declaration is a request, not a guarantee** — and when the thing that consumes it lives in a
+different process than the one the build system assumes, the request is silently declined. The fix
+is to remove the need instead of arguing with the packager: **write `FixtureActivity` in Java**,
+which emits no `Intrinsics` null-checks at all.
+
+**And the part that matters more than the failure.** The same stack trace reads
+`TextView.performAccessibilityActionClick` → `View.performClick` →
+`FixtureActivity.onCreate$lambda$2$lambda$1`. **A real accessibility tap, dispatched by the real
+`ScreenControlService`, reached a fixture in a different package and invoked its click handler.**
+That was the whole point of the tier and the last of its three unknowns. The probe is red for a
+packaging reason, one line away from being the first automated proof that JARVIS can actually tap
+something.
+
 ### 2026-08-16 — You could not interrupt him, and the button was the easy part
 
 Asked how to add barge-in and a Gemini-style overlay. Built barge-in first (the overlay was

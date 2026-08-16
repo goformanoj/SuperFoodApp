@@ -5,10 +5,10 @@
 
 ## Current position + immediate next
 
-**`main` @ `070d22d`** — the session branch `claude/jarvis-os-files-ata1ho` is **6 commits ahead**
-@ `470ba71`, awaiting the `jarvis-debug-apk` artifact for that commit. On the branch: the E2E tap
-tier, the ControlVocabulary layer, the Orbit theme (+ its four device-reported fixes), and newest —
-**barge-in, part one: JARVIS can be cut off mid-sentence by tapping the orb while he speaks.**
+**`main` @ `3e767fa`** — `jarvis-debug-apk` confirmed present for that commit; branch and `main` are
+level. Merged in this round: the E2E tap tier, the ControlVocabulary layer, the Orbit theme (+ its
+four device-reported fixes), and **barge-in, part one: JARVIS can be cut off mid-sentence by tapping
+the orb while he speaks.** Not yet confirmed on a device.
 
 ### 🎙️ Barge-in — tap works; voice deliberately not built yet
 `TurnState` (pure, 14 tests) replaced the `busy` boolean, which was doing three unrelated jobs at
@@ -33,6 +33,30 @@ recogniser while JARVIS speaks makes him inaudible.** This is the constraint tha
 **GOTCHA: a watchdog must not live on the engine's `main` Handler.** `ask()` and `pause()` both call
 `main.removeCallbacksAndMessages(null)`, which would silently bin it — precisely in the situations
 where something had already gone wrong enough to clear the queue. It has its own `guard` Handler.
+
+### ⚠️ E2E tap probe — the tap WORKS; the fixture cannot record it (still red, non-gating)
+The 2026-08-14 `kotlin-stdlib` fix **never could have worked**, and the failure log says why:
+
+```
+Process: com.jarvis.os.test, PID: 2416
+NoClassDefFoundError: Failed resolution of: Lkotlin/jvm/internal/Intrinsics;
+  at FixtureActivity$Recorder.tapped
+DexPathList[[zip file ".../com.jarvis.os.test-.../base.apk"]]
+```
+
+**GOTCHA: AGP strips from the androidTest APK any dependency already present in the app APK.** That
+is normally correct — the test process usually shares the app's classloader — but `FixtureActivity`
+is launched as a *separate process* (`com.jarvis.os.test`) whose dex path is the test APK **alone**.
+So `androidTestImplementation("org.jetbrains.kotlin:kotlin-stdlib")` is accepted, builds green, and
+packages nothing. Declaring a dependency is not the same as shipping one.
+**FIX (not yet done): write `FixtureActivity` in Java.** Java emits no `Intrinsics` null-checks, so
+the dependency stops existing rather than needing to be packaged. ~20 lines.
+
+**The tap itself is PROVEN.** The same stack trace reads
+`TextView.performAccessibilityActionClick` → `View.performClick` → the fixture's own `onClick`: a
+real accessibility tap reached a third-party-package fixture and invoked its handler. All three of
+the tier's foundational unknowns are now settled — service binds, fixture presents a distinct
+package, tap lands. Only the *recording* of the tap fails.
 
 ### 🔬 Gradle CAN fetch here — Maven Central works, Google's Maven does not
 `CLAUDE.md` Rule 5's "Gradle cannot fetch through the proxy" is only half true. **Maven Central is
