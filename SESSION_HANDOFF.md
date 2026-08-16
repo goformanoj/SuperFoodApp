@@ -9,6 +9,19 @@
 green). Session branch `claude/jarvis-os-files-ata1ho` is **level with `main`** (fast-forwarded).
 Tree clean, nothing unmerged. **Eight fixes from the 2026-08-14 device trace are MERGED.**
 
+### 🧠 Learning layer — half built
+`control/ControlVocabulary` (pure, 9 tests) translates a generic label the model asks
+for into the literal one a given app uses, keyed by package FRAGMENT. Wired into
+`ScreenControlService.seek()` **strictly additively** — only after the requested label
+failed to match confidently, only acting on a match ≥ `GOOD_SCORE`. It therefore cannot
+break a tap that already worked, and a stale seed just fails like a wrong label.
+**GOTCHA: do not seed a label the existing prefix scoring already matches** (Instagram's
+"Search", WhatsApp's "Search…" both score 90) — the entry never fires and the table then
+implies coverage it does not have.
+**NEXT on this:** the *learned* half — record the literal that actually worked, on the
+same `ok && clean` gate `Playbook` uses; and `AppRegistry` (spoken name → app) so
+nicknames stop depending on prompt injection.
+
 ### ⏭️ E2E tap tier — root cause FOUND (`ba056e2`), verification run pending
 The probe's diagnostics diagnosed it in one cycle: the settings write **stuck**, the
 service was **installed**, accessibility was **globally on**, and the enabled-services

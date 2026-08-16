@@ -2977,6 +2977,40 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-16 — Teaching the executor what a control is CALLED
+
+The single most quoted line in this project's failure history is that Blinkit's
+search box is labelled "Search for atta, dal, coke and more" while the plan aimed
+at `Tap("Search")`. It has been cited as proof that plans cannot be written before
+an app is open, which is true — and it was also, all along, a translation problem
+nobody had translated.
+
+`control/ControlVocabulary` is the table: generic word the model reaches for →
+literal label a given app actually uses. Keyed by package **fragment**, because
+Blinkit ships as `com.grofers.customerapp` and an exact key would miss it along
+with every regional and white-label variant.
+
+**The integration is the careful part.** It is consulted ONLY after the requested
+label has already failed to match confidently, acts only on a match at or above
+`GOOD_SCORE`, and otherwise leaves the scroll-then-weak-match path exactly as it
+was. That makes it strictly additive: it can add a way to succeed and cannot take
+one away, and — importantly for a table of strings about other people's apps — a
+seed that goes stale when an app redesigns simply fails to match, like any other
+wrong label, instead of breaking the step. A translation layer that could BREAK a
+working tap would not have been worth shipping.
+
+Two rows were written and then deleted: Instagram and WhatsApp, whose controls are
+"Search" and "Search…". Both already score 90 on the existing prefix match, above
+the confidence gate, so the seeds would never have fired. Dead rows in a lookup
+table are worse than no rows — they imply coverage that is not there, and the next
+person to read the table trusts it. The deletion is recorded in a comment so it
+does not get "fixed" back.
+
+The half NOT built yet is the one that scales: learning literals from runs that
+ran clean, on the same `ok && clean` gate `Playbook` already uses. Seeds cover the
+apps whose traces we have; learning covers everyone else's phone. This half shipped
+first because it needs no new state and is verifiable without a device.
+
 ### 2026-08-14 — The test harness was disabling the service it was enabling
 
 The improved probe answered its own question on the next run, which is the entire
