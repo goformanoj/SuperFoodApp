@@ -622,6 +622,30 @@ class ScreenControlService : AccessibilityService() {
             onDone(tapNode(node))
             return
         }
+        // The requested label did not match confidently. The model names generic
+        // intents — "Search" — and real apps rename those controls at length:
+        // Blinkit's search box is "Search for atta, dal, coke and more", which no
+        // plan could have guessed. Try the known literals for THIS app before
+        // scrolling off to hunt for a word that is not on screen.
+        //
+        // Strictly additive: it only runs where the old code was already heading
+        // for a scroll or a weak-match tap, and it only acts on a CONFIDENT match,
+        // so a stale entry fails exactly like any other wrong label.
+        val known = ControlVocabulary.candidatesFor(
+            rootInActiveWindow?.packageName?.toString(),
+            label,
+        )
+        for (candidate in known) {
+            val (altNode, altScore) = bestMatch(root, candidate)
+            if (altNode != null && altScore >= GOOD_SCORE) {
+                DebugLog.log(
+                    DebugLog.Stage.SCREEN,
+                    "\"$label\" is called \"$candidate\" here — tapping that",
+                )
+                onDone(tapNode(altNode))
+                return
+            }
+        }
         if (scrolls < MAX_SCROLLS && scrollForward(root)) {
             handler.postDelayed({ seek(label, scrolls + 1, onDone) }, SCROLL_SETTLE_MS)
             return
