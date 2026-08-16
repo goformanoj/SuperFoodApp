@@ -19,6 +19,74 @@ class WorkSessionTest {
 
     // --- mic ownership -----------------------------------------------------
 
+    // --- barge-in: the third holder of the one microphone --------------------
+
+    @Test
+    fun `while JARVIS speaks the barge-in listener owns the mic, not the recogniser`() {
+        // The recogniser cannot take this turn: startListening() mutes
+        // STREAM_MUSIC to suppress its earcon, and TTS plays on STREAM_MUSIC, so
+        // handing it the mic here would make JARVIS inaudible mid-sentence.
+        val s = session(visible = true)
+        s.onSpeaking(true)
+
+        assertEquals(MicOwner.BARGE_IN, s.owner)
+    }
+
+    @Test
+    fun `speaking outranks a work session`() {
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        s.onSpeaking(true)
+
+        assertEquals(MicOwner.BARGE_IN, s.owner)
+    }
+
+    @Test
+    fun `speaking backgrounded with no session gives the mic to nobody`() {
+        // Android 9+ hands a background app with no microphone foreground service
+        // SILENCE rather than an error, so a listener started here would read
+        // zeros forever and look, in a trace, exactly like a user who said
+        // nothing.
+        val s = session(visible = false)
+        s.onSpeaking(true)
+
+        assertEquals(MicOwner.NONE, s.owner)
+    }
+
+    @Test
+    fun `speaking still needs microphone permission`() {
+        val s = session(mic = false, visible = true)
+        s.onSpeaking(true)
+
+        assertEquals(MicOwner.NONE, s.owner)
+    }
+
+    @Test
+    fun `when JARVIS stops speaking the previous owner comes back unchanged`() {
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        val before = s.owner
+
+        s.onSpeaking(true)
+        s.onSpeaking(false)
+
+        assertEquals(before, s.owner)
+        assertEquals(MicOwner.SESSION, s.owner)
+    }
+
+    @Test
+    fun `barge-in beats playing media, because the voice on the speaker is his own`() {
+        // The yield-to-media rule exists so JARVIS does not pause the song he was
+        // asked to play. It must not fire against his own speech.
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        s.onMediaPlaying(true)
+        s.onSpeaking(true)
+
+        assertEquals(MicOwner.BARGE_IN, s.owner)
+        assertFalse("speaking is not yielding", s.yieldedToMedia)
+    }
+
     @Test
     fun `with JARVIS on screen the in-app engine owns the mic`() {
         assertEquals(MicOwner.ENGINE, session(visible = true).owner)

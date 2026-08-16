@@ -10,6 +10,18 @@ enum class MicOwner {
 
     /** The engine keeps listening while backgrounded, held up by the foreground service. */
     SESSION,
+
+    /**
+     * JARVIS is talking, and a separate echo-tolerant listener is open purely to
+     * hear the user cut him off.
+     *
+     * This is deliberately an owner rather than something running alongside one.
+     * The barge-in listener holds the microphone just as really as the recogniser
+     * does, and the last time two things could hold it at once the whole feature
+     * had to be reverted. Putting it inside the same enum is what keeps "two
+     * owners" unrepresentable instead of merely unlikely.
+     */
+    BARGE_IN,
 }
 
 /**
@@ -33,6 +45,7 @@ class WorkSession {
     private var sessionActive = false
     private var mediaPlaying = false
     private var talkRequested = false
+    private var speaking = false
 
     /** True once an app-opening command has started a session and it hasn't been ended. */
     val isActive: Boolean get() = sessionActive
@@ -45,6 +58,16 @@ class WorkSession {
     val owner: MicOwner
         get() = when {
             !micGranted -> MicOwner.NONE
+            // Above everything: while JARVIS talks, the only thing worth hearing
+            // is the user cutting him off, and the ordinary recogniser cannot do
+            // that job -- it mutes STREAM_MUSIC to hide its earcon, and TTS plays
+            // on STREAM_MUSIC, so opening it here would make JARVIS inaudible.
+            speaking && canRecordNow -> MicOwner.BARGE_IN
+            // Speaking from the background with no session to hold a microphone
+            // foreground service. Android 9+ hands a background app SILENCE
+            // rather than an error, so a listener here would sit reading zeros
+            // with nothing in the trace to say why it never triggered.
+            speaking -> MicOwner.NONE
             // On JARVIS's own screen the user is deliberately talking to it, so
             // listening wins even if something is playing.
             jarvisVisible -> MicOwner.ENGINE
@@ -60,9 +83,19 @@ class WorkSession {
             else -> MicOwner.NONE
         }
 
+    /**
+     * Whether opening a microphone right now would actually capture the room.
+     *
+     * On screen we are plainly foreground. Backgrounded, only a live session
+     * gives us the microphone foreground service that makes recording legal --
+     * see [needsForegroundService], which is what starts it.
+     */
+    private val canRecordNow: Boolean get() = jarvisVisible || sessionActive
+
     /** True while a session is up but yielding the microphone to playback. */
     val yieldedToMedia: Boolean
-        get() = sessionActive && micGranted && mediaPlaying && !jarvisVisible && !talkRequested
+        get() = sessionActive && micGranted && mediaPlaying &&
+            !jarvisVisible && !talkRequested && !speaking
 
     /**
      * Something is playing through the speaker. JARVIS stops listening so it does
@@ -71,6 +104,18 @@ class WorkSession {
     fun onMediaPlaying(playing: Boolean) {
         mediaPlaying = playing
         if (!playing) talkRequested = false
+    }
+
+    /**
+     * JARVIS has started or stopped speaking.
+     *
+     * Derived rather than remembered: [com.jarvis.os.assistant.AssistantEngine]
+     * sets this from the turn phase every time it applies the owner, so the two
+     * cannot drift apart the way they would if each speak path had to remember
+     * to announce itself.
+     */
+    fun onSpeaking(value: Boolean) {
+        speaking = value
     }
 
     /** The user tapped Talk: listen for one turn even though media is playing. */

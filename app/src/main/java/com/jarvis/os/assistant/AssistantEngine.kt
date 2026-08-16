@@ -36,6 +36,7 @@ import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.files.ArtifactActions
 import com.jarvis.os.files.ArtifactStore
 import com.jarvis.os.files.ArtifactWriter
+import com.jarvis.os.voice.BargeInListener
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.Transcript
@@ -111,6 +112,11 @@ class AssistantEngine(context: Context) {
 
     private val voice = VoiceController(appContext)
     private val speaker = Speaker(appContext)
+
+    // Hears "Hey Jarvis" over JARVIS's own reply. Never runs at the same time as
+    // [voice] -- it is an owner in its own right (MicOwner.BARGE_IN), not a
+    // second listener alongside one.
+    private val bargeIn = BargeInListener(appContext)
 
     // Decides who may hold the microphone. Every listen/stop decision below goes
     // through this one object, so a second listener cannot come into existence.
@@ -192,6 +198,13 @@ class AssistantEngine(context: Context) {
         // which of those actually ends the turn: a report for an utterance that
         // was already flushed, or for a turn the user has just interrupted, must
         // not run the work that was waiting for JARVIS to stop talking.
+        // Arms the barge-in listener, through [applyMicOwner]'s ownership rules.
+        // Deliberately on speech actually BEGINNING rather than on asking for it:
+        // in the moment before, what the microphone would pick up is the user's
+        // own command trailing off, and hearing that back would cut the reply
+        // off before it had said anything.
+        speaker.onSpeechStarted = { seq -> if (turn.speechStarted(seq)) applyMicOwner() }
+        bargeIn.onDetected = { interrupt() }
         speaker.onSpeechEnded = { seq, interrupted ->
             if (turn.speechEnded(seq, interrupted)) {
                 disarmWatchdog()
@@ -388,6 +401,12 @@ class AssistantEngine(context: Context) {
      * during normal operation, which is what keeps "exactly one owner" true.
      */
     private fun applyMicOwner() {
+        // Derived from the turn rather than announced by each speak path, so the
+        // session's idea of "he is talking" cannot drift from the turn's. Every
+        // route that changes the phase ends up here, which is what makes one
+        // assignment enough.
+        session.onSpeaking(turn.phase == TurnPhase.SPEAKING)
+
         // Track the service regardless of the turn, so the process is already
         // foreground-legal by the time we want to listen again.
         if (session.needsForegroundService) {
@@ -400,10 +419,23 @@ class AssistantEngine(context: Context) {
         // listening resumes on its own when the song ends.
         if (session.isActive) scheduleMediaCheck()
 
-        if (turn.micGated) return // mid think/speak — onSpokenDone re-applies this
+        val owner = session.owner
+        // Mid think/speak nothing may listen — with the one exception of the
+        // barge-in listener, which exists precisely to be open then.
+        if (turn.micGated && owner != MicOwner.BARGE_IN) {
+            bargeIn.stop()
+            return // onSpokenDone re-applies this
+        }
 
-        when (session.owner) {
+        when (owner) {
+            MicOwner.BARGE_IN -> {
+                // Note what is NOT here: no state change. The orb must go on
+                // reading Speaking, because he is.
+                voice.stopListening()
+                bargeIn.start()
+            }
             MicOwner.NONE -> {
+                bargeIn.stop()
                 voice.stopListening()
                 set {
                     it.copy(
@@ -417,7 +449,23 @@ class AssistantEngine(context: Context) {
                     )
                 }
             }
-            MicOwner.ENGINE, MicOwner.SESSION -> listen()
+            MicOwner.ENGINE, MicOwner.SESSION -> {
+                if (bargeIn.stop()) {
+                    // Handing the microphone from one holder to the other is the
+                    // most likely thing to fail on a real device. The AudioRecord
+                    // is released, but the audio HAL does not always free the
+                    // input immediately, and SpeechRecognizer answers a lost race
+                    // with ERROR_RECOGNIZER_BUSY — which surfaces as JARVIS
+                    // simply not hearing the thing you interrupted him to say.
+                    // A deliberate short gap beats a visible stumble.
+                    main.postDelayed(
+                        { if (!turn.micGated && engineMayListen()) listen() },
+                        MIC_HANDOFF_MS,
+                    )
+                } else {
+                    listen()
+                }
+            }
         }
     }
 
@@ -463,6 +511,7 @@ class AssistantEngine(context: Context) {
         WorkSessionService.onStopRequested = null
         WorkSessionService.onTalkRequested = null
         WorkSessionService.stop(appContext)
+        bargeIn.close()
         voice.destroy()
         speaker.shutdown()
         scope.cancel()
@@ -1435,6 +1484,10 @@ class AssistantEngine(context: Context) {
         const val WATCHDOG_PER_CHAR_MS = 90L
         const val WATCHDOG_SLACK_MS = 3_000L
         const val WATCHDOG_MIN_MS = 4_000L
+
+        // Gap between releasing the barge-in recorder and opening the
+        // recogniser. See the hand-off note in applyMicOwner.
+        const val MIC_HANDOFF_MS = 200L
 
         // How long to wait before looking again at an app that has been launched
         // but has not drawn yet. Five of these is ~3s, which covers a cold start
