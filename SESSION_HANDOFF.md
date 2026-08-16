@@ -5,9 +5,11 @@
 
 ## Current position + immediate next
 
-**`main` @ `a3503d1`** — green build **#242** (`jarvis-debug-apk` present; unit tests, lint and APK
-green). Session branch `claude/jarvis-os-files-ata1ho` is **level with `main`** (fast-forwarded).
-Tree clean, nothing unmerged. **Eight fixes from the 2026-08-14 device trace are MERGED.**
+**`main` @ `bcb599b`** — green build **#248** (`build`, `wakeword-pipeline` and `instrumented` all
+green; `e2e-tap` is non-gating and still being brought up). **Eight fixes from the 2026-08-14 device
+trace are MERGED and installable.** The session branch `claude/jarvis-os-files-ata1ho` is **ahead of
+`main`** with the E2E tap tier and the ControlVocabulary layer — hold the merge until the probe run
+is green, since the E2E job is the one thing not yet proven.
 
 ### 🧠 Learning layer — half built
 `control/ControlVocabulary` (pure, 9 tests) translates a generic label the model asks
@@ -22,7 +24,7 @@ implies coverage it does not have.
 same `ok && clean` gate `Playbook` uses; and `AppRegistry` (spoken name → app) so
 nicknames stop depending on prompt injection.
 
-### ⏭️ E2E tap tier — root cause FOUND (`ba056e2`), verification run pending
+### ⏭️ E2E tap tier — assumption #1 SETTLED (the service DOES bind); tap still unproven
 The probe's diagnostics diagnosed it in one cycle: the settings write **stuck**, the
 service was **installed**, accessibility was **globally on**, and the enabled-services
 list was **empty**. Nothing failed — something switched it off. That something is
@@ -38,10 +40,17 @@ touch the unflagged `instrumentation.uiAutomation` first — the flag applies on
 connection is created, so one unflagged call anywhere reintroduces the suppression.
 
 **The app was never at fault** — no manifest, `exported`, permission or timeout change was
-needed, and each of those was a plausible thing to have guessed at. Next: confirm the run
-is green, then grow the suite to the classes pure tests cannot reach (unrendered screen,
-failed `Open`, first-move `Back`, right control among decoys), keeping it ≤~8 tests and
-non-gating.
+needed, and each of those was a plausible thing to have guessed at.
+
+**Run #249 then moved the failure PAST the bind assertion**, which settles the tier's first
+unknown: a real `AccessibilityService` CAN be enabled and bound from an instrumented test.
+It died later and smaller — `ActivityNotFoundException {com.jarvis.os/…FixtureActivity}` —
+because the Intent was built from `targetContext` while the fixture lives in the androidTest
+APK (`com.jarvis.os.test`). Fixed by building it from the **test** context (`80af271`). That
+exception is itself the first hard evidence the two packages are genuinely distinct, which is
+what assumption #2 requires. **Still unproven: that a real tap reaches the fixture.**
+Next: confirm green, then grow the suite to the classes pure tests cannot reach (unrendered
+screen, failed `Open`, first-move `Back`, right control among decoys), ≤~8 tests, non-gating.
 
 ### Previously — probe built, RAN, and FAILED at assumption #1
 `A11yProbeTest` (branch only, non-gating job `e2e-tap`) reported **"the accessibility
