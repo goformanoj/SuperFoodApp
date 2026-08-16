@@ -9,20 +9,45 @@ import com.jarvis.os.debug.DebugLog
 import java.util.Locale
 
 /**
- * Text-to-speech wrapper. [onDone] fires (on the main thread) when speech ends,
- * or immediately if TTS is unavailable. If [speak] is called before the engine
- * has finished initializing, the text is buffered and spoken once ready — this
- * matters because replies can arrive faster than TTS init completes.
+ * Text-to-speech wrapper. [onSpeechEnded] fires (on the main thread) when speech
+ * ends, or immediately if TTS is unavailable. If [speak] is called before the
+ * engine has finished initializing, the text is buffered and spoken once ready —
+ * this matters because replies can arrive faster than TTS init completes.
+ *
+ * ## Why every utterance carries a sequence number
+ *
+ * [speak] uses `QUEUE_FLUSH`, so speaking again cuts the current utterance off.
+ * The platform then reports the *old* utterance as finished — after the new one
+ * has already started. Without a way to tell the two apart, that late report
+ * reads as "the reply is over", and the caller starts the microphone while JARVIS
+ * is still mid-sentence. On this app that is not a cosmetic bug: the recogniser
+ * mutes `STREAM_MUSIC` to suppress its earcon, and TTS plays on `STREAM_MUSIC` —
+ * so JARVIS would go silent halfway through his own answer.
+ *
+ * So each utterance gets a monotonic id, and [onSpeechStarted]/[onSpeechEnded]
+ * report it, letting a caller that tracks the newest sequence discard the stale
+ * one. A bare "speech ended" callback carrying no sequence cannot make that
+ * distinction at all, which is why this class no longer offers one.
  */
 class Speaker(context: Context) {
 
     /** One selectable voice, described for the picker. */
     data class Option(val id: String, val label: String, val quality: Int, val needsNetwork: Boolean)
 
-    var onDone: () -> Unit = {}
-
     /** Fires when the engine is ready, so a picker can populate itself. */
     var onVoicesReady: () -> Unit = {}
+
+    /** The utterance identified by this sequence has begun coming out of the speaker. */
+    var onSpeechStarted: (seq: Long) -> Unit = {}
+
+    /**
+     * The utterance identified by this sequence is over, whether it finished,
+     * errored, or was cut short (`interrupted` = true, from [stop] or a
+     * `QUEUE_FLUSH`). Always fires exactly once per sequence handed to [speak],
+     * including when there is no working TTS engine at all — a caller waiting on
+     * it must never be left waiting.
+     */
+    var onSpeechEnded: (seq: Long, interrupted: Boolean) -> Unit = { _, _ -> }
 
     private val settings = VoiceSettings(context)
 
@@ -30,7 +55,16 @@ class Speaker(context: Context) {
     private var tts: TextToSpeech? = null
     private var ready = false
     private var failed = false
-    private var pending: String? = null
+    private var pending: Pair<Long, String>? = null
+
+    /**
+     * Allocated in [speak] rather than [doSpeak] so that a reply buffered before
+     * the engine finished initialising keeps the same id it was promised.
+     */
+    private var nextSeq = 0L
+
+    /** Sequences already reported ended, so a double report cannot fire twice. */
+    private var lastEndedSeq = -1L
 
     init {
         tts = TextToSpeech(context.applicationContext) { status ->
@@ -44,30 +78,54 @@ class Speaker(context: Context) {
                 engine.setPitch(VoicePreference.PITCH)
                 engine.setSpeechRate(VoicePreference.SPEECH_RATE)
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {}
+                    override fun onStart(utteranceId: String?) {
+                        val seq = seqOf(utteranceId) ?: return
+                        main.post { onSpeechStarted(seq) }
+                    }
+
                     override fun onDone(utteranceId: String?) {
                         // A preview is not a reply — it must not advance the loop.
                         if (utteranceId == PREVIEW_ID) return
-                        main.post { this@Speaker.onDone() }
+                        reportEnded(utteranceId, interrupted = false)
+                    }
+
+                    /**
+                     * Delivered when an utterance is cut off — by [stop], or by the
+                     * `QUEUE_FLUSH` of a following [speak]. **Overriding this is the
+                     * whole point of the sequence work**: without it the platform
+                     * reports nothing at all for an interrupted utterance, so a
+                     * caller that arms itself on [onSpeechStarted] and disarms on
+                     * [onSpeechEnded] would stay armed forever after the first
+                     * interruption. Non-abstract since API 23, so this is free at
+                     * `minSdk 26`.
+                     *
+                     * Reports `interrupted` rather than folding it into a plain
+                     * "finished", because the two mean opposite things to a caller:
+                     * a reply that ran to its end should be followed by whatever was
+                     * queued behind it, and one the user cut off should not.
+                     */
+                    override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                        if (utteranceId == PREVIEW_ID) return
+                        reportEnded(utteranceId, interrupted = interrupted)
                     }
 
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
                         if (utteranceId == PREVIEW_ID) return
-                        main.post { this@Speaker.onDone() }
+                        reportEnded(utteranceId, interrupted = false)
                     }
                 })
                 ready = true
                 main.post { onVoicesReady() }
-                pending?.let { text ->
+                pending?.let { (seq, text) ->
                     pending = null
-                    doSpeak(text)
+                    doSpeak(seq, text)
                 }
             } else {
                 failed = true
-                pending?.let {
+                pending?.let { (seq, _) ->
                     pending = null
-                    main.post { onDone() }
+                    endNow(seq)
                 }
             }
         }
@@ -190,25 +248,56 @@ class Speaker(context: Context) {
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, PREVIEW_ID)
     }
 
-    fun speak(text: String) {
+    /**
+     * Speak [text], cutting off anything already being spoken.
+     *
+     * Returns the sequence number for this utterance. Every returned sequence is
+     * followed by exactly one [onSpeechEnded] — on every path, including a device
+     * with no usable TTS engine — so a caller may safely treat it as a promise.
+     */
+    fun speak(text: String): Long {
+        val seq = nextSeq++
         when {
-            failed -> main.post { onDone() }
-            ready -> doSpeak(text)
-            else -> pending = text
+            failed -> endNow(seq)
+            ready -> doSpeak(seq, text)
+            // Buffered until init finishes. The sequence is already allocated, so
+            // the caller can start tracking it before a word has been spoken.
+            else -> pending = seq to text
         }
+        return seq
     }
 
-    private fun doSpeak(text: String) {
+    private fun doSpeak(seq: Long, text: String) {
         val engine = tts
         if (engine == null) {
-            main.post { onDone() }
+            endNow(seq)
             return
         }
-        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID)
+        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceIdFor(seq))
     }
 
+    /**
+     * Cut off whatever is being spoken.
+     *
+     * **The caller must not wait for a callback after calling this.** The platform
+     * only delivers `onStop` when an utterance is actually in progress; if TTS is
+     * already idle, `stop()` produces no callback of any kind. Anything that has
+     * to become true once speech is over must be set synchronously here by the
+     * caller, not deferred to [onSpeechEnded].
+     */
     fun stop() {
         tts?.stop()
+    }
+
+    /**
+     * Whether the engine believes it is speaking right now. Used to reconcile
+     * state after a gap the callbacks could have fallen into — a returning
+     * Activity asking the engine rather than assuming.
+     */
+    fun isSpeaking(): Boolean = try {
+        tts?.isSpeaking == true
+    } catch (e: Exception) {
+        false
     }
 
     fun shutdown() {
@@ -217,8 +306,39 @@ class Speaker(context: Context) {
         tts = null
     }
 
+    /** Reports an end for a real utterance id, ignoring previews and duplicates. */
+    private fun reportEnded(utteranceId: String?, interrupted: Boolean) {
+        val seq = seqOf(utteranceId) ?: return
+        main.post { deliverEnded(seq, interrupted) }
+    }
+
+    /** Reports an end for an utterance that never reached the engine at all. */
+    private fun endNow(seq: Long) {
+        main.post { deliverEnded(seq, interrupted = false) }
+    }
+
+    /**
+     * Some engines deliver both `onDone` and `onStop` for the same utterance, so
+     * the sequence is checked here rather than trusting the platform to report
+     * once. Main thread only, which is what makes the bare comparison safe.
+     */
+    private fun deliverEnded(seq: Long, interrupted: Boolean) {
+        if (seq <= lastEndedSeq) return
+        lastEndedSeq = seq
+        onSpeechEnded(seq, interrupted)
+    }
+
+    private fun utteranceIdFor(seq: Long): String = "$UTTERANCE_PREFIX$seq"
+
+    /** The sequence in an utterance id, or null for a preview or anything foreign. */
+    private fun seqOf(utteranceId: String?): Long? {
+        val id = utteranceId ?: return null
+        if (!id.startsWith(UTTERANCE_PREFIX)) return null
+        return id.removePrefix(UTTERANCE_PREFIX).toLongOrNull()
+    }
+
     private companion object {
-        const val UTTERANCE_ID = "jarvis"
+        const val UTTERANCE_PREFIX = "jarvis#"
         const val PREVIEW_ID = "jarvis_preview"
     }
 }

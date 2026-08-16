@@ -50,6 +50,7 @@ class MainActivity : ComponentActivity() {
                         state = state,
                         onClearChat = { engine.clearConversation() },
                         onWake = { engine.wake() },
+                        onInterrupt = { engine.interrupt() },
                         onSubmitCommand = { engine.submitText(it) },
                         voiceOptions = { engine.voiceOptions() },
                         currentVoiceId = { engine.currentVoiceId() },

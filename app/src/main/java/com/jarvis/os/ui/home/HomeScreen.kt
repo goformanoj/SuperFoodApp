@@ -141,6 +141,7 @@ fun JarvisApp(
     state: VoiceUiState,
     onClearChat: () -> Unit,
     onWake: () -> Unit = {},
+    onInterrupt: () -> Unit = {},
     onSubmitCommand: (String) -> Unit = {},
     voiceOptions: () -> List<Speaker.Option> = { emptyList() },
     currentVoiceId: () -> String? = { null },
@@ -198,7 +199,7 @@ fun JarvisApp(
     ) {
         Box(modifier = modifier.fillMaxSize().background(palette.background)) {
             when (current) {
-                Dest.Home -> HomeContent(state, onWake)
+                Dest.Home -> HomeContent(state, onWake, onInterrupt)
                 Dest.Chat -> ChatScreen(state.messages, onClearChat)
                 Dest.Diagnostics -> DiagnosticsScreen(onSubmitCommand = onSubmitCommand)
                 Dest.Settings -> SettingsScreen(
@@ -464,7 +465,11 @@ private fun DashboardRow(dest: Dest, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun HomeContent(state: VoiceUiState, onWake: () -> Unit = {}) {
+private fun HomeContent(
+    state: VoiceUiState,
+    onWake: () -> Unit = {},
+    onInterrupt: () -> Unit = {},
+) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val viewport = maxHeight
         // The backdrop sits behind the scrolling content, so the starfield stays
@@ -476,17 +481,25 @@ private fun HomeContent(state: VoiceUiState, onWake: () -> Unit = {}) {
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
         ) {
-            HeroSection(state = state, height = viewport, onWake = onWake)
+            HeroSection(state = state, height = viewport, onWake = onWake, onInterrupt = onInterrupt)
             ScheduleSection()
         }
     }
 }
 
 @Composable
-private fun HeroSection(state: VoiceUiState, height: Dp, onWake: () -> Unit = {}) {
+private fun HeroSection(
+    state: VoiceUiState,
+    height: Dp,
+    onWake: () -> Unit = {},
+    onInterrupt: () -> Unit = {},
+) {
     val greeting = remember { greetingForHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
     // Show live transcript/reply only during an active conversation; hide when asleep.
     val active = state.orb != OrbState.Idle && state.orb != OrbState.Offline
+    // Tapping while JARVIS talks cuts him off, which is the one case where a tap
+    // during an active conversation should do something rather than nothing.
+    val speaking = state.orb == OrbState.Speaking
 
     Column(
         modifier = Modifier
@@ -506,12 +519,17 @@ private fun HeroSection(state: VoiceUiState, height: Dp, onWake: () -> Unit = {}
         )
 
         Spacer(Modifier.height(28.dp))
-        // Tapping the orb wakes JARVIS without the wake word — enabled only while
-        // it is asleep (idle), so a live conversation isn't interrupted by a tap.
+        // The orb answers a tap in two situations and stays inert in between.
+        // Asleep, it wakes JARVIS without the wake word. Speaking, it stops him —
+        // every other assistant lets you cut in, and until now this one made you
+        // wait out a sentence you had already heard enough of. While listening or
+        // thinking there is nothing useful a tap could mean, so it does nothing.
         Box(
             modifier = Modifier
                 .clip(CircleShape)
-                .clickable(enabled = !active) { onWake() },
+                .clickable(enabled = !active || speaking) {
+                    if (speaking) onInterrupt() else onWake()
+                },
             contentAlignment = Alignment.Center,
         ) {
             HudOrb(orb = state.orb, amplitude = state.amplitude, size = 280.dp)

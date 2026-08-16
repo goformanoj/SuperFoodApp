@@ -120,7 +120,25 @@ class AssistantEngine(context: Context) {
 
     private var micGranted = false
     private var mediaPlaying = false
-    private var busy = false // thinking or speaking — do not listen
+
+    /**
+     * Where the current turn has got to, and whether it may be interrupted.
+     *
+     * This replaced a single `busy` boolean that meant three different things at
+     * once — see [TurnState] for what each of them was and why they had to come
+     * apart before JARVIS could be cut off mid-sentence.
+     */
+    private val turn = TurnState()
+
+    /**
+     * Handler for the end-of-speech watchdog, and **deliberately not [main]**.
+     *
+     * [ask] and [pause] both call `main.removeCallbacksAndMessages(null)`, which
+     * would silently throw the watchdog away — leaving exactly the stuck turn it
+     * exists to catch, and only in the cases where something had already gone
+     * wrong enough to clear the queue.
+     */
+    private val guard = Handler(Looper.getMainLooper())
 
     // Wake-word gate. When asleep, JARVIS listens but stays silent and inert until
     // it hears "Hey JARVIS" — it will not think, speak, or act on anything else.
@@ -150,11 +168,11 @@ class AssistantEngine(context: Context) {
     private var replayingRoute = false
 
     init {
-        voice.onReady = { if (!busy) set { it.copy(orb = idleOrb(), status = idleStatus()) } }
+        voice.onReady = { if (!turn.micGated) set { it.copy(orb = idleOrb(), status = idleStatus()) } }
         voice.onPartial = { text ->
             // Show live text only while engaged; asleep it should read as waiting
             // for the wake word, not transcribing the room.
-            if (!busy) set {
+            if (!turn.micGated) set {
                 it.copy(
                     orb = idleOrb(),
                     status = idleStatus(),
@@ -162,14 +180,27 @@ class AssistantEngine(context: Context) {
                 )
             }
         }
-        voice.onAmplitude = { amp -> if (!busy) set { it.copy(amplitude = amp) } }
+        voice.onAmplitude = { amp -> if (!turn.micGated) set { it.copy(amplitude = amp) } }
         voice.onNoInput = { restartSoon() }
         voice.onFatal = { msg -> set { it.copy(orb = OrbState.Error, status = msg, amplitude = 0f) } }
         voice.onFinal = { hypotheses ->
             val best = hypotheses.firstOrNull().orEmpty()
             if (best.isNotBlank()) onHeard(best, hypotheses)
         }
-        speaker.onDone = { onSpokenDone() }
+        // Every end of speech arrives here — finished, errored, cut off, or never
+        // started because the device has no usable engine. [TurnState] decides
+        // which of those actually ends the turn: a report for an utterance that
+        // was already flushed, or for a turn the user has just interrupted, must
+        // not run the work that was waiting for JARVIS to stop talking.
+        speaker.onSpeechEnded = { seq, interrupted ->
+            if (turn.speechEnded(seq, interrupted)) {
+                disarmWatchdog()
+                if (interrupted) {
+                    DebugLog.log(DebugLog.Stage.SPOKE, "speech cut short — carrying on from there")
+                }
+                onSpokenDone()
+            }
+        }
         // The executor asks the model which on-screen option a <<PICK>> means. It
         // lives here because the engine owns the AI clients; the service only
         // knows what is on screen.
@@ -305,11 +336,11 @@ class AssistantEngine(context: Context) {
         // Foreground now, so the engine owns the mic — the background hotword must
         // let go, or two listeners would fight over it (the one-owner rule).
         HotwordService.stop(appContext)
-        // Coming back to the foreground (e.g. after being sent to Settings) — any
-        // interrupted think/speak is abandoned, so clear busy and start listening
-        // again. Without this the "busy" flag could stay stuck and it never
-        // resumes hearing you.
-        busy = false
+        // Coming back to the foreground (e.g. after being sent to Settings). Ask
+        // the engine whether it is still talking rather than assuming either way:
+        // a turn abandoned while we were gone must not leave the microphone shut
+        // for good, and a reply still being spoken must not be declared finished.
+        turn.reconcile(speaker.isSpeaking())
         applyMicOwner()
     }
 
@@ -318,7 +349,14 @@ class AssistantEngine(context: Context) {
         main.removeCallbacksAndMessages(null)
         // Outside a session, leaving the screen silences JARVIS as before. Inside
         // one, it keeps talking and listening from the background.
-        if (!session.isActive) speaker.stop()
+        if (!session.isActive) {
+            speaker.stop()
+            // Ends the turn here and now rather than waiting to be told. Stopping
+            // TTS that is already idle produces no callback at all, so anything
+            // that waited for one would keep the microphone shut indefinitely.
+            turn.interrupt()
+            disarmWatchdog()
+        }
         applyMicOwner()
         // Backgrounded and not mid-session: hand the mic to the background wake
         // word so "Hey Jarvis" still reaches JARVIS from other apps. A session
@@ -338,7 +376,7 @@ class AssistantEngine(context: Context) {
      * brought it to the front. [via] is only for the trace.
      */
     fun summon(via: String = "") {
-        if (busy) return
+        if (turn.micGated) return
         awake = true
         DebugLog.log(DebugLog.Stage.THINK, "summoned${if (via.isBlank()) "" else " by $via"}")
         speakAck("Yes?")
@@ -350,7 +388,7 @@ class AssistantEngine(context: Context) {
      * during normal operation, which is what keeps "exactly one owner" true.
      */
     private fun applyMicOwner() {
-        // Track the service regardless of [busy], so the process is already
+        // Track the service regardless of the turn, so the process is already
         // foreground-legal by the time we want to listen again.
         if (session.needsForegroundService) {
             WorkSessionService.start(appContext, listening = !session.yieldedToMedia)
@@ -362,7 +400,7 @@ class AssistantEngine(context: Context) {
         // listening resumes on its own when the song ends.
         if (session.isActive) scheduleMediaCheck()
 
-        if (busy) return // mid think/speak — onSpokenDone re-applies this
+        if (turn.micGated) return // mid think/speak — onSpokenDone re-applies this
 
         when (session.owner) {
             MicOwner.NONE -> {
@@ -401,7 +439,7 @@ class AssistantEngine(context: Context) {
             if (!session.isActive) return
             // Our own speech comes out of the music stream, so ignore it — the
             // check would otherwise see JARVIS talking and stand down forever.
-            val playing = !busy && audio.isMusicActive
+            val playing = !turn.ownVoiceOnStream && audio.isMusicActive
             if (playing != mediaPlaying) {
                 mediaPlaying = playing
                 session.onMediaPlaying(playing)
@@ -417,6 +455,7 @@ class AssistantEngine(context: Context) {
 
     fun destroy() {
         main.removeCallbacksAndMessages(null)
+        disarmWatchdog()
         session.end()
         ScreenControlService.onPick = null
         ScreenControlService.onRecover = null
@@ -546,7 +585,7 @@ class AssistantEngine(context: Context) {
      * saying it out loud would be awkward. No-op if already engaged or mid-turn.
      */
     fun wake() {
-        if (busy || isEngaged() || session.owner == MicOwner.NONE) return
+        if (turn.micGated || isEngaged() || session.owner == MicOwner.NONE) return
         awake = true
         DebugLog.log(DebugLog.Stage.THINK, "woken by tap")
         applyMicOwner() // re-enters listen(), which now shows Listening and arms the idle timer
@@ -557,7 +596,8 @@ class AssistantEngine(context: Context) {
             set { it.copy(orb = OrbState.Error, status = "Speech recognition unavailable") }
             return
         }
-        busy = false
+        // No need to clear the turn here: the only caller is [applyMicOwner],
+        // which has already returned early if one is in flight.
         set { it.copy(orb = idleOrb(), status = idleStatus(), amplitude = 0f) }
         // Only count down to sleep while awake and outside a session; a session is
         // its own "keep listening" contract, and asleep there is nothing to time.
@@ -566,9 +606,20 @@ class AssistantEngine(context: Context) {
         voice.startListening()
     }
 
+    /**
+     * The owners for which the in-app recogniser is the right listener.
+     *
+     * Stated as a whitelist rather than `!= NONE` on purpose: this is the one
+     * path that reaches `voice.startListening` without going through
+     * [applyMicOwner], so a future owner added to [MicOwner] must be granted
+     * listening here deliberately rather than inheriting it.
+     */
+    private fun engineMayListen(): Boolean =
+        session.owner == MicOwner.ENGINE || session.owner == MicOwner.SESSION
+
     private fun restartSoon() {
-        if (busy || session.owner == MicOwner.NONE) return
-        main.postDelayed({ if (!busy && session.owner != MicOwner.NONE) voice.startListening() }, RESTART_MS)
+        if (turn.micGated || !engineMayListen()) return
+        main.postDelayed({ if (!turn.micGated && engineMayListen()) voice.startListening() }, RESTART_MS)
     }
 
     /** Engaged = mid-conversation: already awake, or in a work session. */
@@ -617,7 +668,7 @@ class AssistantEngine(context: Context) {
     private val sleepTimer = object : Runnable {
         override fun run() {
             // Don't fall asleep mid-think/speak; check again once that finishes.
-            if (busy) {
+            if (turn.suppressSleep) {
                 main.postDelayed(this, SLEEP_AFTER_MS)
                 return
             }
@@ -630,7 +681,7 @@ class AssistantEngine(context: Context) {
         awake = false
         main.removeCallbacks(sleepTimer)
         DebugLog.log(DebugLog.Stage.THINK, "back to sleep — waiting for the wake word")
-        if (!busy) set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, transcript = "", reply = "") }
+        if (!turn.suppressSleep) set { it.copy(orb = OrbState.Idle, status = WAKE_HINT, transcript = "", reply = "") }
     }
 
     /**
@@ -640,15 +691,86 @@ class AssistantEngine(context: Context) {
      * the wake word unreliable last time.
      */
     private fun speakAck(line: String) {
-        busy = true
         main.removeCallbacks(sleepTimer)
         voice.stopListening()
         set { it.copy(orb = OrbState.Speaking, status = "Speaking…", transcript = "", reply = line) }
-        speaker.speak(line)
+        speakTurn(line)
+    }
+
+    /**
+     * Speak [line] and hold the turn until the speaker says it is over.
+     *
+     * The single way anything in this class speaks. Claiming the turn and saying
+     * the words have to happen together — a spoken line whose turn was never
+     * claimed leaves the microphone open to hear JARVIS himself, and a claimed
+     * turn that never speaks never ends.
+     */
+    private fun speakTurn(line: String) {
+        turn.speak(speaker.speak(line))
+        armWatchdog(turn.currentSeq, line)
+    }
+
+    /**
+     * Releases the turn if no end-of-speech report arrives in the time the line
+     * could plausibly take to say.
+     *
+     * A backstop, not a mechanism — every path through [Speaker] promises a
+     * report. It exists because the failure it catches is the worst one this app
+     * has: a turn that never ends never reopens the microphone, so JARVIS stops
+     * responding altogether and the only fix is force-quitting him.
+     */
+    private fun armWatchdog(seq: Long, line: String) {
+        disarmWatchdog()
+        val budget = maxOf(WATCHDOG_MIN_MS, line.length * WATCHDOG_PER_CHAR_MS + WATCHDOG_SLACK_MS)
+        guard.postDelayed({
+            if (turn.watchdogExpired(seq)) {
+                DebugLog.log(
+                    DebugLog.Stage.ERROR,
+                    "no end-of-speech after ${budget}ms — releasing the turn so JARVIS can hear again",
+                )
+                onSpokenDone()
+            }
+        }, budget)
+    }
+
+    private fun disarmWatchdog() {
+        guard.removeCallbacksAndMessages(null)
+    }
+
+    /**
+     * Cut JARVIS off mid-sentence and start listening straight away.
+     *
+     * Ends the turn synchronously rather than waiting for the speaker to confirm
+     * it stopped, because [Speaker.stop] only produces a callback when something
+     * was actually being spoken.
+     *
+     * Clearing [pendingScreen] is the part that is easy to miss: an app switch
+     * queued behind the reply must die with the reply. Otherwise interrupting
+     * looks like it worked — JARVIS goes quiet — and then the phone jumps to
+     * another app a moment later anyway.
+     */
+    fun interrupt() {
+        // Only while actually speaking. Cutting off a turn that is still THINKING
+        // would look like it worked and then be overridden a second later: the
+        // request is already out to the model, and when it lands it speaks the
+        // answer regardless of anything decided here.
+        if (turn.phase != TurnPhase.SPEAKING) return
+        turn.interrupt()
+        speaker.stop()
+        disarmWatchdog()
+        pendingScreen = null
+        replayingRoute = false
+        DebugLog.log(DebugLog.Stage.HEARD, "interrupted — listening")
+        // Being cut off is the user engaging, not going quiet: stay awake so the
+        // thing they interrupted to say needs no wake word. [applyMicOwner] puts
+        // the orb and status right on the way into listening.
+        stayAwake()
+        applyMicOwner()
     }
 
     private fun ask(userText: String, source: String = "voice", heard: List<String> = emptyList()) {
-        busy = true
+        turn.think()
+        disarmWatchdog()
         // Handling a command means JARVIS is engaged; the sleep timer is cleared by
         // the removeCallbacks below and re-armed when it next returns to listening.
         awake = true
@@ -688,7 +810,7 @@ class AssistantEngine(context: Context) {
             addTurn(ChatTurn(ChatTurn.ASSISTANT, farewell))
             DebugLog.log(DebugLog.Stage.SPOKE, farewell)
             set { it.copy(orb = OrbState.Speaking, status = "Speaking…", transcript = userText, reply = farewell) }
-            speaker.speak(farewell)
+            speakTurn(farewell)
             return
         }
 
@@ -700,7 +822,7 @@ class AssistantEngine(context: Context) {
         if (!Brain.hasKey()) {
             val msg = "No AI key yet. Add a GROQ_API_KEY secret in GitHub to switch on my brain."
             set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = msg) }
-            speaker.speak(msg)
+            speakTurn(msg)
             return
         }
 
@@ -731,7 +853,7 @@ class AssistantEngine(context: Context) {
             addTurn(ChatTurn(ChatTurn.ASSISTANT, plan.clean))
             DebugLog.log(DebugLog.Stage.SPOKE, plan.clean)
             set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = plan.clean) }
-            speaker.speak(plan.clean)
+            speakTurn(plan.clean)
             return
         }
 
@@ -863,7 +985,7 @@ class AssistantEngine(context: Context) {
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
                 DebugLog.log(DebugLog.Stage.SPOKE, spoken)
                 set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = spoken) }
-                speaker.speak(spoken)
+                speakTurn(spoken)
             } catch (e: Exception) {
                 val detail = e.message ?: e.javaClass.simpleName
                 DebugLog.log(DebugLog.Stage.ERROR, "Brain error: $detail")
@@ -871,13 +993,21 @@ class AssistantEngine(context: Context) {
                 // orb — on screen it swamps everything and reads as noise.
                 val shown = if (detail.length > 120) detail.take(117) + "…" else detail
                 set { it.copy(orb = OrbState.Error, status = "Brain error", reply = shown) }
-                main.postDelayed({ onSpokenDone() }, 3000L)
+                main.postDelayed({
+                    // Nothing was ever spoken, so no end-of-speech report is
+                    // coming — release the turn here or the microphone stays shut.
+                    turn.reconcile(engineIsSpeaking = false)
+                    onSpokenDone()
+                }, 3000L)
             }
         }
     }
 
+    /**
+     * The turn is over. Every caller has already moved [turn] to
+     * [TurnPhase.IDLE] — this only acts on what was waiting for it to end.
+     */
     private fun onSpokenDone() {
-        busy = false
         // Speaking is finished — now carry out any screen action (open app / tap /
         // send to Settings). Doing it here means JARVIS completes its sentence
         // before the screen switches. If it launches an app we get backgrounded,
@@ -890,8 +1020,9 @@ class AssistantEngine(context: Context) {
         applyMicOwner()
     }
 
-    private fun addTurn(turn: ChatTurn) {
-        conversation.add(turn)
+    // Named `entry` rather than `turn` so it cannot shadow the turn-state field.
+    private fun addTurn(entry: ChatTurn) {
+        conversation.add(entry)
         while (conversation.size > MAX_STORED_TURNS) conversation.removeAt(0)
         store.save(conversation)
         set { it.copy(messages = conversation.toList()) }
@@ -974,7 +1105,7 @@ class AssistantEngine(context: Context) {
         // Dim the screen for the whole errand/sequence: the user should be able to
         // see that JARVIS is the one acting. Only for steps that actually drive the
         // screen — merely launching an app is not "taking control". Cleared when
-        // the work finishes (say), is superseded (ask), or onDone reports it over.
+        // the work finishes (say), is superseded (ask), or the turn ends.
         if (plan.needsAccessibility) ScreenControlService.instance?.setControlOverlay(true)
         // A command that opens an app starts a work session: JARVIS keeps hearing
         // follow-ups while the user is in that app. Merely opening or closing
@@ -1266,20 +1397,20 @@ class AssistantEngine(context: Context) {
         // Reaching here ends an errand (done, asked, blocked, or out of steps), so
         // JARVIS is no longer driving the screen — drop the control tint.
         ScreenControlService.instance?.setControlOverlay(false)
-        // Mark the turn busy for exactly the same reason [ask] and [speakAck] do.
-        // TTS comes out of the MUSIC stream, so while this line is being spoken
-        // `AudioManager.isMusicActive` is true; [mediaCheck] skips its own speech
-        // only via this flag. Without it the check heard JARVIS talking, concluded
-        // the user had started media, and yielded the microphone — a trace shows
-        // "audio started — pausing listening" two seconds after every single
-        // agent-loop message, so the user could not answer the question JARVIS
-        // had just asked them. It also stops the sleep timer firing mid-sentence.
-        busy = true
+        // Claims the turn (below, via [speakTurn]) for exactly the same reason
+        // [ask] and [speakAck] do. TTS comes out of the MUSIC stream, so while
+        // this line is being spoken `AudioManager.isMusicActive` is true;
+        // [mediaCheck] skips its own speech via [TurnState.ownVoiceOnStream].
+        // Without it the check heard JARVIS talking, concluded the user had
+        // started media, and yielded the microphone — a trace shows "audio
+        // started — pausing listening" two seconds after every single agent-loop
+        // message, so the user could not answer the question JARVIS had just
+        // asked them. It also stops the sleep timer firing mid-sentence.
         voice.stopListening()
         addTurn(ChatTurn(ChatTurn.ASSISTANT, line))
         DebugLog.log(DebugLog.Stage.SPOKE, line)
         set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = line) }
-        speaker.speak(line)
+        speakTurn(line)
     }
 
     private fun set(block: (VoiceUiState) -> VoiceUiState) {
@@ -1295,6 +1426,15 @@ class AssistantEngine(context: Context) {
         const val MAX_CONTEXT_TURNS = 10 // turns sent to the AI as context
         const val MAX_STORED_TURNS = 200 // turns kept on disk
         const val MEDIA_POLL_MS = 2000L // how often to check whether audio is playing
+
+        // How long to wait for an end-of-speech report before assuming none is
+        // coming. Scaled to the line, because the cost of guessing short is a
+        // turn declared over while JARVIS is still talking — which opens the
+        // microphone onto his own voice. Generous on purpose: this is a backstop
+        // against a stuck assistant, not a timing mechanism.
+        const val WATCHDOG_PER_CHAR_MS = 90L
+        const val WATCHDOG_SLACK_MS = 3_000L
+        const val WATCHDOG_MIN_MS = 4_000L
 
         // How long to wait before looking again at an app that has been launched
         // but has not drawn yet. Five of these is ~3s, which covers a cold start
