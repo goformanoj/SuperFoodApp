@@ -1,6 +1,7 @@
 package com.jarvis.os.e2e
 
 import android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+import android.app.UiAutomation
 import android.content.Context
 import android.content.Intent
 import android.os.ParcelFileDescriptor
@@ -51,6 +52,37 @@ import java.util.concurrent.TimeUnit
 class A11yProbeTest {
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+    /**
+     * The automation connection — obtained with **`FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES`**,
+     * which is the whole reason this probe now works.
+     *
+     * The first run failed with the service never binding, and the diagnostics it
+     * printed named the cause precisely:
+     *
+     * ```
+     * settings enabled_accessibility_services = com.jarvis.os/…ScreenControlService
+     * settings accessibility_enabled          = 1
+     * AccessibilityManager.isEnabled          = true
+     * AccessibilityManager enabled services   = (none)
+     * installed services                      = …, com.jarvis.os/.control.ScreenControlService
+     * ```
+     *
+     * The shell write stuck, the service was installed, accessibility was globally
+     * on — and the enabled list was still empty. Nothing had failed; something had
+     * actively switched it off. That something is `UiAutomation` itself: connecting
+     * it suppresses every other accessibility service by default, and the test's own
+     * `shell()` helper was what connected it. The instrumentation used to enable the
+     * service was disabling it.
+     *
+     * A single accessor, used for every shell call, so the connection is never
+     * established without the flag — the flag only applies to the connection as it
+     * is created, so one unflagged call anywhere would reintroduce the suppression.
+     */
+    private val automation: UiAutomation
+        get() = instrumentation.getUiAutomation(
+            UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES,
+        )
 
     @After
     fun disableService() {
@@ -180,7 +212,7 @@ class A11yProbeTest {
      */
     private fun shell(command: String): String =
         ParcelFileDescriptor.AutoCloseInputStream(
-            instrumentation.uiAutomation.executeShellCommand(command),
+            automation.executeShellCommand(command),
         ).use { String(it.readBytes()) }
 
     private fun accessibilityManager(): AccessibilityManager =
