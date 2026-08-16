@@ -5,34 +5,37 @@
 
 ## Current position + immediate next
 
-**`main` @ `3e767fa`** — `jarvis-debug-apk` confirmed present for that commit; branch and `main` are
-level. Merged in this round: the E2E tap tier, the ControlVocabulary layer, the Orbit theme (+ its
-four device-reported fixes), and **barge-in, part one: JARVIS can be cut off mid-sentence by tapping
-the orb while he speaks.** Not yet confirmed on a device.
+**`main` @ `3cb1ee7`** — branch is **2 commits ahead** @ `a85cdcc`, awaiting its `jarvis-debug-apk`.
+Merged so far: the E2E tap tier, the ControlVocabulary layer, the Orbit theme (+ its four
+device-reported fixes), and **barge-in part one (tap)**, which is **confirmed working on device**.
+Unmerged: **barge-in part two — cut him off by saying "Hey Jarvis" over him.**
 
-### 🎙️ Barge-in — tap works; voice deliberately not built yet
+### 🎙️ Barge-in — tap CONFIRMED on device; voice built but unverified
 `TurnState` (pure, 14 tests) replaced the `busy` boolean, which was doing three unrelated jobs at
 once. `Speaker` now overrides **`onStop`** and numbers every utterance. `engine.interrupt()` stops
 speech, idles the turn *synchronously*, clears `pendingScreen`, and starts listening.
-**NEXT on this (stages 1.5–1.7 of the plan):** `MicOwner.BARGE_IN` in `WorkSession`, a
-`BargeInListener` modelled on `HotwordService.audioLoop`, then wiring. **Trigger on the wake word,
-not an energy VAD** — see the memory entry for 2026-08-16 for why an energy VAD would detect JARVIS
-himself every time.
+Voice trigger is `BargeInListener` + `MicOwner.BARGE_IN` — the wake word, **not** an energy VAD
+(see the 2026-08-16 memory entry for why a VAD detects JARVIS himself every time).
 
-**GOTCHA: `tts.stop()` fires `onStop` only if an utterance is actually in progress.** Stop an idle
-engine and you get no callback at all. Anything that waits for confirmation that speech ended waits
-forever — so state must be cleared synchronously by the caller.
+**GOTCHA: `applyMicOwner`'s early return must let `BARGE_IN` through.** That owner exists *because*
+the turn has the microphone gated, so the obvious `if (turn.micGated) return` skips the one branch
+that needs to run. Speaking state is **derived** there from the turn phase rather than announced by
+each speak path, so `WorkSession` and `TurnState` cannot drift.
 
-**GOTCHA: `speak()` uses `QUEUE_FLUSH`, so "speech ended" is ambiguous without a sequence number.**
-The platform reports the *flushed* utterance as ended *after* its replacement has started. Acting on
-that late report opens the mic mid-sentence — and `VoiceController.startListening()` mutes
-`STREAM_MUSIC` to hide the recogniser earcon, which is the very stream TTS plays on. **Opening the
-recogniser while JARVIS speaks makes him inaudible.** This is the constraint that rules out using
-`SpeechRecognizer` for acoustic barge-in at all.
+**GOTCHA: a listener that clears its own running flag on detection lies to its caller.** `stop()`
+then reports "nothing was recording", the hand-off gap is skipped, and the recogniser opens the
+input while the audio thread is still inside `recorder.release()`. Break out of the loop instead and
+leave the flag set, so `stop()` **joins** — which both reports honestly and guarantees the recorder
+is gone before anything else asks for the mic. Same class: the model load runs on the audio thread
+and a short reply can finish inside it, so re-check `running` after the load *and* after
+constructing the `AudioRecord`, or a stopped listener still seizes the microphone.
 
-**GOTCHA: a watchdog must not live on the engine's `main` Handler.** `ask()` and `pause()` both call
-`main.removeCallbacksAndMessages(null)`, which would silently bin it — precisely in the situations
-where something had already gone wrong enough to clear the queue. It has its own `guard` Handler.
+**STILL UNVERIFIED after the 15:41 device trace:** every interrupt in it landed on a reply with
+`screen=none`, so **`pendingScreen = null` has never actually been exercised**. Say "open YouTube",
+interrupt "On it." — if YouTube opens anyway, that is the bug.
+**EXPECTED to need tuning:** JARVIS's own TTS may *mask* the wake word at speaker-to-mic distance.
+Symptom in a trace is `barge-in armed` with no `barge-in — heard` after it; the lever is lowering
+TTS volume (`Speaker.doSpeak` passes `null` params today) while the listener is armed.
 
 ### ⚠️ E2E tap probe — the tap WORKS; the fixture cannot record it (still red, non-gating)
 The 2026-08-14 `kotlin-stdlib` fix **never could have worked**, and the failure log says why:

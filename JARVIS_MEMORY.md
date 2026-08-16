@@ -2977,6 +2977,55 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-16 — Barge-in by voice: the right detector is the one his own voice cannot trigger
+
+Tapping the orb, shipped this morning, is confirmed working on the device — four interruptions in
+one trace, four clean recoveries. But it only helps while JARVIS is on screen, and the moment you
+most want to cut him off is mid-errand from *another* app, where there is no orb to tap.
+
+**The design I nearly built was wrong, and no gate in this repo could have told me.** The obvious
+barge-in detector is voice activity: hear a human, stop talking. On a phone it cannot work. The
+speaker is centimetres from the microphone, so his own voice reaches it 20–30 dB above the user's,
+and the platform echo canceller does not help — `AcousticEchoCanceler` references the
+*communication* downlink, while TTS here plays on the music stream, so it will report itself created
+and enabled and cancel nothing at all. An energy detector in that position does not detect barge-in.
+It detects JARVIS, every single time: speak → hear self → stop → listen to silence → sleep. That is
+a worse regression than having no barge-in, and it would have shipped green.
+
+The wake word has none of that problem, for a reason that is structural rather than tuned:
+**JARVIS never says "Hey Jarvis", so his own voice cannot trigger it** — working echo cancellation
+or not. And the detector was already here, already running on an `AudioRecord` in `HotwordService`,
+already verified two ways in CI. The best available answer was a component we had shipped weeks ago,
+pointed at a new moment.
+
+**The other decision that mattered: BARGE_IN is a `MicOwner`, not a thing running alongside one.**
+The recorder holds the microphone exactly as really as the recogniser does. The 2026-07-26 overlay
+revert happened because two things could hold it at once; putting this third holder *outside*
+`WorkSession` would have rebuilt that bug with a new name. Inside the enum, "two owners" stays
+unrepresentable — which is the same argument `WorkSession`'s own KDoc makes, applied again.
+
+**Two races found by reading the loop, not by running it.** Both would have surfaced on the device
+as the plain, unhelpful symptom "he didn't hear me."
+
+1. On detection the loop cleared its `running` flag. The `stop()` that follows then reported
+   *"nothing was recording"* — so the caller skipped the microphone hand-off gap and opened the
+   speech recogniser while the audio thread was still inside `recorder.release()`. The fix is to
+   `break` and leave the flag set, so `stop()` **joins**: the return value becomes honest, and the
+   join itself guarantees the recorder is gone before anything else asks for the input.
+2. The model load happens on the audio thread and takes long enough that a short reply can finish
+   inside it. A `stop()` during that window returned, and the thread went on to open the microphone
+   anyway — seizing the input at the exact moment the recogniser wanted it.
+
+The lesson in both is the same one the `ok`/`clean` split taught: **a status is only worth having if
+it can be wrong.** A `stop()` that always returns true tells you nothing; one that reports whether it
+actually held the microphone is what lets the caller decide about the hand-off — and that made it
+worth getting right rather than convenient to fudge.
+
+**Stated plainly because it is not yet known:** his own TTS may *mask* the wake word at that
+distance, and no test here can say. The trace will: `barge-in armed` with no `barge-in — heard`
+after it means the threshold is never crossed, and the lever is TTS volume while armed. I have not
+guessed a number, because there is nothing yet to tune against.
+
 ### 2026-08-16 — I fixed the E2E probe by declaring a dependency, which is not the same as shipping one
 
 The probe failed again with the identical error I "fixed" two days ago:
