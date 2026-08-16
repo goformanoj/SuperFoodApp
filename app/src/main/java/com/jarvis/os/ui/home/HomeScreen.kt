@@ -1,6 +1,11 @@
 package com.jarvis.os.ui.home
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,6 +16,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,7 +34,9 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardDoubleArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
@@ -76,6 +84,7 @@ import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.JarvisPalette
 import com.jarvis.os.ui.theme.LocalAccent
 import com.jarvis.os.ui.theme.LocalPalette
+import com.jarvis.os.ui.theme.OrbStyle
 import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.SuccessGreen
 import com.jarvis.os.ui.theme.Surface
@@ -105,9 +114,15 @@ private fun taskAccents(): List<Color> =
     listOf(LocalAccent.current, LocalPalette.current.highlight, SuccessGreen)
 
 /**
- * App shell: a top-left menu opens the module drawer. Home shows the live voice
- * screen, Chat shows the conversation history, other destinations show themed
- * placeholders. Back returns to Home.
+ * App shell. Home shows the live voice screen, Chat the conversation history,
+ * other destinations their own screens; Back returns to Home.
+ *
+ * Navigation depends on the theme. Five of the seven open a side drawer from a
+ * top-left menu button. **Orbit** instead carries a dashboard bar across the
+ * bottom that expands into a scrollable list — its design has no room for a menu
+ * button, since the top of the screen is the greeting and the bottom already
+ * carries the bar. That bar shows on every destination, not just Home, because
+ * in that theme it is the only way to navigate.
  */
 @Composable
 fun JarvisApp(
@@ -136,7 +151,20 @@ fun JarvisApp(
     val scope = rememberCoroutineScope()
     var current by remember { mutableStateOf(Dest.Home) }
 
-    if (current != Dest.Home) {
+    // Orbit navigates from a bottom dashboard instead of the side drawer, because
+    // its design has no room for a menu button: the top of the screen is the
+    // greeting and the bottom already carries the "open dashboard" bar. The other
+    // six themes keep the drawer, so this is a property of the look rather than a
+    // change everyone has to accept.
+    val bottomDashboard = palette.orbStyle == OrbStyle.Orbit
+    var dashboardOpen by remember { mutableStateOf(false) }
+
+    // Deliberately an if/else chain rather than two independent handlers: with
+    // both registered, which one answers Back depends on composition order, which
+    // is not something a reader should have to work out.
+    if (dashboardOpen) {
+        BackHandler { dashboardOpen = false }
+    } else if (current != Dest.Home) {
         BackHandler { current = Dest.Home }
     }
 
@@ -181,19 +209,215 @@ fun JarvisApp(
                 else -> PlaceholderScreen(current)
             }
 
+            if (!bottomDashboard) {
+                Icon(
+                    imageVector = Icons.Filled.Menu,
+                    contentDescription = "Open menu",
+                    tint = TextPrimary,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .systemBarsPadding()
+                        .padding(12.dp)
+                        .clip(CircleShape)
+                        .clickable { scope.launch { drawerState.open() } }
+                        .padding(6.dp)
+                        .size(26.dp),
+                )
+            } else {
+                // The collapsed bar stays on every destination, not just Home: it
+                // is the only way to navigate in this theme, so hiding it anywhere
+                // would strand the user on that screen with nothing but Back.
+                DashboardBar(
+                    onOpen = { dashboardOpen = true },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+
+                if (dashboardOpen) {
+                    // Tapping away closes, which is what every sheet on the
+                    // platform does and what the Back handler above mirrors.
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .clickable { dashboardOpen = false },
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = dashboardOpen,
+                    enter = fadeIn() + slideInVertically { it },
+                    exit = slideOutVertically { it } + fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                ) {
+                    DashboardPanel(
+                        selected = current,
+                        onSelect = {
+                            current = it
+                            dashboardOpen = false
+                        },
+                        onDismiss = { dashboardOpen = false },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The collapsed dashboard bar from the Orbit design: a chevron over two lines,
+ * sitting across the bottom of the screen.
+ *
+ * It replaces the drawer's menu button entirely for that theme. The button had
+ * nowhere to go in this layout — the top of the screen is the greeting, and a
+ * floating icon over the planet horizon looked like a mistake.
+ */
+@Composable
+private fun DashboardBar(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val accent = LocalAccent.current
+    val shape = RoundedCornerShape(30.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .systemBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 14.dp)
+            .clip(shape)
+            .background(SurfaceGlass)
+            .border(BorderStroke(1.dp, accent.copy(alpha = 0.45f)), shape)
+            .clickable { onOpen() }
+            .padding(top = 8.dp, bottom = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.KeyboardDoubleArrowUp,
+            contentDescription = "Open dashboard",
+            tint = accent,
+            modifier = Modifier.size(24.dp),
+        )
+        Text(
+            text = "Tap to open dashboard",
+            style = MaterialTheme.typography.bodyLarge,
+            color = TextPrimary,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = "ALL FEATURES, ALL IN ONE PLACE",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary,
+            letterSpacing = 2.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+/**
+ * The expanded dashboard: every destination, scrollable.
+ *
+ * Capped at 78% of the height rather than filling the screen, so the orb stays
+ * visible behind it — the sheet reads as something drawn over the assistant
+ * rather than as a different screen, which is the whole point of putting
+ * navigation down here.
+ */
+@Composable
+private fun DashboardPanel(
+    selected: Dest,
+    onSelect: (Dest) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accent = LocalAccent.current
+    val shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.78f)
+            .clip(shape)
+            .background(Surface)
+            .border(BorderStroke(1.dp, accent.copy(alpha = 0.35f)), shape)
+            .systemBarsPadding()
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text(
+                    text = "DASHBOARD",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = accent,
+                    letterSpacing = 3.sp,
+                )
+                Text(
+                    text = "All features, all in one place",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                )
+            }
             Icon(
-                imageVector = Icons.Filled.Menu,
-                contentDescription = "Open menu",
-                tint = TextPrimary,
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Close dashboard",
+                tint = TextSecondary,
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .systemBarsPadding()
-                    .padding(12.dp)
                     .clip(CircleShape)
-                    .clickable { scope.launch { drawerState.open() } }
+                    .clickable { onDismiss() }
                     .padding(6.dp)
-                    .size(26.dp),
+                    .size(22.dp),
             )
+        }
+
+        Spacer(Modifier.height(10.dp))
+        HorizontalDivider(color = GlassBorder)
+        Spacer(Modifier.height(6.dp))
+
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            Dest.entries.forEach { dest ->
+                DashboardRow(
+                    dest = dest,
+                    selected = dest == selected,
+                    onClick = { onSelect(dest) },
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun DashboardRow(dest: Dest, selected: Boolean, onClick: () -> Unit) {
+    val accent = LocalAccent.current
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(shape)
+            .background(if (selected) accent.copy(alpha = 0.14f) else Color.Transparent)
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = dest.icon,
+            contentDescription = null,
+            tint = if (selected) accent else TextSecondary,
+            modifier = Modifier.size(22.dp),
+        )
+        Column(Modifier.padding(start = 14.dp)) {
+            Text(
+                text = dest.label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (selected) accent else TextPrimary,
+            )
+            if (dest.blurb.isNotBlank()) {
+                Text(
+                    text = dest.blurb,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
