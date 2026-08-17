@@ -2977,6 +2977,52 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-17 — Fixing the crash would have hidden the real bug
+
+The E2E probe had two faults stacked, and the loud one was concealing the one that mattered. My
+previous attempt fixed neither, and I reported it done without watching the probe run.
+
+The loud one: a Kotlin fixture's click handler died on
+`NoClassDefFoundError: kotlin.jvm.internal.Intrinsics`. Diagnosis correct, mechanism wrong — I added
+`androidTestImplementation("kotlin-stdlib")`, which AGP accepted, resolved, and packaged nowhere,
+because **it strips from the test APK any dependency already present in the app APK.** Normally
+right; wrong here because the fixture is a separate process. A dependency declaration is a request,
+not a guarantee.
+
+The quiet one, only visible once I stopped trusting my own fix: **the test and the fixture were never
+in the same process.** The instrumentation runs in `com.jarvis.os` — it read
+`ScreenControlService.instance`, a static that exists only there, and got a non-null answer — while
+the crash logs the fixture in `com.jarvis.os.test`. The fixture recorded taps in a `@Volatile`
+static and the test read it back. That was never going to work in any language.
+
+So the Java port **on its own** would have produced:
+
+```
+expected:<Add to cart> but was:<null>
+```
+
+which is the identical message the probe had been printing for days, now with the crash gone from
+the log and nothing left to point at. **A crash converted into a silent wrong answer is a worse
+position than the crash**, because the crash at least named a file and a line. That is the lesson I
+want to keep: when a failure has an obvious loud cause, check whether removing it actually produces
+a *pass* rather than the same failure by another route. The Intrinsics error was load-bearing
+evidence — it was the only reason anyone was looking at that line.
+
+The fix records the tap where the test can genuinely observe it: in the fixture's own visible text,
+read back through the accessibility tree. That crosses processes by design, and it is a better
+assertion than the shared field ever was — it proves the tap landed *and* that the result shows up
+through the very mechanism JARVIS uses to read a screen. The failure message now distinguishes
+"status still idle" (tap never arrived) from "decoy named" (wrong control) from a pass, so the next
+red run says which.
+
+Verified as far as this box allows, which is further than it looks: the Java fixture compiles
+against the real Android 16 framework, and `javap` on the output shows zero `kotlin` references and
+zero `invokedynamic` instructions. That is the exact property the fix rests on, checked rather than
+asserted — the same discipline that was missing the first time. `String.concat` instead of `+` for
+the same reason: at source level 17 `+` lowers to an `invokedynamic` against `StringConcatFactory`
+that D8 has to desugar, and this file exists precisely because a packaging assumption about the test
+APK turned out to be wrong twice.
+
 ### 2026-08-16 — "I don't like the always On it answer" — and the wording was the symptom
 
 The complaint, after using the app: every reply that carried an action said the same two syllables.

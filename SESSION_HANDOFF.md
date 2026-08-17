@@ -5,11 +5,13 @@
 
 ## Current position + immediate next
 
-**`main` @ `c1aad06`** — branch is **1 commit ahead** @ `bcb593d`, awaiting its `jarvis-debug-apk`.
+**`main` @ `1e8d05d`** — branch is **1 commit ahead** @ `70d4c76`, awaiting its `jarvis-debug-apk`.
 Merged: the E2E tap tier, the ControlVocabulary layer, the Orbit theme (+ its four device-reported
-fixes), **barge-in part one (tap)** — confirmed working on device — and **part two (voice)**, built
-and green but not yet tried on a phone.
-Unmerged: **he no longer says "On it." to everything** (new pure `Acknowledgement`).
+fixes), **barge-in part one (tap)** — confirmed working on device — **part two (voice)**, built and
+green but not yet tried on a phone, and **natural replies instead of "On it."** (pure
+`Acknowledgement`), also unheard on a phone so far.
+Unmerged: **the E2E probe's two-bug fix** (Java fixture + result read through the accessibility
+tree); its own probe run is the thing to check first next session.
 
 ### 🗣️ Canned replies — the wording was the symptom
 `Acknowledgement` (pure, 12 tests) replaced `"On it."`, `"Yes?"`, `"Anytime."` and the stock
@@ -56,7 +58,7 @@ interrupt "On it." — if YouTube opens anyway, that is the bug.
 Symptom in a trace is `barge-in armed` with no `barge-in — heard` after it; the lever is lowering
 TTS volume (`Speaker.doSpeak` passes `null` params today) while the listener is armed.
 
-### ⚠️ E2E tap probe — the tap WORKS; the fixture cannot record it (still red, non-gating)
+### ⚠️ E2E tap probe — fix pushed in `70d4c76`, result NOT yet seen (non-gating)
 The 2026-08-14 `kotlin-stdlib` fix **never could have worked**, and the failure log says why:
 
 ```
@@ -65,6 +67,15 @@ NoClassDefFoundError: Failed resolution of: Lkotlin/jvm/internal/Intrinsics;
   at FixtureActivity$Recorder.tapped
 DexPathList[[zip file ".../com.jarvis.os.test-.../base.apk"]]
 ```
+
+**GOTCHA: the instrumentation and an androidTest-APK Activity are DIFFERENT PROCESSES.** The test
+runs in `com.jarvis.os` — it reads `ScreenControlService.instance`, a static that only exists there.
+An Activity declared in the androidTest manifest launches into `com.jarvis.os.test`. So **a static
+field cannot carry a result between them**: the original fixture's `@Volatile` `Recorder` could only
+ever have read `null`, and the `Intrinsics` crash was masking that. Report through the
+**accessibility tree** instead — it crosses processes by design, and asserting on it is a stronger
+claim anyway, since it is the same mechanism JARVIS uses to read a screen. Beware the general shape:
+fixing a crash can convert it into a silent wrong answer with the identical failure message.
 
 **GOTCHA: AGP strips from the androidTest APK any dependency already present in the app APK.** That
 is normally correct — the test process usually shares the app's classloader — but `FixtureActivity`
