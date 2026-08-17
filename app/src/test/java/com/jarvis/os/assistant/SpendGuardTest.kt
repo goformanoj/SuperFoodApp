@@ -123,7 +123,13 @@ class SpendGuardTest {
     @Test
     fun `the stop is explained, never silent`() {
         val message = SpendGuard.explain("Checkout")
-        assertTrue(message.contains("Checkout"))
-        assertTrue("the user must be able to authorise it", message.contains("Tell me"))
+        assertTrue("the withheld step must be named", message.contains("Checkout"))
+        // The property, not the phrasing. This used to require the literal words
+        // "Tell me", which failed the moment the sentence was reworded to sound
+        // less like a form letter -- the wording is meant to be free to change,
+        // the offer is not.
+        val offersToProceed = listOf("say the word", "tell me", "just ask", "if you want")
+            .any { message.contains(it, ignoreCase = true) }
+        assertTrue("the user must be able to authorise it: \"$message\"", offersToProceed)
     }
 }

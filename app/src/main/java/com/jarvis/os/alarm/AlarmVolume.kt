@@ -53,11 +53,9 @@ object AlarmVolume {
     fun warning(verdict: Verdict): String? = when (verdict) {
         Verdict.Fine -> null
         Verdict.Silent ->
-            "Your alarm volume is off, so this will not make a sound — say " +
-                "\"turn the alarm volume up\" and I will fix it."
+            "Your alarm volume is off though, so it won't make a sound. Want me to turn it up?"
         is Verdict.Low ->
-            "Your alarm volume is only ${verdict.percent} percent, so you may sleep " +
-                "through it — say \"turn the alarm volume up\" if you want it louder."
+            "Your alarm volume is only ${verdict.percent} percent though — want it louder?"
     }
 
     /** True when the user is asking to change the alarm volume. */

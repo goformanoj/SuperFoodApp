@@ -102,6 +102,15 @@ class AssistantEngine(context: Context) {
      * underneath the new one, which a trace shows happening for a full minute.
      */
     private var errandToken: Int = 0
+
+    /**
+     * Counts turns, purely so [Acknowledgement] can vary its wording.
+     *
+     * The complaint that produced it: every action reply was "On it.", every
+     * summons was "Yes?". A counter rather than a random draw keeps
+     * [Acknowledgement] pure and its tests able to pin exact strings.
+     */
+    private var spokenTurn: Int = 0
     private val conversation: MutableList<ChatTurn> = store.load()
 
     private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
@@ -383,7 +392,7 @@ class AssistantEngine(context: Context) {
     }
 
     /**
-     * Summon JARVIS to take a command — wake, acknowledge with "Yes?", then listen
+     * Summon JARVIS to take a command — wake, acknowledge briefly, then listen
      * through the ordinary recogniser path. Used both when the assist gesture
      * launches the app (the mic-free default) and when the background wake word
      * brought it to the front. [via] is only for the trace.
@@ -392,7 +401,7 @@ class AssistantEngine(context: Context) {
         if (turn.micGated) return
         awake = true
         DebugLog.log(DebugLog.Stage.THINK, "summoned${if (via.isBlank()) "" else " by $via"}")
-        speakAck("Yes?")
+        speakAck(Acknowledgement.summoned(spokenTurn++))
     }
 
     /**
@@ -700,7 +709,7 @@ class AssistantEngine(context: Context) {
         awake = true
         if (wake.command.isBlank()) {
             // Just "Hey JARVIS" — acknowledge and listen for the real command.
-            speakAck("Yes?")
+            speakAck(Acknowledgement.summoned(spokenTurn++))
         } else {
             // "Hey JARVIS, <command>" — handle the command in the same breath.
             ask(wake.command, heard = listOf(wake.command))
@@ -734,9 +743,9 @@ class AssistantEngine(context: Context) {
     }
 
     /**
-     * Speak a short acknowledgement ("Yes?") with no model round-trip, then listen.
+     * Speak a short acknowledgement with no model round-trip, then listen.
      * Uses the ordinary speak → [onSpokenDone] → listen path so the hand-off is the
-     * same one every reply uses — the divergent "Yes?" path is exactly what made
+     * same one every reply uses — a divergent summons path is exactly what made
      * the wake word unreliable last time.
      */
     private fun speakAck(line: String) {
@@ -854,7 +863,7 @@ class AssistantEngine(context: Context) {
             // Dismissing JARVIS puts it back to sleep: the next command needs the
             // wake word again, which is what "thank you Jarvis" should mean.
             awake = false
-            val farewell = "Anytime."
+            val farewell = Acknowledgement.farewell(spokenTurn++)
             addTurn(ChatTurn(ChatTurn.USER, userText))
             addTurn(ChatTurn(ChatTurn.ASSISTANT, farewell))
             DebugLog.log(DebugLog.Stage.SPOKE, farewell)
@@ -889,7 +898,10 @@ class AssistantEngine(context: Context) {
                 "replaying known route \"${route.template}\" (used ${route.uses + 1}x)",
             )
             DebugLog.log(DebugLog.Stage.MARKERS, "playbook: ${Playbook.markersOf(steps)}")
-            val plan = ScreenActions.Plan(clean = "On it.", steps = steps)
+            val plan = ScreenActions.Plan(
+                clean = Acknowledgement.forPlan(steps, spokenTurn++),
+                steps = steps,
+            )
             pendingGoal = userText
             pendingScreen = plan
             replayingRoute = true
@@ -1011,17 +1023,23 @@ class AssistantEngine(context: Context) {
                 // Decide what to SAY now, but defer any app switch until after we
                 // finish speaking (run in onSpokenDone) so the reply isn't cut off.
                 val needsPerm = plan.needsAccessibility && !ScreenControlService.isRunning()
+                // What he SAYS. The model's own sentence wins whenever there is
+                // one — [Acknowledgement] is only the floor for a reply that was
+                // nothing but markers, and it says what is actually happening
+                // ("Opening Spotify") instead of the same two syllables every
+                // time.
+                spokenTurn++
                 val spoken = when {
                     needsPerm ->
                         "To control the screen, open Accessibility settings, go to Downloaded apps, and switch on JARVIS Screen Control, then ask me again."
                     clean.isNotBlank() -> listOfNotNull(clean, spendNote, volumeNote).joinToString(" ")
-                    filesMade > 0 && clean.isBlank() -> "Done — it's in your Files."
-                    alarmsSet > 0 && clean.isBlank() ->
-                        listOfNotNull("Done, that's set.", volumeNote).joinToString(" ")
-                    added > 0 && deleted > 0 -> "Done, I've rescheduled it."
-                    added > 0 -> "Okay, I've added it to your calendar."
-                    deleted > 0 -> "Done, I've removed it from your calendar."
-                    plan.hasAction -> listOfNotNull("On it.", spendNote).joinToString(" ")
+                    filesMade > 0 -> Acknowledgement.forFile(spokenTurn)
+                    alarmsSet > 0 ->
+                        listOfNotNull(Acknowledgement.forAlarm(spokenTurn), volumeNote).joinToString(" ")
+                    added > 0 || deleted > 0 -> Acknowledgement.forCalendar(added, deleted, spokenTurn)
+                    plan.hasAction ->
+                        listOfNotNull(Acknowledgement.forPlan(plan.steps, spokenTurn), spendNote)
+                            .joinToString(" ")
                     spendNote != null -> spendNote
                     else -> reply
                 }

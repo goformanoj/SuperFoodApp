@@ -87,8 +87,7 @@ object SpendGuard {
 
     /** What to say when a plan was cut short, so the stop is never silent. */
     fun explain(label: String): String =
-        "I've done the rest, but I've stopped before tapping $label — you didn't ask me to, " +
-            "and I can't undo it. Tell me to $label and I will."
+        "I've stopped short of $label — say the word and I'll do it."
 
     private fun normalise(text: String): String = text.lowercase()
         .replace("'", "")
