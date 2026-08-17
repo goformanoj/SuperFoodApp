@@ -2977,6 +2977,48 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-16 — "I don't like the always On it answer" — and the wording was the symptom
+
+The complaint, after using the app: every reply that carried an action said the same two syllables.
+Open Spotify, "On it." Search Amazon Music, "On it." Add bread to a basket, "On it." Plus "Yes?"
+opening every session and "Anytime." closing every one.
+
+The instinct is to rewrite the strings. That would have missed the actual fault, which the code
+makes obvious once you look at the branch order: **those lines only fire when the model said
+nothing at all.** `clean.isNotBlank()` has always won, and the system prompt has always asked for
+one short natural sentence before the markers. So the app was never overriding good prose — it was
+filling silence, and filling every silence identically.
+
+That reframes the fix. It is not a prompt problem (the prompt already asks for the right thing) and
+not really a wording problem. It is: **what should the app say when a reply is nothing but
+markers?** And the answer is not a nicer stock phrase, it is a sentence built from what is about to
+happen — because that information is sitting right there in the plan and costs nothing to say.
+
+"Opening Spotify" is no longer than "On it" and tells the user something. Being derived from the
+plan, it cannot name the wrong app. And a search repeats the query back — "Looking for my pic
+playlist in Amazon Music" — which turns out to double as the cheapest confirmation available that
+it heard the words right, in an app whose traces are full of "pic" heard as "peak" and "Blinkit"
+heard as "blanket". A naturalness change bought an accuracy affordance for free.
+
+Variety comes from a turn counter rather than a random draw, the same choice as `OrbMath.unitRandom`
+in the themes and for the same reason: determinism keeps the type pure, lets the tests pin exact
+strings, and makes a trace replayable.
+
+**The part I did not do, and said so.** "Any such guards — remove them" could have been read as
+deleting `SendGuard`, `SpendGuard` and `AlarmGuard`. None of those alters a word JARVIS says; they
+only ever subtract irreversible steps — the send nobody asked for, `Tap(Checkout)` on "add some
+bread", the ten-minute timer called "nap" from "play Beat It". Deleting them would not have made the
+chat more natural; it would have made him send messages and buy things unasked, against Rule 6 and
+three separate device traces. What they *did* contribute to the robotic feel was their appended
+paragraphs, and those are now one short clause each. The suppression stayed, the sermon went.
+
+**One test was loosened rather than satisfied.** `SpendGuardTest` asserted
+`message.contains("Tell me")` — pinning phrasing, not behaviour. Rewording the sentence to sound
+less like a form letter failed a test that was never about the form letter. It now checks the reply
+names the withheld step and offers *some* way to authorise it. Worth noticing as a class: a test
+that hard-codes a user-facing string will fire on every improvement to that string, which teaches
+the next person to stop improving it.
+
 ### 2026-08-16 — Barge-in by voice: the right detector is the one his own voice cannot trigger
 
 Tapping the orb, shipped this morning, is confirmed working on the device — four interruptions in

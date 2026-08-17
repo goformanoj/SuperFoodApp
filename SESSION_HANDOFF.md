@@ -5,10 +5,29 @@
 
 ## Current position + immediate next
 
-**`main` @ `3cb1ee7`** — branch is **2 commits ahead** @ `a85cdcc`, awaiting its `jarvis-debug-apk`.
-Merged so far: the E2E tap tier, the ControlVocabulary layer, the Orbit theme (+ its four
-device-reported fixes), and **barge-in part one (tap)**, which is **confirmed working on device**.
-Unmerged: **barge-in part two — cut him off by saying "Hey Jarvis" over him.**
+**`main` @ `c1aad06`** — branch is **1 commit ahead** @ `bcb593d`, awaiting its `jarvis-debug-apk`.
+Merged: the E2E tap tier, the ControlVocabulary layer, the Orbit theme (+ its four device-reported
+fixes), **barge-in part one (tap)** — confirmed working on device — and **part two (voice)**, built
+and green but not yet tried on a phone.
+Unmerged: **he no longer says "On it." to everything** (new pure `Acknowledgement`).
+
+### 🗣️ Canned replies — the wording was the symptom
+`Acknowledgement` (pure, 12 tests) replaced `"On it."`, `"Yes?"`, `"Anytime."` and the stock
+calendar/alarm/file confirmations.
+
+**GOTCHA: those lines only ever fired when the MODEL SAID NOTHING.** The system prompt already asks
+for one short natural sentence before the markers, and `clean.isNotBlank()` has always won. So
+"make the chat more natural" is not a prompt problem and not a wording problem — it is *what the app
+does with a marker-only reply*. Fix the floor, not the ceiling.
+
+The floor now names the action (`Opening Spotify`, derived from the plan so it cannot name the wrong
+app) and repeats a search query back, which doubles as confirmation it heard the words right.
+Variety comes from a **turn counter, not `Math.random`** — same reason `OrbMath.unitRandom` exists:
+determinism keeps the type pure and lets tests pin exact strings.
+
+**Do NOT remove `SendGuard` / `SpendGuard` / `AlarmGuard` when asked to make the chat natural.** None
+of them alters a word; they only subtract irreversible *steps*. Their contributed sentences are now
+short, which is the part that was actually making replies robotic. Rule 6.
 
 ### 🎙️ Barge-in — tap CONFIRMED on device; voice built but unverified
 `TurnState` (pure, 14 tests) replaced the `busy` boolean, which was doing three unrelated jobs at
