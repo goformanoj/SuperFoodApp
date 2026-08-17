@@ -149,17 +149,18 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 
-    // The E2E fixture Activity is declared in the androidTest APK and therefore
-    // runs in the TEST process (com.jarvis.os.test), whose dex path is the test
-    // APK alone — it does not get the app's classes. Kotlin emits calls into
-    // kotlin.jvm.internal.Intrinsics for its null checks, so without the stdlib
-    // packaged here the fixture's own click handler dies the instant it is
-    // invoked:
+    // NOTE: there is deliberately NO kotlin-stdlib entry here, and adding one does
+    // not work. The E2E fixture Activity runs in the TEST process
+    // (com.jarvis.os.test), whose dex path is the test APK alone, and Kotlin emits
+    // calls into kotlin.jvm.internal.Intrinsics for its null checks — so a Kotlin
+    // fixture died the instant its click handler ran:
     //   NoClassDefFoundError: Failed resolution of: Lkotlin/jvm/internal/Intrinsics;
-    //     at FixtureActivity$Recorder.tapped
-    // which is exactly what the probe saw AFTER a real accessibility tap had
-    // successfully reached the fixture. The tap was never the problem.
-    androidTestImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.2.10")
+    // Declaring the stdlib as androidTestImplementation was accepted, resolved, and
+    // then packaged nowhere, because AGP STRIPS FROM THE TEST APK any dependency
+    // already present in the app APK. That is normally right — an instrumentation
+    // test usually shares the app's classloader — but the fixture is a separate
+    // process, so it is not right here. FixtureActivity is written in Java instead,
+    // which emits no such calls; see its KDoc.
 
     // Compose UI tests (createComposeRule + node finders/actions). The BOM must be on
     // the androidTest classpath too — androidTestImplementation does NOT extend

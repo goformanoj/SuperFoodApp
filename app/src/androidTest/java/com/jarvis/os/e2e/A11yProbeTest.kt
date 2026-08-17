@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.jarvis.os.control.ScreenControlService
@@ -205,18 +206,53 @@ class A11yProbeTest {
         // Trusting the executor's own "ok" would only re-test its bookkeeping — the
         // exact false-success class that once announced "Playing the Thriller
         // video" four times while doing nothing.
-        val tapped = waitForValue(CALLBACK_TIMEOUT_MS) { FixtureActivity.Recorder.lastTapped() }
+        //
+        // Read out of the accessibility tree, NOT out of a shared field. The
+        // fixture is a different process (see FixtureActivity's own notes): the
+        // instrumentation runs in com.jarvis.os, where ScreenControlService.instance
+        // lives, and the fixture runs in com.jarvis.os.test. A static written there
+        // is invisible here, so the previous version of this assertion could only
+        // ever have read null. Going through the tree crosses the boundary by
+        // design — and proves the result is visible through the same mechanism
+        // JARVIS uses to read a screen, which is a stronger claim than a field.
+        val tapped = waitForValue(CALLBACK_TIMEOUT_MS) {
+            statusLine(service)?.takeIf { it.startsWith(FixtureActivity.TAPPED_PREFIX) }
+        }
         assertEquals(
-            "the fixture's own click callback did not fire for the target control",
-            FixtureActivity.TAP_TARGET,
+            "the fixture's own click handler did not report the target control. " +
+                "Status text was \"${statusLine(service)}\" — if it still reads " +
+                "\"${FixtureActivity.STATUS_IDLE}\" the tap never reached the fixture; if it " +
+                "names the decoy the wrong control was tapped.",
+            FixtureActivity.TAPPED_PREFIX + FixtureActivity.TAP_TARGET,
             tapped,
         )
-        // And it hit the right one: "Add to wishlist" shares a word with the target
-        // and sits right beside it.
-        assertTrue(
-            "the decoy must not have been tapped",
-            FixtureActivity.Recorder.lastTapped() != FixtureActivity.DECOY,
-        )
+    }
+
+    /**
+     * The fixture's status text, found anywhere in the live accessibility tree.
+     *
+     * Checks `text` and `contentDescription` because which of the two a platform
+     * reports for a plain TextView is not worth depending on.
+     */
+    private fun statusLine(service: ScreenControlService?): String? {
+        val root = service?.rootInActiveWindow ?: return null
+        return findStatus(root)
+    }
+
+    private fun findStatus(node: AccessibilityNodeInfo?): String? {
+        if (node == null) return null
+        val candidates = listOf(node.text?.toString(), node.contentDescription?.toString())
+        candidates.forEach { value ->
+            if (value != null &&
+                (value.startsWith(FixtureActivity.TAPPED_PREFIX) || value == FixtureActivity.STATUS_IDLE)
+            ) {
+                return value
+            }
+        }
+        for (i in 0 until node.childCount) {
+            findStatus(node.getChild(i))?.let { return it }
+        }
+        return null
     }
 
     // --- helpers -------------------------------------------------------------
