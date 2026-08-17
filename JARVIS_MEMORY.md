@@ -2977,6 +2977,44 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-17 — The tap tier is green: JARVIS is now provably able to tap something
+
+```
+Starting 1 tests on emulator-5554 - 14
+Finished 1 tests on emulator-5554 - 14
+> Task :app:connectedDebugAndroidTest
+BUILD SUCCESSFUL in 3m 50s
+```
+
+That is the whole point of six weeks of pyramid-building. The test pyramid had six layers and **not
+one of them drove a tap** — the closest were a model load and a single rendered Compose screen — so
+every integration bug in the 2026-08-14 trace was, by construction, undetectable before a device.
+Now there is a layer where the real accessibility service binds from a test, a fixture in a genuinely
+different package comes to the front, `ScreenControlService.runSteps` dispatches a real tap into it,
+the fixture's own click handler runs, and the result is read back out of the live accessibility tree.
+
+**How I decided it was green matters as much as the fact.** The jobs API said `conclusion: success`
+— and would have said exactly that if the probe had failed, because the job is `continue-on-error`.
+So would its individual step conclusions. The evidence is Gradle's own `BUILD SUCCESSFUL` and the
+absence of any `FAILED` test line, checked against the previous run's `A11yProbeTest > … FAILED` /
+`connectedDebugAndroidTest FAILED` / `BUILD FAILED in 3m 26s` at the same place in the log. A
+corroborating detail: the uploaded report shrank 6436 → 5189 bytes, which is the failure detail
+going away. This repo has now been bitten three separate ways by trusting a green tick — the lagging
+job-status API, `continue-on-error` on a step, and `continue-on-error` on a job. The rule that keeps
+surviving contact is: find the tool's own words in the log, and know what the failing version of
+those words looks like.
+
+**Three unknowns settled, all of which could have killed the approach:** the service can be enabled
+from a test at all (via the secure setting, and only with
+`FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES` — `UiAutomation` otherwise disables the very service the
+test is enabling); an androidTest-APK Activity does present a package the executor will act on,
+rather than reading as `com.jarvis.os` and being refused; and a dispatched tap really does reach it.
+
+What the tier is for now begins: the three root causes from the 2026-08-14 trace — planning against
+an unrendered screen, a failed `Open` nobody read, a first-move `Back` ending an errand — are all
+expressible here, one test each. That trace cost a whole session of device round-trips. The next one
+like it should cost a CI run.
+
 ### 2026-08-17 — Fixing the crash would have hidden the real bug
 
 The E2E probe had two faults stacked, and the loud one was concealing the one that mattered. My

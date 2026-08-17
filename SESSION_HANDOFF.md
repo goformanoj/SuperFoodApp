@@ -5,13 +5,20 @@
 
 ## Current position + immediate next
 
-**`main` @ `1e8d05d`** — branch is **1 commit ahead** @ `70d4c76`, awaiting its `jarvis-debug-apk`.
-Merged: the E2E tap tier, the ControlVocabulary layer, the Orbit theme (+ its four device-reported
-fixes), **barge-in part one (tap)** — confirmed working on device — **part two (voice)**, built and
-green but not yet tried on a phone, and **natural replies instead of "On it."** (pure
-`Acknowledgement`), also unheard on a phone so far.
-Unmerged: **the E2E probe's two-bug fix** (Java fixture + result read through the accessibility
-tree); its own probe run is the thing to check first next session.
+**`main` @ `1e8d05d`** — branch @ `24e23a1`, and **all four CI jobs are green for the first time,
+`e2e-tap` included**.
+Merged: the ControlVocabulary layer, the Orbit theme (+ its four device-reported fixes), **barge-in
+part one (tap)** — confirmed working on device — **part two (voice)**, green but not yet tried on a
+phone, and **natural replies instead of "On it."** (pure `Acknowledgement`), also unheard on a phone.
+Unmerged: **the E2E probe's two-bug fix, which made the tier GREEN** — Java fixture + result read
+through the accessibility tree.
+
+**Next session, in order:** (1) merge the branch once `24e23a1`'s artifact lands; (2) get a device
+trace for the two barge-in checks that have never run — interrupting a reply with a queued app-open,
+and "Hey Jarvis" over a long reply; (3) grow the now-working E2E tier to the three root causes from
+the 2026-08-14 trace (unrendered screen, failed `Open`, first-move `Back`); (4) the parked
+`AskGuard` fault and the errand re-opening the app it is already in; (5) commit the off-device
+harness as `scripts/jvmcheck/`.
 
 ### 🗣️ Canned replies — the wording was the symptom
 `Acknowledgement` (pure, 12 tests) replaced `"On it."`, `"Yes?"`, `"Anytime."` and the stock
@@ -58,7 +65,7 @@ interrupt "On it." — if YouTube opens anyway, that is the bug.
 Symptom in a trace is `barge-in armed` with no `barge-in — heard` after it; the lever is lowering
 TTS volume (`Speaker.doSpeak` passes `null` params today) while the listener is armed.
 
-### ⚠️ E2E tap probe — fix pushed in `70d4c76`, result NOT yet seen (non-gating)
+### ✅ E2E tap probe — GREEN as of `70d4c76`. Read Gradle's verdict, never the jobs API
 The 2026-08-14 `kotlin-stdlib` fix **never could have worked**, and the failure log says why:
 
 ```
@@ -67,6 +74,12 @@ NoClassDefFoundError: Failed resolution of: Lkotlin/jvm/internal/Intrinsics;
   at FixtureActivity$Recorder.tapped
 DexPathList[[zip file ".../com.jarvis.os.test-.../base.apk"]]
 ```
+
+**GOTCHA: this job is `continue-on-error`, so the jobs API reports `conclusion: success` even when
+the probe fails.** Its step conclusions do too. The only trustworthy signal is Gradle's own line in
+the log — `BUILD SUCCESSFUL` / `BUILD FAILED` — plus the presence or absence of a `FAILED` test line.
+Same family as "the job-status API lags 2–5 hours, so wait for the artifact": in this repo, never
+take a green tick as evidence.
 
 **GOTCHA: the instrumentation and an androidTest-APK Activity are DIFFERENT PROCESSES.** The test
 runs in `com.jarvis.os` — it reads `ScreenControlService.instance`, a static that only exists there.
