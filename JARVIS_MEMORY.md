@@ -2977,6 +2977,70 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-18 — A floating orb that costs no permission, and a backdrop that was dull for a measurable reason
+
+Two asks, both about how the app *feels* rather than what it does: a floating
+presence like Gemini's, and a home screen that is "way too dull".
+
+**The floating orb, and the permission that was not needed.** Every floating
+widget on Android is built on `SYSTEM_ALERT_WINDOW` + `TYPE_APPLICATION_OVERLAY`
+— a permission the user must be sent to a settings screen to grant, and one Play
+scrutinises. JARVIS needed none of it, and the evidence was already in the
+codebase: `ScreenControlService` has drawn accessibility overlays for months.
+**`TYPE_ACCESSIBILITY_OVERLAY` accepts touches.** The scrim and the tap outline
+only *look* untouchable because they deliberately set `FLAG_NOT_TOUCHABLE` so
+JARVIS's own gestures pass through them. Leave the flag off and the same window
+type takes a drag. The capability had been sitting one flag away the whole time.
+
+**GOTCHA worth keeping: read what the existing code disables before assuming a
+capability is missing.** A flag that is switched off on purpose looks exactly
+like a feature the platform does not have.
+
+**The second constraint shaped the whole file.** `control/` must not import
+Compose, or `scripts/jvmcheck` — which compiles the 50 non-UI sources precisely
+BECAUSE none of them reach into `ui/` — stops working, and every future change
+goes back to costing a twenty-minute CI round trip to find a typo. So the bubble
+is a plain `View` on a `Canvas` (which it wanted to be anyway; a Compose overlay
+needs a lifecycle owner and a recomposer bolted to a raw window), and
+`BubbleColors` is a deliberate plain-ARGB duplicate of `JarvisPalette`. A copy is
+only safe while something checks it, so `JarvisPaletteBubbleTest` lives under
+`ui/` — the one directory `jvmcheck` skips — and therefore runs in CI, where
+Compose exists and the real palette can be read.
+
+**And one thing the platform genuinely does forbid.** A bubble tap cannot open
+the microphone when no work session is running: Android 12+ refuses to let a
+backgrounded app start a mic foreground service. So `onBubbleTap` claims the mic
+in place only when a session already holds that service, and otherwise brings
+JARVIS to the front. That is not a fallback — it is the only legal route, and the
+wake word takes it for the same reason.
+
+The full-screen "JARVIS is controlling the screen" tint now stands down while the
+orb is up. It was the same message shouted; the quieter surface wins. With the
+orb switched off the tint still appears, because then it is the only indicator
+there is — the transparency guarantee survives either way.
+
+**The backdrop was dull for a reason that could be named.** Not a taste problem:
+it was ONE radial wash at 0.42 alpha over a flat colour, on a **150-second**
+drift the file's own comment described as "imperceptible". Imperceptible motion
+is not atmosphere, it is a still image that costs a redraw. Four layers now — a
+vertical ramp so the screen has a top and a bottom, four **additive** aurora
+blooms on a 38-second clock so overlaps genuinely brighten rather than averaging
+to mud, a horizon glow, and a vignette **last**, which is the load-bearing one:
+it is what makes the extra brightness affordable, because the corners fall away
+and the eye still lands on the orb. Starfield roughly doubled, brightened, and
+twinkling on per-star phases so the sky breathes out of step.
+
+**The rule that survives it: PLACEMENT stays deterministic, BRIGHTNESS takes the
+clock.** A Canvas redraws every frame, so anything deciding WHERE a star sits is
+asked sixty times a second and a real random re-scatters the sky into static.
+Anything deciding how BRIGHT it is should change — that is the whole point. The
+project already paid for the first half once, with the planet's city lights.
+
+**Honest boundary:** `jvmcheck` covers `OrbBubble`, `BubbleColors` and the engine
+wiring — 438 tests, 0 failures. Everything in `ui/` needs `dl.google.com` and
+therefore rode on CI alone, which is the same ceiling every Compose change here
+has had.
+
 ### 2026-08-18 — Two device traces and a provider dashboard: four bugs, and one of them had a guard already written for it
 
 The user shared two traces and, when I said I could not tell whether a request had

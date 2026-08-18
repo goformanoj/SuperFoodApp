@@ -23,6 +23,54 @@ conflicting `pic`/`peak` memory fact; exempt JARVIS from Realme battery optimisa
 sixteen-second hole was; (3) the parked `AskGuard` fault; (4) deliberate scrolling, asked for and
 still not built; (5) grow the E2E tier to the three 2026-08-14 root causes.
 
+### 🔵 The floating orb needs NO permission — accessibility overlays can be touchable
+`control/OrbBubble` is a draggable bubble that rides over other apps. It does **not** use
+`SYSTEM_ALERT_WINDOW`. **`TYPE_ACCESSIBILITY_OVERLAY` accepts touches** — the scrim and the tap
+outline only look untouchable because they deliberately set `FLAG_NOT_TOUCHABLE` so JARVIS's own
+gestures pass through them. Leave that flag off and the same window type takes drags and taps. No
+permission, no settings trip, nothing extra to disclose to Play. Cost: it exists only while the
+accessibility service runs — the same condition screen control already needs.
+
+**GOTCHA: it is a `View` on a `Canvas`, NOT Compose, and must stay that way.** A Compose overlay
+needs a lifecycle owner, a saved-state registry and a recomposer attached to a raw window — but the
+real reason is that **anything under `control/` that imports Compose breaks `scripts/jvmcheck`**,
+which compiles the non-UI sources precisely because none of them reach into `ui/`. That is why
+`control/BubbleColors` holds a plain-ARGB copy of `JarvisPalette` instead of reading it.
+**The copy is guarded:** `JarvisPaletteBubbleTest` lives under `ui/` (which `jvmcheck` skips, so it
+runs in CI where Compose exists) and asserts every value still matches. A copy nobody checks drifts.
+
+**GOTCHA: a bubble tap cannot open the microphone when there is no session.** Android 12+ refuses a
+backgrounded app starting a mic foreground service, so `onBubbleTap` claims the mic in place only
+when `session.isActive`; otherwise it brings JARVIS to the front. That is not a fallback, it is the
+only legal route — the wake word does the same for the same reason.
+
+**The control tint now stands down while the orb is up** (`addScrim` returns early on
+`bubble.isShowing`). Same message, quieter surface. With the orb off, the tint is still the only
+indicator and still appears.
+
+Also new: `WorkSession.jarvisOnScreen`, so the bubble and the microphone read the same field about
+where the user is looking; `UserPreferences.floatingOrb` (default on) + `bubbleX`/`bubbleY`; and a
+`FeatureToggle` in Settings (was `WakeToggle`, hard-coded to one feature).
+
+### 🎨 The backdrop was dull because it was ONE flat wash on a clock nobody could see
+The user's words: "it's way too dull". It was a single radial wash at 0.42 alpha over a flat
+colour, drifting on a **150-second** cycle — deliberately imperceptible, and therefore invisible.
+
+Four layers now, in `ThemeBackdrop`: a **vertical ramp** so the screen has a top and a bottom;
+four **additive aurora blooms** (`BlendMode.Plus`) crossing on lissajous paths on a **38-second**
+clock, so overlaps genuinely brighten; a **horizon glow**; and a **vignette last**, which is what
+makes the brightness affordable — the corners fall away and the eye still goes to the orb. The
+starfield roughly doubles (150/220), brightens, and twinkles on **per-star phases** so the sky
+breathes out of step rather than pulsing as one.
+
+**GOTCHA that survives all of it: star PLACEMENT stays `OrbMath.unitRandom`, never `Math.random`.**
+A Canvas redraws every frame, so anything deciding WHERE a star sits is asked sixty times a second
+and a real random re-scatters the sky into static. Brightness is the opposite — it is meant to
+change, so it takes the clock. Same rule as the planet's city lights.
+
+**⚠️ The Compose layer is UNVERIFIABLE off-device** (it needs `dl.google.com`). `jvmcheck` covers
+`OrbBubble`, `BubbleColors` and the engine wiring — everything in `ui/` rode on CI alone.
+
 ### 👁️ He COULD see the screen — the prompt told him not to admit it
 A trace has JARVIS answering "can you read my screen" five times with *"I can't view your
 screen"*, *"I don't have visual access to your screen"* — with the accessibility service
