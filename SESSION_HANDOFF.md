@@ -5,20 +5,50 @@
 
 ## Current position + immediate next
 
-**`main` @ `1e8d05d`** — branch @ `24e23a1`, and **all four CI jobs are green for the first time,
-`e2e-tap` included**.
-Merged: the ControlVocabulary layer, the Orbit theme (+ its four device-reported fixes), **barge-in
-part one (tap)** — confirmed working on device — **part two (voice)**, green but not yet tried on a
-phone, and **natural replies instead of "On it."** (pure `Acknowledgement`), also unheard on a phone.
-Unmerged: **the E2E probe's two-bug fix, which made the tier GREEN** — Java fixture + result read
-through the accessibility tree.
+**`main` == branch == `8b87e14`. Nothing unmerged, working tree clean.** `jarvis-debug-apk`
+confirmed for that commit, and **all four CI jobs are green at once for the first time — `e2e-tap`
+included**.
 
-**Next session, in order:** (1) merge the branch once `24e23a1`'s artifact lands; (2) get a device
-trace for the two barge-in checks that have never run — interrupting a reply with a queued app-open,
-and "Hey Jarvis" over a long reply; (3) grow the now-working E2E tier to the three root causes from
-the 2026-08-14 trace (unrendered screen, failed `Open`, first-move `Back`); (4) the parked
-`AskGuard` fault and the errand re-opening the app it is already in; (5) commit the off-device
+Shipped this session: **barge-in part one (tap)** — the only thing confirmed on a device — **part
+two (voice)**, **natural replies instead of "On it."** (pure `Acknowledgement`), and **the E2E tap
+tier going green**, which is the first automated proof JARVIS can drive a real tap into another app.
+Earlier in the same run: the ControlVocabulary layer and the Orbit theme with its four
+device-reported fixes.
+
+**Three things are proven only in CI and have never run on a phone.** In order of how much they
+would tell us:
+
+1. **Interrupting a reply that has a queued app-open.** "Open YouTube", cut him off during the
+   reply — YouTube must NOT open afterwards. Every interrupt in the 2026-08-16 device trace happened
+   to land on a reply with `screen=none`, so `interrupt()`'s `pendingScreen = null` has still never
+   executed. This is the one most likely to be quietly broken.
+2. **"Hey Jarvis" over a long reply.** Trace should read `barge-in armed` → `barge-in — heard "Hey
+   Jarvis" over the reply` → `interrupted — listening`. If it arms but never hears you, his own TTS
+   is masking the wake word; the lever is a lower TTS volume while armed
+   (`Speaker.doSpeak` passes `null` params today), deliberately left untuned until there is a trace
+   to tune against.
+3. **Whether the new replies sound right aloud** — particularly `Looking for X in Y` with a long
+   query.
+
+**Then, in order:** grow the now-working E2E tier to the three root causes from the 2026-08-14 trace
+(unrendered screen, failed `Open`, first-move `Back`) — each is one test now; the parked `AskGuard`
+fault (see below) and the errand re-opening the app it is already in; and commit the off-device
 harness as `scripts/jvmcheck/`.
+
+### 🔧 Parked with the user's agreement — "take care of the error accuracy later"
+From the 2026-08-16 device trace, both real and both unfixed:
+
+- **`AskGuard` suppressed an explicit command, then JARVIS claimed it had run.** The user said
+  "open Amazon music"; the reply ended in a question, so the `<<OPEN>>` was dropped — and he then
+  said *"Now that Amazon Music is open…"*. The cause is in the call site:
+  `AskGuard.apply(parsed.clean, parsed.steps)` sees only the **reply**, while `SendGuard` and
+  `SpendGuard` both take `userText`. An imperative from the user should outrank a trailing question
+  from the model. This is the false-success class the guards exist to prevent, arriving *through* a
+  guard.
+- **The errand re-opened the app it was already inside.** `Pick(Library)` → chose "View Library" →
+  `Open(Amazon Music)` → `Tap(Playlists)` → going in circles. Step 2 threw away the navigation step 1
+  had just made. The system prompt already says "Do not `<<OPEN>>` an app that is already in front" —
+  another instance of Rule 6: a prompt rule is not a guarantee.
 
 ### 🗣️ Canned replies — the wording was the symptom
 `Acknowledgement` (pure, 12 tests) replaced `"On it."`, `"Yes?"`, `"Anytime."` and the stock
