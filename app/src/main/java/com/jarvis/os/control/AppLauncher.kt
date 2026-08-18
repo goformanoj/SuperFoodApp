@@ -17,9 +17,9 @@ import android.content.Intent
  */
 object AppLauncher {
 
-    fun launch(context: Context, name: String): String? {
+    fun launch(context: Context, name: String, aliases: Map<String, String> = emptyMap()): String? {
         val pm = context.packageManager
-        val target = resolvePackage(context, name) ?: return null
+        val target = resolvePackage(context, name, aliases) ?: return null
         val intent = pm.getLaunchIntentForPackage(target) ?: return null
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
@@ -30,9 +30,21 @@ object AppLauncher {
         }
     }
 
-    /** Best matching launchable package for [name], or null. */
-    fun resolvePackage(context: Context, name: String): String? {
-        val query = name.trim()
+    /**
+     * Best matching launchable package for [name], or null.
+     *
+     * [aliases] are the user's own "X means Y" rules ([AppAliases]) and are
+     * applied BEFORE anything is scored. That ordering is the whole point: with
+     * the raw word, "Cloud" is an exact match for a real Realme app and scores a
+     * perfect 1000, so no amount of cleverness further down could have rescued it.
+     * The name has to be right before the search starts.
+     */
+    fun resolvePackage(
+        context: Context,
+        name: String,
+        aliases: Map<String, String> = emptyMap(),
+    ): String? {
+        val query = AppAliases.resolve(name, aliases).trim()
         if (query.isEmpty()) return null
 
         val pm = context.packageManager

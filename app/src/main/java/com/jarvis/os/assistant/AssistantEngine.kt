@@ -1407,8 +1407,11 @@ class AssistantEngine(context: Context) {
                 // No accessibility service bound, so nothing can read what is in
                 // front. Launching blind is still better than refusing — this is
                 // the one path where a relaunch cannot be ruled out.
+                val aliases = com.jarvis.os.control.AppAliases.parse(
+                    userPrefs.customInstructions.lines() + userPrefs.learnedFacts(),
+                )
                 for (step in plan.steps) {
-                    if (step is ScreenStep.Open) AppLauncher.launch(appContext, step.app)
+                    if (step is ScreenStep.Open) AppLauncher.launch(appContext, step.app, aliases)
                 }
             }
         }

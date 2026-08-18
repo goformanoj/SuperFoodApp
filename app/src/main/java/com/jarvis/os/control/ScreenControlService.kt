@@ -64,6 +64,16 @@ class ScreenControlService : AccessibilityService() {
      */
     val bubble: OrbBubble by lazy { OrbBubble(this) }
 
+    private val userPrefs by lazy { com.jarvis.os.data.UserPreferences(this) }
+
+    /**
+     * The user's own "X means Y" rules, read fresh each time so editing the
+     * instructions screen takes effect on the next command rather than the next
+     * time this service happens to restart.
+     */
+    private fun appAliases(): Map<String, String> =
+        AppAliases.parse(userPrefs.customInstructions.lines() + userPrefs.learnedFacts())
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
@@ -214,7 +224,15 @@ class ScreenControlService : AccessibilityService() {
         DebugLog.log(DebugLog.Stage.SCREEN, "$position ${steps[index]}")
         when (val step = steps[index]) {
             is ScreenStep.Open -> {
-                val target = AppLauncher.resolvePackage(this, step.app)
+                val aliases = appAliases()
+                val wanted = AppAliases.resolve(step.app, aliases)
+                // Logged only when a rule actually fired. A trace that says
+                // "Cloud -> Claude" settles in one line what otherwise reads as
+                // the executor opening something nobody asked for.
+                if (!wanted.equals(step.app, ignoreCase = true)) {
+                    DebugLog.log(DebugLog.Stage.SCREEN, "your rule: \"${step.app}\" means \"$wanted\"")
+                }
+                val target = AppLauncher.resolvePackage(this, step.app, aliases)
                 if (target != null && target == rootInActiveWindow?.packageName?.toString()) {
                     // Already here. Relaunching would reset the app to its home
                     // screen and throw away the search results the user is
@@ -223,7 +241,7 @@ class ScreenControlService : AccessibilityService() {
                     DebugLog.log(DebugLog.Stage.SCREEN, "$position already in ${step.app} — not relaunching")
                     handler.postDelayed({ runStep(steps, index + 1, target, token, onDone) }, STEP_MS)
                 } else {
-                    val pkg = AppLauncher.launch(this, step.app)
+                    val pkg = AppLauncher.launch(this, step.app, aliases)
                     if (pkg == null) {
                         // No installed app matched. From a device trace the model emitted
                         // <<OPEN|Search>>, treating an on-screen control as an app; Open was
