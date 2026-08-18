@@ -23,6 +23,36 @@ conflicting `pic`/`peak` memory fact; exempt JARVIS from Realme battery optimisa
 sixteen-second hole was; (3) the parked `AskGuard` fault; (4) deliberate scrolling, asked for and
 still not built; (5) grow the E2E tier to the three 2026-08-14 root causes.
 
+### 🗣️ "Cloud means Claude" — a stated rule must be honoured in CODE, not asked of the model
+The user typed `Cloud means Claude` into custom instructions. Speech hears "Claude" as "Cloud"
+every time, the reply carried `<<OPEN|Cloud>>`, and **a Realme phone has a real app labelled
+"Cloud"** — so `AppLauncher.rank` scored it an **exact match, 1000/1000**, and opened it. Nothing
+in the executor malfunctioned; it was handed the wrong name and was fast about it.
+
+**The code proves the marker said "Cloud", not "Claude":** `tokensMatch` only relates two words
+when one is a prefix of the other, and neither prefixes the other. A correct marker could not have
+reached that app. The fault is entirely upstream of the launcher.
+
+Fixed with pure `control/AppAliases` — parses `X means Y`, `when I say X I mean Y`, `by X I mean Y`
+and `X = Y` from the instructions box **and** from `learnedFacts` (`<<REMEMBER>>` stores the same
+sentence shape). Applied in `AppLauncher.resolvePackage` **before** anything is scored.
+
+**GOTCHA: the alias MUST be applied before ranking, not after.** With the raw word, "Cloud" is a
+perfect match for a real app — no cleverness further down the ranking could have rescued it. The
+name has to be right before the search starts.
+**GOTCHA: do NOT pre-seed a global `cloud → Claude`.** "Cloud" is a genuine launchable app here and
+may be the one another user means. An alias exists only because a particular user said so.
+**GOTCHA: `X is Y` is deliberately unsupported** despite being the most natural phrasing — it is
+also the commonest sentence shape in an instructions box that has nothing to do with apps, and
+"my name is Manoj" becoming an app redirect is worse than the bug being fixed. Four tests assert
+that real instruction text ("Call me sir.", "I'm in Bangalore…") mines no rules at all.
+
+**The general lesson, and it is Rule 6 one rung down:** the prompt has asked for this substitution
+for months and it works *most* of the time. That IS the failure — a rule that holds most of the
+time is one the user cannot rely on, and nothing tells them which kind of turn they got. The prompt
+still asks (it catches phrasings the parser does not); it is no longer the only thing between a
+typed rule and the wrong app. A trace line now reports when a rule fires.
+
 ### 🔵 The floating orb needs NO permission — accessibility overlays can be touchable
 `control/OrbBubble` is a draggable bubble that rides over other apps. It does **not** use
 `SYSTEM_ALERT_WINDOW`. **`TYPE_ACCESSIBILITY_OVERLAY` accepts touches** — the scrim and the tap

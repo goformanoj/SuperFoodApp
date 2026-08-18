@@ -2977,6 +2977,67 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-18 — The user wrote the fix themselves, and the app asked the model to apply it
+
+"it doesn't open the claude app while it was open, and it opened some other
+cloud app" — with a screenshot of their custom instructions reading, in full,
+`Cloud means Claude`.
+
+**Nothing in the executor malfunctioned.** Speech-to-text hears "Claude" as
+"Cloud" essentially every time. The reply carried `<<OPEN|Cloud>>`. And a Realme
+phone ships an app **literally labelled "Cloud"**, so `AppLauncher.rank` scored
+it an exact match — 1000 out of 1000, the top of the scale — and opened it
+immediately. Handed that name, it did precisely the right thing.
+
+The code settles which half was at fault without needing a trace: `tokensMatch`
+relates two words only when one is a prefix of the other, and neither "cloud"
+nor "claude" prefixes the other. So `<<OPEN|Claude>>` could not have reached
+that app. The marker was wrong before the launcher ever saw it.
+
+**The part worth remembering is that the instruction was already there.** It is
+in `customInstructions`, which `buildContext` sends on *every single turn*, and
+the system prompt has asked for exactly this substitution for months — "when a
+remembered nickname stands for a real app, put the REAL app name in the marker".
+It works most of the time.
+
+**That is the failure, not a mitigation of it.** A rule that holds most of the
+time is one the user cannot rely on, and nothing on screen tells them which kind
+of turn they just got. It is Rule 6 one rung down from irreversible actions:
+sending a message cannot be undone, and opening the wrong app can — but the
+principle is the same, and the user had already done their half by writing the
+rule down in plain words. **When the user has stated a rule, honour it in code.**
+
+New pure `control/AppAliases` parses `X means Y`, `when I say X I mean Y`, `by X
+I mean Y` and `X = Y` out of the instructions box **and** out of `learnedFacts`,
+since `<<REMEMBER>>` stores the same shape of sentence and it would be strange
+for the visible box to be the only one that worked.
+
+**Two design calls that are the interesting part.**
+
+*Applied before ranking, not after.* With the raw word, "Cloud" is a perfect
+match for a real installed app. There is no scoring tweak, no tie-break, no
+confidence threshold that could have rescued it downstream — the name has to be
+right before the search starts. A fix placed one step later would have looked
+reasonable and done nothing.
+
+*Nothing pre-seeded.* The tempting version ships a built-in `cloud → Claude`
+mapping, and it is wrong: "Cloud" is a genuine launchable app on this very
+phone, and on someone else's it may be the one they actually mean. An alias
+exists **only** because a particular user said so. A global table would fix this
+user and break the next one.
+
+**And one deliberate omission.** `X is Y` is the most natural phrasing and is not
+supported. It is also the commonest sentence shape in an instructions box that
+has nothing to do with apps — "my name is Manoj", "the office wifi is slow" —
+and a rule mined out of one of those would silently redirect an app launch for
+no reason the user could ever guess. Four of the twelve tests exist purely to
+assert that real instruction text, taken from the app's own suggestion chips,
+produces **no rules at all**. The parser's job is as much refusing as matching.
+
+The prompt still asks for the substitution; it catches phrasings the parser does
+not. It is simply no longer the only thing standing between a rule the user
+typed out and the wrong app opening.
+
 ### 2026-08-18 — A floating orb that costs no permission, and a backdrop that was dull for a measurable reason
 
 Two asks, both about how the app *feels* rather than what it does: a floating
