@@ -49,6 +49,14 @@ fun ThemeBackdrop(
         infiniteRepeatable(tween(150_000, easing = LinearEasing)),
         label = "backdropDrift",
     )
+    // A second, much faster clock. The aurora needs to be seen to move — the
+    // 150-second drift above is deliberately imperceptible, and running the
+    // clouds on it produced a backdrop nobody could tell was animated at all.
+    val flow by transition.animateFloat(
+        0f, Orb3D.TAU,
+        infiniteRepeatable(tween(38_000, easing = LinearEasing)),
+        label = "backdropFlow",
+    )
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val w = size.width
@@ -56,12 +64,34 @@ fun ThemeBackdrop(
         val focus = Offset(w / 2f, h * 0.34f)
         val base = ThemeArt.backdrop(palette.orbStyle)
 
+        // ── Depth ────────────────────────────────────────────────────────────
+        // A vertical ramp under everything. Without it the screen is one flat
+        // colour with objects sitting ON it; with it there is a top and a bottom,
+        // which is most of what made the old backdrop read as dull.
+        drawRect(
+            brush = Brush.verticalGradient(
+                listOf(
+                    base.copy(alpha = 0.34f),
+                    Color.Transparent,
+                    base.copy(alpha = 0.22f),
+                ),
+            ),
+        )
+
+        // ── Aurora ───────────────────────────────────────────────────────────
+        // Four large soft blooms drifting across each other on slow lissajous
+        // paths, added rather than painted over, so where two overlap the colour
+        // genuinely brightens. This is the layer doing the work: one flat wash
+        // reads as a background, several moving ones read as a place.
+        aurora(w, h, flow, palette.accent, palette.secondary, palette.highlight)
+
         // Wash from behind the orb, in the reference's own background colour.
+        // Stronger than it was: it now has an aurora to sit in front of.
         drawRect(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    base.copy(alpha = 0.42f),
-                    base.copy(alpha = 0.16f),
+                    base.copy(alpha = 0.58f),
+                    base.copy(alpha = 0.24f),
                     Color.Transparent,
                 ),
                 center = focus,
@@ -98,8 +128,92 @@ fun ThemeBackdrop(
             }
         }
 
-        starField(w, h, palette.highlight, palette.orbStyle == OrbStyle.Nebula)
+        starField(w, h, palette.highlight, palette.orbStyle == OrbStyle.Nebula, flow)
+
+        // A light source below the fold. Orbit already has a lit planet down
+        // there and a second glow would fight it.
+        if (palette.orbStyle != OrbStyle.Orbit) horizonGlow(w, h, palette.accent, palette.secondary)
+
+        // Framed last. A vignette is what stops a bright backdrop competing with
+        // the text on top of it — the corners fall away and the eye goes to the
+        // orb, which is the only reason the brightness is affordable at all.
+        vignette(w, h)
     }
+}
+
+/**
+ * Slow overlapping colour fields — the layer that turns a flat ground into
+ * weather.
+ *
+ * Additive on purpose ([BlendMode.Plus]): painted normally, four translucent
+ * circles just average toward mud, and the whole point is that the overlaps are
+ * the brightest part. Alphas are low for the same reason — with Plus, four of
+ * them stack, and values that look right alone blow out where they cross.
+ *
+ * Positions come from sin/cos of one clock rather than anything remembered, so
+ * this stays a pure function of time and costs no state.
+ */
+private fun DrawScope.aurora(
+    w: Float,
+    h: Float,
+    t: Float,
+    accent: Color,
+    secondary: Color,
+    highlight: Color,
+) {
+    val span = maxOf(w, h)
+    val blooms = listOf(
+        Triple(accent, Offset(w * (0.26f + 0.10f * kotlin.math.sin(t)), h * (0.20f + 0.06f * kotlin.math.cos(t * 0.7f))), 0.62f),
+        Triple(secondary, Offset(w * (0.78f + 0.09f * kotlin.math.cos(t * 0.8f)), h * (0.33f + 0.07f * kotlin.math.sin(t * 1.1f))), 0.70f),
+        Triple(highlight, Offset(w * (0.60f + 0.12f * kotlin.math.sin(t * 0.6f + 2f)), h * (0.72f + 0.05f * kotlin.math.cos(t))), 0.52f),
+        Triple(accent, Offset(w * (0.14f + 0.08f * kotlin.math.cos(t * 1.3f)), h * (0.86f + 0.04f * kotlin.math.sin(t * 0.9f))), 0.46f),
+    )
+    blooms.forEach { (colour, centre, scale) ->
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    colour.copy(alpha = 0.20f),
+                    colour.copy(alpha = 0.07f),
+                    Color.Transparent,
+                ),
+                center = centre,
+                radius = span * scale,
+            ),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/** A band of light along the bottom edge, as if something is lit off-screen. */
+private fun DrawScope.horizonGlow(w: Float, h: Float, accent: Color, secondary: Color) {
+    drawRect(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                secondary.copy(alpha = 0.26f),
+                accent.copy(alpha = 0.10f),
+                Color.Transparent,
+            ),
+            center = Offset(w * 0.5f, h * 1.06f),
+            radius = maxOf(w, h) * 0.62f,
+        ),
+        blendMode = BlendMode.Plus,
+    )
+}
+
+/** Darkened corners, so the bright middle stays the subject. */
+private fun DrawScope.vignette(w: Float, h: Float) {
+    drawRect(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                Color.Transparent,
+                Color.Transparent,
+                Color.Black.copy(alpha = 0.30f),
+                Color.Black.copy(alpha = 0.62f),
+            ),
+            center = Offset(w * 0.5f, h * 0.42f),
+            radius = maxOf(w, h) * 0.78f,
+        ),
+    )
 }
 
 /** A dotted wireframe globe in real 3D — latitudes and meridians, slowly turning. */
@@ -248,20 +362,35 @@ private fun DrawScope.circuitFloor(horizonY: Float, colour: Color) {
     }
 }
 
-/** Stars. Deterministic placement, so they drift rather than flicker. */
-private fun DrawScope.starField(w: Float, h: Float, warm: Color, heavy: Boolean) {
-    val count = if (heavy) 120 else 70
+/**
+ * Stars.
+ *
+ * Placement is deterministic ([OrbMath.unitRandom], never `Math.random`) for the
+ * reason this project has already paid for once: a Canvas redraws every frame, so
+ * anything deciding WHERE a star sits is asked sixty times a second, and a real
+ * random re-scatters the sky into static.
+ *
+ * Brightness is the opposite — it is *meant* to change, so it takes the clock.
+ * Each star gets its own phase from its index, so they breathe out of step
+ * instead of the whole field pulsing as one. That is the difference between a sky
+ * and a string of fairy lights.
+ */
+private fun DrawScope.starField(w: Float, h: Float, warm: Color, heavy: Boolean, t: Float) {
+    val count = if (heavy) 220 else 150
     for (i in 0 until count) {
         val x = OrbMath.unitRandom(i * 3 + 1) * w
         val y = OrbMath.unitRandom(i * 3 + 2) * h
-        val alpha = OrbMath.range(i * 7 + 11, 0.10f, 0.50f)
-        if (OrbMath.unitRandom(i * 17 + 7) > 0.95f) {
-            flare(Offset(x, y), OrbMath.range(i, 3f, 7f) * density, Color.White, alpha * 1.3f)
+        // Own phase, own rate. Shallow: a star that fades to nothing reads as a
+        // rendering fault rather than as distance.
+        val twinkle = 0.78f + 0.22f * kotlin.math.sin(t * (1.4f + OrbMath.unitRandom(i * 5 + 2) * 2.2f) + i)
+        val alpha = OrbMath.range(i * 7 + 11, 0.22f, 0.85f) * twinkle
+        if (OrbMath.unitRandom(i * 17 + 7) > 0.93f) {
+            flare(Offset(x, y), OrbMath.range(i, 3f, 9f) * density, Color.White, alpha * 1.25f)
         } else {
             drawCircle(
-                color = (if (OrbMath.unitRandom(i * 13 + 5) > 0.74f) warm else Color.White)
+                color = (if (OrbMath.unitRandom(i * 13 + 5) > 0.68f) warm else Color.White)
                     .copy(alpha = alpha),
-                radius = OrbMath.range(i * 3 + 3, 0.6f, 1.9f) * density,
+                radius = OrbMath.range(i * 3 + 3, 0.6f, 2.3f) * density,
                 center = Offset(x, y),
             )
         }

@@ -58,9 +58,25 @@ class ScreenControlService : AccessibilityService() {
     @Volatile private var lastAppScreen: String = ""
     @Volatile private var lastAppSeenAt: Long = 0L
 
+    /**
+     * The floating orb. Lives here because it borrows this service's accessibility
+     * overlay window — that is what lets it exist without `SYSTEM_ALERT_WINDOW`.
+     */
+    val bubble: OrbBubble by lazy { OrbBubble(this) }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+    }
+
+    /**
+     * Show or hide the floating orb. Idempotent, and safe from any thread — the
+     * engine calls it from lifecycle callbacks that are already on main, but the
+     * scrim next door learned the hard way that "already on main" is a promise
+     * about today's callers only.
+     */
+    fun setBubbleVisible(visible: Boolean) {
+        handler.post { if (visible) bubble.show() else bubble.hide() }
     }
 
     /**
@@ -78,6 +94,7 @@ class ScreenControlService : AccessibilityService() {
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         removeScrim()
+        bubble.hide()
         instance = null
         return super.onUnbind(intent)
     }
@@ -86,6 +103,9 @@ class ScreenControlService : AccessibilityService() {
         handler.removeCallbacksAndMessages(null)
         removeOutline()
         removeScrim()
+        // The window belongs to this service. Leaving it up after the service is
+        // gone strands a circle on the user's screen with nothing behind it.
+        bubble.hide()
         instance = null
         super.onDestroy()
     }
@@ -826,6 +846,15 @@ class ScreenControlService : AccessibilityService() {
 
     private fun addScrim() {
         if (scrim != null) return
+        // The floating orb already says JARVIS is doing something, in the corner
+        // of the eye rather than across the whole display. When it is up, the
+        // full-screen tint is the same message shouted — so the quieter of the
+        // two wins and this one stands down. With the orb switched off, the tint
+        // is still the only indicator there is, and still appears.
+        if (bubble.isShowing) {
+            DebugLog.log(DebugLog.Stage.SCREEN, "control shown on the floating orb")
+            return
+        }
         val view = ScrimView(this)
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,

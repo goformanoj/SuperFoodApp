@@ -64,6 +64,8 @@ class MainActivity : ComponentActivity() {
                         onForgetFact = { engine.forgetFact(it) },
                         backgroundWakeEnabled = { engine.backgroundWakeEnabled() },
                         onSetBackgroundWake = { engine.setBackgroundWake(it) },
+                        floatingOrbEnabled = { engine.floatingOrbEnabled() },
+                        onSetFloatingOrb = { engine.setFloatingOrb(it) },
                         onOpenAssistantSettings = { engine.openAssistantSettings() },
                         palette = palette,
                         onSelectPalette = {

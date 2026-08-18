@@ -48,6 +48,8 @@ fun SettingsScreen(
     onSelectPalette: (JarvisPalette) -> Unit,
     backgroundWakeEnabled: Boolean = true,
     onSetBackgroundWake: (Boolean) -> Unit = {},
+    floatingOrbEnabled: Boolean = true,
+    onSetFloatingOrb: (Boolean) -> Unit = {},
     onOpenAssistantSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -67,9 +69,21 @@ fun SettingsScreen(
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp),
         )
 
-        WakeToggle(
+        FeatureToggle(
+            title = "Wake word — \"Hey Jarvis\"",
+            blurb = "Summon JARVIS by voice from any app. On-device, nothing recorded. " +
+                "Uses some battery and shows an ongoing notification.",
             enabled = backgroundWakeEnabled,
             onToggle = onSetBackgroundWake,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+        )
+
+        FeatureToggle(
+            title = "Floating orb",
+            blurb = "Keeps JARVIS on screen over other apps — drag it anywhere, tap to talk. " +
+                "Needs screen control switched on; no extra permission.",
+            enabled = floatingOrbEnabled,
+            onToggle = onSetFloatingOrb,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
         )
         Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
@@ -151,9 +165,16 @@ private fun AssistantRow(onOpen: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
-/** A labelled on/off row for the background "Hey Jarvis" wake word. */
+/**
+ * A labelled on/off row.
+ *
+ * Was `WakeToggle`, hard-coded to one feature, until a second toggle needed the
+ * identical row. The text is the only thing that ever differed.
+ */
 @Composable
-private fun WakeToggle(
+private fun FeatureToggle(
+    title: String,
+    blurb: String,
     enabled: Boolean,
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -170,13 +191,12 @@ private fun WakeToggle(
     ) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text(
-                "Wake word — \"Hey Jarvis\"",
+                title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextPrimary,
             )
             Text(
-                "Summon JARVIS by voice from any app. On-device, nothing recorded. " +
-                    "Uses some battery and shows an ongoing notification.",
+                blurb,
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
                 modifier = Modifier.padding(top = 2.dp),

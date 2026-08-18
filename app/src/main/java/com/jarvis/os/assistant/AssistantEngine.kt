@@ -317,7 +317,7 @@ class AssistantEngine(context: Context) {
                 }
             }
         }
-        // The wake word fired while the user was in another app with something
+// The wake word fired while the user was in another app with something
         // playing. Deliberately NOT the usual "bring JARVIS to the front": they
         // are watching a video, and a session exists so they can talk without
         // leaving it. This is the same one-turn mic claim the notification's Talk
@@ -378,6 +378,7 @@ class AssistantEngine(context: Context) {
 
     fun resume() {
         session.onVisibilityChanged(true)
+        applyBubble()
         // Foreground now, so the engine owns the mic — the background hotword must
         // let go, or two listeners would fight over it (the one-owner rule).
         HotwordService.stop(appContext)
@@ -391,6 +392,7 @@ class AssistantEngine(context: Context) {
 
     fun pause() {
         session.onVisibilityChanged(false)
+        applyBubble()
         main.removeCallbacksAndMessages(null)
         // Outside a session, leaving the screen silences JARVIS as before. Inside
         // one, it keeps talking and listening from the background.
@@ -500,6 +502,66 @@ class AssistantEngine(context: Context) {
     }
 
     /**
+     * Shows the floating orb exactly while JARVIS is off his own screen.
+     *
+     * On his own screen there is already a 280dp orb in the middle of it, and a
+     * second one floating over the top is clutter. Off it, the bubble is the only
+     * thing that says he is there at all.
+     *
+     * The tap handler is re-attached here rather than once at construction,
+     * because the accessibility service may connect long AFTER the engine exists —
+     * a hook set once, at the wrong moment, is a bubble that draws perfectly and
+     * does nothing when pressed.
+     */
+    private fun applyBubble() {
+        val service = ScreenControlService.instance ?: return
+        service.bubble.onTap = { main.post { onBubbleTap() } }
+        service.setBubbleVisible(userPrefs.floatingOrb && !session.jarvisOnScreen)
+    }
+
+    /**
+     * The floating orb was tapped. It carries the same two meanings the in-app orb
+     * does — cut him off if he is talking, otherwise start listening — because it
+     * IS the same orb, and a control that means different things on different
+     * surfaces is two controls wearing one costume.
+     */
+    private fun onBubbleTap() {
+        if (turn.phase == TurnPhase.SPEAKING) {
+            DebugLog.log(DebugLog.Stage.HEARD, "floating orb tapped — cutting in")
+            interrupt()
+            return
+        }
+        // A live session already holds the microphone foreground service, so the
+        // mic can be claimed right here and the user never leaves their app —
+        // the same one-turn claim the notification's Talk button makes.
+        if (session.isActive) {
+            DebugLog.log(DebugLog.Stage.HEARD, "floating orb tapped — listening in place")
+            awake = true
+            session.requestTalk()
+            applyMicOwner()
+            return
+        }
+        // With no session there is no microphone foreground service, and Android
+        // 12+ refuses to let a backgrounded app start one — so there is no way to
+        // open the mic from here. Bringing JARVIS to the front is not a fallback,
+        // it is the only legal route, and it is what the wake word does for the
+        // same reason.
+        DebugLog.log(DebugLog.Stage.HEARD, "floating orb tapped — opening JARVIS")
+        try {
+            appContext.startActivity(
+                android.content.Intent(appContext, com.jarvis.os.MainActivity::class.java)
+                    .addFlags(
+                        android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                            android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                    )
+                    .putExtra(com.jarvis.os.MainActivity.EXTRA_WOKE_BY_HOTWORD, true),
+            )
+        } catch (e: Exception) {
+            DebugLog.log(DebugLog.Stage.ERROR, "floating orb could not open JARVIS: ${e.message}")
+        }
+    }
+
+    /**
      * Starts or stops the background wake word, from the single rule in
      * [WorkSession.wantsHotword].
      *
@@ -557,6 +619,7 @@ class AssistantEngine(context: Context) {
         WorkSessionService.onStopRequested = null
         WorkSessionService.onTalkRequested = null
         HotwordService.onDetectedInSession = null
+        ScreenControlService.instance?.bubble?.onTap = null
         WorkSessionService.stop(appContext)
         bargeIn.close()
         voice.destroy()
@@ -630,6 +693,19 @@ class AssistantEngine(context: Context) {
     /** Whether the background "Hey Jarvis" wake word is switched on. */
     fun backgroundWakeEnabled(): Boolean = userPrefs.backgroundWake
 
+    /** Whether the floating orb rides over other apps. */
+    fun floatingOrbEnabled(): Boolean = userPrefs.floatingOrb
+
+    fun setFloatingOrb(enabled: Boolean) {
+        userPrefs.floatingOrb = enabled
+        DebugLog.log(DebugLog.Stage.SESSION, "floating orb ${if (enabled) "on" else "off"}")
+        // Turning it off must take effect now, not at the next app switch. Turning
+        // it ON while the settings screen is in front deliberately does nothing
+        // visible — [applyBubble] shows it when JARVIS leaves the foreground,
+        // which is the only place it belongs.
+        if (!enabled) ScreenControlService.instance?.setBubbleVisible(false)
+    }
+
     fun setBackgroundWake(enabled: Boolean) {
         userPrefs.backgroundWake = enabled
         DebugLog.log(DebugLog.Stage.SESSION, "background wake word ${if (enabled) "on" else "off"}")
@@ -642,6 +718,11 @@ class AssistantEngine(context: Context) {
 
     fun saveThemeId(id: String) {
         userPrefs.themeId = id
+        // The floating orb draws itself from a plain-int copy of the palette and
+        // has no idea a preference changed. Without this it keeps the old theme's
+        // colours until the accessibility service happens to restart — which, on
+        // a phone, can be days.
+        ScreenControlService.instance?.bubble?.refreshTheme()
     }
 
     // --- voice settings, surfaced to the Speech screen -----------------------
@@ -1584,7 +1665,12 @@ class AssistantEngine(context: Context) {
     }
 
     private fun set(block: (VoiceUiState) -> VoiceUiState) {
-        _state.value = block(_state.value)
+        val next = block(_state.value)
+        _state.value = next
+        // Every state change in the app funnels through here, which is the only
+        // reason one line is enough to keep a window in another process's
+        // foreground truthful. The bubble ignores repaints it does not need.
+        ScreenControlService.instance?.bubble?.setState(next.orb, next.amplitude)
     }
 
     private companion object {

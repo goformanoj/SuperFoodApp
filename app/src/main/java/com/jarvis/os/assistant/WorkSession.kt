@@ -92,6 +92,15 @@ class WorkSession {
      */
     private val canRecordNow: Boolean get() = jarvisVisible || sessionActive
 
+    /**
+     * True while JARVIS's own UI is the foreground window.
+     *
+     * Exposed for the floating orb, which must be up exactly when this is false.
+     * It reads the same field [owner] does, so the bubble cannot disagree with the
+     * microphone about where the user is looking.
+     */
+    val jarvisOnScreen: Boolean get() = jarvisVisible
+
     /** True while a session is up but yielding the microphone to playback. */
     val yieldedToMedia: Boolean
         get() = sessionActive && micGranted && mediaPlaying &&

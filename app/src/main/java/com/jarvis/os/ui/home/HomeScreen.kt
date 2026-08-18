@@ -155,6 +155,8 @@ fun JarvisApp(
     onForgetFact: (String) -> Unit = {},
     backgroundWakeEnabled: () -> Boolean = { true },
     onSetBackgroundWake: (Boolean) -> Unit = {},
+    floatingOrbEnabled: () -> Boolean = { true },
+    onSetFloatingOrb: (Boolean) -> Unit = {},
     onOpenAssistantSettings: () -> Unit = {},
     palette: JarvisPalette = JarvisPalette.Default,
     onSelectPalette: (JarvisPalette) -> Unit = {},
@@ -213,6 +215,8 @@ fun JarvisApp(
                     onSelectPalette = onSelectPalette,
                     backgroundWakeEnabled = backgroundWakeEnabled(),
                     onSetBackgroundWake = onSetBackgroundWake,
+                    floatingOrbEnabled = floatingOrbEnabled(),
+                    onSetFloatingOrb = onSetFloatingOrb,
                     onOpenAssistantSettings = onOpenAssistantSettings,
                 )
                 Dest.Instructions -> InstructionsScreen(
