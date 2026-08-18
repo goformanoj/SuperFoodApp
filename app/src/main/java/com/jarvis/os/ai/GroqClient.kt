@@ -40,9 +40,17 @@ object GroqClient {
      * first for commands preserves the big model's daily allowance for the turns
      * that actually need it — and each list still ends with the others, so a
      * model out of quota is never a dead end.
+     *
+     * `llama-3.3-70b-versatile` used to lead [SMART_MODELS] and was REMOVED on
+     * 2026-08-18: Groq has retired it. A device trace shows the cost of leaving a
+     * dead model in the list — `model llama-3.3-70b-versatile is retired —
+     * dropping it` on the very first turn — and the account's own dashboard shows
+     * the matching HTTP 404 in every cluster of traffic. The fallback worked, so
+     * nothing visibly broke; it simply spent a round trip on every fresh process
+     * to rediscover a fact that never changes. [retired] only remembers within one
+     * process, so this cannot be left to it.
      */
     private val SMART_MODELS = listOf(
-        "llama-3.3-70b-versatile",
         "openai/gpt-oss-120b",
         "llama-3.1-8b-instant",
     )
@@ -50,8 +58,17 @@ object GroqClient {
     private val FAST_MODELS = listOf(
         "llama-3.1-8b-instant",
         "openai/gpt-oss-20b",
-        "llama-3.3-70b-versatile",
     )
+
+    /**
+     * Models known to be gone, so a future edit cannot quietly put one back.
+     * Asserted in `GroqClientParseTest`, since the lists themselves are the thing
+     * being protected.
+     */
+    internal val RETIRED_UPSTREAM = listOf("llama-3.3-70b-versatile", "gemma2-9b-it")
+
+    /** Exposed for unit tests only — the lists above are otherwise private. */
+    internal fun modelsForTest(tier: Tier) = modelsFor(tier)
 
     private fun modelsFor(tier: Tier) = if (tier == Tier.FAST) FAST_MODELS else SMART_MODELS
 

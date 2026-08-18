@@ -98,6 +98,27 @@ class WorkSession {
             !jarvisVisible && !talkRequested && !speaking
 
     /**
+     * True when the background wake word should be the one holding the microphone.
+     *
+     * The second clause is the fix for a real hole. A device trace (2026-08-18)
+     * has JARVIS open YouTube, a video start, and then fourteen unbroken seconds
+     * of `audio started — pausing listening`. During those seconds the recogniser
+     * had stood down (correctly — holding the mic takes audio focus and would
+     * pause the user's video) and the background wake word was ALSO off, because
+     * it was gated on there being no session at all. Nothing was listening. The
+     * only way back in was the notification's Talk button — a tap, in a feature
+     * whose entire promise is that you can keep talking.
+     *
+     * [yieldedToMedia] is exactly the safe window: the session is up, JARVIS is
+     * off screen, he is not speaking, Talk has not been tapped, and the recogniser
+     * is therefore not listening. The wake word can hold the mic without breaking
+     * the one-owner rule, and unlike the recogniser it does not take audio focus,
+     * so the video keeps playing.
+     */
+    val wantsHotword: Boolean
+        get() = micGranted && !jarvisVisible && (!sessionActive || yieldedToMedia)
+
+    /**
      * Something is playing through the speaker. JARVIS stops listening so it does
      * not pause it — the session stays alive, and the notification offers Talk.
      */

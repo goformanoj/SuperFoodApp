@@ -101,7 +101,12 @@ class HotwordService : Service() {
                 if (score >= OpenWakeWord.DETECT_THRESHOLD) {
                     DebugLog.log(DebugLog.Stage.HEARD, "hotword — heard “Hey Jarvis” (score ${"%.2f".format(score)})")
                     detector.reset()
-                    wakeTheApp()
+                    // Inside a work session the user is USING another app — the
+                    // wake word is how they talk to JARVIS without leaving it, so
+                    // yanking the app to the front would undo the thing the
+                    // session exists to allow. Claim the mic in place instead,
+                    // exactly as the notification's Talk button does.
+                    if (inSession) onDetectedInSession?.invoke() else wakeTheApp()
                     running = false
                 }
             }
@@ -196,7 +201,25 @@ class HotwordService : Service() {
         /** Set by the engine so the notification's Stop turns off background wake. */
         var onDisableRequested: (() -> Unit)? = null
 
-        fun start(context: Context) {
+        /**
+         * Set by the engine. Called INSTEAD of bringing JARVIS to the front when
+         * the wake word fires during a work session, so the user stays in the app
+         * they are working in. Invoked on the audio thread — post to the main
+         * thread before touching engine state.
+         */
+        var onDetectedInSession: (() -> Unit)? = null
+
+        /**
+         * Whether this run of the service is covering a work session's media gap
+         * rather than a closed, idle JARVIS. Read on the audio thread, written
+         * from the main thread, so it is volatile.
+         */
+        @Volatile
+        var inSession: Boolean = false
+            private set
+
+        fun start(context: Context, forSession: Boolean = false) {
+            inSession = forSession
             val intent = Intent(context, HotwordService::class.java)
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

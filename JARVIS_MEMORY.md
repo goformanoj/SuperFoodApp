@@ -2977,6 +2977,107 @@ explicitly requested (the errand loop still confirms multi-step irreversibles vi
 
 <!-- Emulator job made resilient: the GitHub VM crashes ~half the time during JarvisAppUiTest ("device offline"), so the instrumented step now retries on a fresh emulator up to 3x. My 50 accuracy scenarios + guard fixes are green in the build job; this is pre-existing infra flakiness, not a test failure. -->
 
+### 2026-08-18 — Two device traces and a provider dashboard: four bugs, and one of them had a guard already written for it
+
+The user shared two traces and, when I said I could not tell whether a request had
+ever been sent, six screenshots of the Groq dashboard. That third source is what
+made the session — a trace says what the app did, and the dashboard says what the
+provider saw, and the interesting bugs live in the gap between them.
+
+**Confirmed working, and worth recording because both were open unknowns.** Voice
+barge-in fired on a real phone — `barge-in — heard "Hey Jarvis" over the reply` →
+`interrupted — listening` — which also settles the tuning I expected to need: his
+own TTS does *not* mask the wake word at speaker-to-mic distance. And the canned
+replies are gone; the trace has "Looking up pic now." and "Any time at all."
+
+**1. A dead model at the head of the list, costing a round trip per process.**
+`model llama-3.3-70b-versatile is retired — dropping it`, and the dashboard shows
+the matching **404** in every cluster of traffic. Nothing broke — the fallback
+chain worked exactly as designed — which is precisely why this could have sat
+there indefinitely. `retired` only remembers within one process, so every fresh
+launch rediscovers a fact that will never change again. Removed from both tiers,
+with `GroqModelListTest` to keep it out. **The lesson is about the failure that
+does not fail:** a system with good fallbacks hides its own dead weight, and only
+the provider's own books show it.
+
+**2. Sixteen seconds of silence, and the log could not say why.** The Amazon Music
+errand opened the app, waited twice for it to draw, and then went completely
+quiet until the user gave up. No step, no error, nothing. Two facts explain the
+shape: every other line in that trace is an event that *already happened*, and
+the transport has a 30s read timeout **per model**, over a chain of more than
+one — so a slow step can silently outlast a minute and a half with the screen
+tinted. Fixed by logging *before* the call (`errand: asking for the next move`),
+reporting the elapsed time on the way out, and capping the whole step at 25s.
+
+I could not close the diagnosis further and did not pretend to. The dashboard
+shows **no 429 at all** in that window, so the honest statement is "the request
+never visibly reached Groq, and nothing in the app can currently tell me whether
+it was sent". What the dashboard *does* show is the real constraint: the account
+is running into a **tokens-per-minute ceiling of 8.3K** on `gpt-oss-120b`, with
+requests nowhere near their own 30/min limit. Tokens, not requests, are what this
+app is short of — which is worth knowing before the backend's metering design.
+**GOTCHA banked: an instrumented failure is worth more than a guessed cause.**
+Same move as the `no field found — active=… windows=…` diagnostic.
+
+**3. A guard that was real, tested, and on a road the code did not travel.**
+The user said "can you open YouTube" while already in YouTube, and it relaunched,
+throwing away what they were watching. `ScreenControlService` has had a guard
+against exactly this since the day a Blinkit search got reset — *"already in X —
+not relaunching"*. It never ran, and the trace says so by omission: no `step 1/1`
+line either time. An Open-only plan does not need accessibility, so `executeScreen`
+took a shortcut branch that called `AppLauncher.launch` directly and skipped the
+service, guard included. Now routed through `runSteps` (recovery off — there is
+nothing to recover from a launch), with the blind path kept only for when no
+accessibility service is bound.
+
+**This is the third time this shape has appeared** — `runSteps(opens) { ok, _ -> }`
+ignoring an honest failure, `mediaCheck`'s `!busy` guard that `say()` never set,
+and now a guard on a branch that never executes. **Writing the protection is the
+easy half; the half that fails is making sure every path reaches it.**
+
+**4. JARVIS goes deaf for the whole video.** `audio started — pausing listening`
+at 19:39:04, `audio stopped` at 19:39:18. Fourteen seconds in which the recogniser
+had correctly stood down — holding the mic takes audio focus and would pause the
+user's video — and the background wake word was **also** off, gated on
+`!session.isActive`. Nothing was listening at all. In a feature whose whole promise
+is "keep talking to me while you use the app", the only way back in was tapping a
+notification. On YouTube that is the entire time.
+
+The fix is a new pure rule, `WorkSession.wantsHotword`, because
+`yieldedToMedia` already names the safe window exactly: session up, JARVIS off
+screen, not speaking, Talk not tapped — so the recogniser is definitionally not
+listening and the wake word can hold the mic without breaking the one-owner rule.
+Unlike the recogniser it takes no audio focus, so the video keeps playing. And
+when it fires mid-session it now claims the mic **in place** rather than yanking
+the app to the front, which would undo the thing the session exists to allow.
+
+`HotwordOwnershipTest` walks **every** combination of visible × session × media ×
+speaking and asserts the wake word is never on while anything else listens —
+rather than the four cases I would have thought of. The last time two things could
+hold that microphone the whole feature had to be reverted.
+
+**The decision to move it into `applyMicOwner` rather than `pause` is the load-
+bearing part.** The state it covers is entered and left by the media check, long
+after `pause()` ran; deciding it once on the way out of the foreground would have
+left the gap precisely as it was.
+
+**5. The off-device harness is committed at last (`scripts/jvmcheck/`).** It has
+been in the handoff notes as a recipe for two sessions. `gradle -p scripts/jvmcheck
+test` → **432 tests, 0 failures**, in about ten seconds, and it type-checks all 50
+non-UI sources against a real `android.jar`. `CLAUDE.md` Rule 5's "Gradle cannot
+fetch through the proxy" is half wrong in the useful direction: Maven Central
+works, only `dl.google.com` is refused. New gotcha: **Central answers 429 under
+load** — retry with backoff, it clears. A recipe in a document is not a gate; this
+is why the harness had to become a file.
+
+**Also corrected: a test I asked for that could not have worked.** I told the user
+to say "open YouTube" and cut in before it opened. The reply is "Opening YouTube."
+— about a second and a half — and the Open fires the moment it ends. I had given
+them a one-second window and called it a test. It needs a long reply *carrying* a
+queued app-open ("explain how a jet engine works, then open YouTube"), so
+`pendingScreen = null` finally gets exercised. **Design the window before asking
+for the measurement.**
+
 ### 2026-08-17 — The tap tier is green: JARVIS is now provably able to tap something
 
 ```

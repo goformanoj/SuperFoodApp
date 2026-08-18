@@ -5,20 +5,112 @@
 
 ## Current position + immediate next
 
-**`main` @ `1e8d05d`** — branch @ `24e23a1`, and **all four CI jobs are green for the first time,
-`e2e-tap` included**.
-Merged: the ControlVocabulary layer, the Orbit theme (+ its four device-reported fixes), **barge-in
-part one (tap)** — confirmed working on device — **part two (voice)**, green but not yet tried on a
-phone, and **natural replies instead of "On it."** (pure `Acknowledgement`), also unheard on a phone.
-Unmerged: **the E2E probe's two-bug fix, which made the tier GREEN** — Java fixture + result read
-through the accessibility tree.
+**`main` @ `8b87e14`** — branch `claude/phone-glitch-investigation-g6dnhk`, four device-trace bugs
+fixed, **432 tests / 0 failures off-device**. Awaiting the `jarvis-debug-apk` artifact, then merge.
 
-**Next session, in order:** (1) merge the branch once `24e23a1`'s artifact lands; (2) get a device
-trace for the two barge-in checks that have never run — interrupting a reply with a queued app-open,
-and "Hey Jarvis" over a long reply; (3) grow the now-working E2E tier to the three root causes from
-the 2026-08-14 trace (unrendered screen, failed `Open`, first-move `Back`); (4) the parked
-`AskGuard` fault and the errand re-opening the app it is already in; (5) commit the off-device
-harness as `scripts/jvmcheck/`.
+Shipped this session: the retired Groq model removed; the silent agent step instrumented and
+capped; Open-only plans routed through the already-in-app guard; the work session's media gap
+handed to the wake word; and **`scripts/jvmcheck/` committed** — the off-device gate that has been
+a recipe in this file for two sessions.
+
+**Owed by the user, on the phone:** the corrected barge-in test (below); clear the three poisoned
+playbook routes (`"did you are"`, `"search box"`, `"the search box is right ya just type"`) and the
+conflicting `pic`/`peak` memory fact; exempt JARVIS from Realme battery optimisation.
+**Owed for Part E:** a Cloudflare account, a Firebase project, and the free-tier cap (~60k/day).
+
+**Next session, in order:** (1) merge once the artifact lands; (2) read the next trace for
+`errand: asking for the next move` / `next move answered in Nms` — that pair now names what the
+sixteen-second hole was; (3) the parked `AskGuard` fault; (4) deliberate scrolling, asked for and
+still not built; (5) grow the E2E tier to the three 2026-08-14 root causes.
+
+### 🧰 RUN THE OFF-DEVICE GATE BEFORE EVERY PUSH — it is a file now, not a recipe
+```sh
+gradle -p scripts/jvmcheck test     # 432 tests, 42 classes, ~10s
+```
+Compiles all 50 non-UI sources against a real `android.jar` and runs every pure test class. Full
+notes in `scripts/jvmcheck/README.md`. **GOTCHA: Maven Central answers 429 under load** — retry
+with backoff, it clears within a few minutes. Only `dl.google.com` is actually blocked, so the
+Compose layer and the instrumented tiers remain CI-only. A green run here is NOT Rule 2 done —
+still wait for the artifact.
+
+### 📊 The binding constraint is TOKENS per minute, not requests
+The user's Groq dashboard (2026-08-18): `openai/gpt-oss-120b` touching its **8.3K tokens/minute**
+ceiling, while requests peak around 5 against a 30/min limit. An agent step carries `AGENT_PROMPT`
+plus a whole screen dump, so two or three of them can saturate a minute. **Design Part E's metering
+around tokens** — the plan already says meter tokens not requests, and this is the evidence for it.
+Also: the dashboard is a third source of truth alongside the trace and the code. It answered a
+question neither of the others could — whether a request was ever sent.
+
+### 🔇 A silence in the log is not the absence of a bug
+A trace had a **sixteen-second hole** mid-errand: app opened, nothing said, user gave up. Nothing
+in the log explained it, because **every line in this app reports an event that already happened**
+— so a hang leaves no trace at all. Compounding it, the transport allows 15s connect + 30s read
+**per model** over a chain of more than one, so a slow step can outlast a minute and a half with
+the screen tinted and JARVIS mute. Now: `errand: asking for the next move` logs BEFORE the call,
+the answer logs its elapsed time, and `AGENT_STEP_TIMEOUT_MS` (25s) bounds the whole thing.
+**The cause is still not known** — the dashboard shows no 429 in that window and no matching
+request — and the instrumentation is deliberately the fix rather than a guess. Same move as the
+`no field found — active=… windows=…` diagnostic. Read those two lines in the next trace first.
+
+### 🚪 A guard is only as good as the paths that REACH it
+"can you open YouTube" while already in YouTube **relaunched it**, throwing away the video. The
+guard for exactly this — `"already in X — not relaunching"` — has existed in
+`ScreenControlService` since a Blinkit search got reset by the same fault. It never ran, and the
+trace says so **by omission**: no `step 1/1` line. An Open-only plan has `needsAccessibility ==
+false`, so `executeScreen` took a shortcut branch calling `AppLauncher.launch` directly, skipping
+the service and its guard. Now routed through `runSteps(recover = false)`.
+
+**This is the THIRD instance of this shape**, and it is worth naming: `runSteps(opens) { ok, _ -> }`
+ignoring an honest failure; `mediaCheck`'s `!busy` guard that `say()` never set; and now a guard on
+a branch that never executes. **Writing the protection is the easy half.** When adding one, list
+every path that reaches the thing being protected — and when a trace lacks a line you expect, that
+absence is evidence.
+
+### 🔊 The work session was DEAF for as long as the app played audio — fixed
+`audio started — pausing listening` at 19:39:04, `audio stopped` at 19:39:18. Fourteen seconds in
+which the recogniser had stood down (correct — holding the mic takes audio focus and would pause
+the user's video) **and** the background wake word was off too, because it was gated on
+`!session.isActive`. Nothing was listening. The only way back in was the notification's Talk
+button — a tap, in a feature whose promise is that you can keep talking. On YouTube that is the
+whole time.
+
+New pure `WorkSession.wantsHotword` = `micGranted && !jarvisVisible && (!sessionActive ||
+yieldedToMedia)`. `yieldedToMedia` already names the safe window exactly — session up, off screen,
+not speaking, Talk not tapped — so the recogniser is definitionally not listening and the one-owner
+rule holds. The wake word takes no audio focus, so the video keeps playing.
+
+**GOTCHA: this had to go in `applyMicOwner`, not `pause`.** The state is entered and left by the
+media check, long after `pause()` ran; deciding it once on the way out of the foreground leaves the
+gap exactly as it was.
+**GOTCHA: a mid-session detection must NOT bring JARVIS to the front.** The session exists so the
+user can talk without leaving the app they are in. `HotwordService.onDetectedInSession` claims the
+mic in place — the same one-turn claim the Talk button makes — after a `MIC_HANDOFF_MS` gap, since
+the detector's `AudioRecord` release races a too-eager recogniser into `RECOGNIZER_BUSY`.
+`HotwordOwnershipTest` walks **every** combination of visible × session × media × speaking rather
+than the four cases that came to mind; the last time two things could hold that mic, the feature
+had to be reverted.
+
+### 🤖 `llama-3.3-70b-versatile` is RETIRED — and good fallbacks hid it
+`model llama-3.3-70b-versatile is retired — dropping it` on the first turn, and the dashboard shows
+the matching **404** in every traffic cluster. It led `SMART_MODELS`, and `retired` only remembers
+within one process, so every fresh launch paid a round trip to rediscover a permanent fact. Removed
+from both tiers; `GroqClient.RETIRED_UPSTREAM` + `GroqModelListTest` keep it out.
+**GOTCHA: a system with good fallbacks hides its own dead weight.** Nothing user-visible broke,
+which is exactly why this could have sat there indefinitely — only the provider's own books showed
+it. Check the dashboard, not just the trace.
+
+### ✅ Voice barge-in is CONFIRMED on device — and needs no volume tuning
+`barge-in — heard "Hey Jarvis" over the reply` → `interrupted — listening`. The expected problem
+(JARVIS's own TTS masking the wake word at speaker-to-mic distance) **did not occur**; do not lower
+TTS volume to chase it. Natural replies confirmed in the same trace ("Looking up pic now.", "Any
+time at all.").
+
+**STILL UNVERIFIED — and my first test for it could not have worked.** I asked the user to say
+"open YouTube" and cut in before it opened. The reply is "Opening YouTube.", about a second and a
+half, and the Open fires the moment it ends — a one-second window, which is a reflex challenge, not
+a test. The real test needs a LONG reply *carrying* a queued app-open: "explain how a jet engine
+works, then open YouTube", interrupted partway through. If YouTube opens anyway, `pendingScreen =
+null` is broken. **Design the window before asking for the measurement.**
 
 ### 🗣️ Canned replies — the wording was the symptom
 `Acknowledgement` (pure, 12 tests) replaced `"On it."`, `"Yes?"`, `"Anytime."` and the stock

@@ -46,9 +46,11 @@ import com.jarvis.os.voice.VoiceUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -315,6 +317,27 @@ class AssistantEngine(context: Context) {
                 }
             }
         }
+        // The wake word fired while the user was in another app with something
+        // playing. Deliberately NOT the usual "bring JARVIS to the front": they
+        // are watching a video, and a session exists so they can talk without
+        // leaving it. This is the same one-turn mic claim the notification's Talk
+        // button makes — the difference is only that they said it instead of
+        // tapping it.
+        HotwordService.onDetectedInSession = {
+            // The detector releases its AudioRecord as it stands down, and the
+            // audio HAL does not always free the input immediately — the same
+            // race that answers a too-eager recogniser with RECOGNIZER_BUSY. A
+            // short deliberate gap beats not hearing the command that was the
+            // whole point of waking up.
+            main.postDelayed(
+                {
+                    session.requestTalk()
+                    DebugLog.log(DebugLog.Stage.HEARD, "hotword heard in session — listening for one turn")
+                    applyMicOwner()
+                },
+                MIC_HANDOFF_MS,
+            )
+        }
         // Tapping Talk while audio plays claims the mic for one turn.
         WorkSessionService.onTalkRequested = {
             main.post {
@@ -380,14 +403,6 @@ class AssistantEngine(context: Context) {
             disarmWatchdog()
         }
         applyMicOwner()
-        // Backgrounded and not mid-session: hand the mic to the background wake
-        // word so "Hey Jarvis" still reaches JARVIS from other apps. A session
-        // already listens in the background, so the hotword stays off then.
-        if (userPrefs.backgroundWake && micGranted && !session.isActive) {
-            HotwordService.start(appContext)
-        } else {
-            HotwordService.stop(appContext)
-        }
         set { it.copy(amplitude = 0f) }
     }
 
@@ -427,6 +442,12 @@ class AssistantEngine(context: Context) {
         // While a session is up, keep watching whether audio is playing, so
         // listening resumes on its own when the song ends.
         if (session.isActive) scheduleMediaCheck()
+
+        // Here rather than only in [pause]. The state the wake word now covers —
+        // a session that has yielded the mic to playback — is entered and left by
+        // the media check, long after pause() ran, so deciding this once on the
+        // way out of the foreground would have left the gap exactly as it was.
+        applyHotword()
 
         val owner = session.owner
         // Mid think/speak nothing may listen — with the one exception of the
@@ -479,6 +500,22 @@ class AssistantEngine(context: Context) {
     }
 
     /**
+     * Starts or stops the background wake word, from the single rule in
+     * [WorkSession.wantsHotword].
+     *
+     * The preference gate stays here because it is the user's setting rather than
+     * anything about the session, but the microphone reasoning belongs next to
+     * every other microphone decision, where it is pure and tested.
+     */
+    private fun applyHotword() {
+        if (userPrefs.backgroundWake && session.wantsHotword) {
+            HotwordService.start(appContext, forSession = session.isActive)
+        } else {
+            HotwordService.stop(appContext)
+        }
+    }
+
+    /**
      * Watches whether something is playing through the speaker.
      *
      * Holding the microphone takes audio focus, which pauses playback exactly
@@ -519,6 +556,7 @@ class AssistantEngine(context: Context) {
         main.removeCallbacks(mediaCheck)
         WorkSessionService.onStopRequested = null
         WorkSessionService.onTalkRequested = null
+        HotwordService.onDetectedInSession = null
         WorkSessionService.stop(appContext)
         bargeIn.close()
         voice.destroy()
@@ -1253,9 +1291,30 @@ class AssistantEngine(context: Context) {
                 }
             }
         } else {
-            // Opens only — no accessibility needed.
-            for (step in plan.steps) {
-                if (step is ScreenStep.Open) AppLauncher.launch(appContext, step.app)
+            // Opens only. Launching an app needs no accessibility permission, and
+            // this branch used to say so by calling [AppLauncher] straight — which
+            // quietly skipped the guard that lives in the service.
+            //
+            // From a device trace (2026-08-18): "open YouTube" opened YouTube, a
+            // video started, and thirty seconds later "can you open YouTube"
+            // RELAUNCHED it, throwing the user back to the home feed. The
+            // "already in X — not relaunching" check that exists to prevent
+            // exactly that sits in [ScreenControlService.runSteps], and a bare
+            // Open never went through it — so the protection was real, tested,
+            // and on a road this plan does not travel.
+            //
+            // Recovery stays off: there is nothing to recover from a launch, and
+            // re-planning around one would put a second loop on the screen.
+            val service = ScreenControlService.instance
+            if (service != null) {
+                service.runSteps(plan.steps, recover = false)
+            } else {
+                // No accessibility service bound, so nothing can read what is in
+                // front. Launching blind is still better than refusing — this is
+                // the one path where a relaunch cannot be ruled out.
+                for (step in plan.steps) {
+                    if (step is ScreenStep.Open) AppLauncher.launch(appContext, step.app)
+                }
             }
         }
         return ScreenOutcome.DISPATCHED
@@ -1370,27 +1429,57 @@ class AssistantEngine(context: Context) {
             say(AgentLoop.blockedMessage(goal, AgentLoop.NO_STEP))
             return
         }
+        // Logged BEFORE the call, not after. A device trace on 2026-08-18 has a
+        // sixteen-second hole here — the app opened Amazon Music, said nothing,
+        // and the user gave up — and nothing in the log said whether the request
+        // had been sent, was still in flight, or had died. Every other line in
+        // that trace is an event that already happened, which is exactly why a
+        // hang leaves no trace at all. This line, and the elapsed time on the
+        // matching line below, are what will name the cause next time.
+        DebugLog.log(DebugLog.Stage.SCREEN, "errand: asking for the next move")
+        val askedAt = System.currentTimeMillis()
         scope.launch {
             val move = try {
-                val answer = Brain.generate(
-                    messages = listOf(
-                        ChatTurn(
-                            ChatTurn.USER,
-                            agentStep(
-                                goal = goal,
-                                done = AgentLoop.historyOf(stepsTaken) +
-                                    (lastFailed?.let { "; then $it FAILED" } ?: ""),
-                                screen = screen,
+                val answer = withTimeout(AGENT_STEP_TIMEOUT_MS) {
+                    Brain.generate(
+                        messages = listOf(
+                            ChatTurn(
+                                ChatTurn.USER,
+                                agentStep(
+                                    goal = goal,
+                                    done = AgentLoop.historyOf(stepsTaken) +
+                                        (lastFailed?.let { "; then $it FAILED" } ?: ""),
+                                    screen = screen,
+                                ),
                             ),
                         ),
-                    ),
-                    context = "",
-                    systemOverride = AGENT_PROMPT,
-                    tier = Tier.SMART,
+                        context = "",
+                        systemOverride = AGENT_PROMPT,
+                        tier = Tier.SMART,
+                    )
+                }
+                DebugLog.log(
+                    DebugLog.Stage.SCREEN,
+                    "errand: next move answered in ${System.currentTimeMillis() - askedAt}ms",
                 )
                 AgentLoop.parseMove(answer, avoid = lastFailed, taken = errandSteps, stayInApp = app, goal = goal)
+            } catch (e: TimeoutCancellationException) {
+                // The HTTP layer already has a 30s read timeout PER MODEL, and the
+                // chain tries more than one — so without a budget across the whole
+                // step the user can sit through a minute and a half of silence
+                // with the screen tinted. Ending it here means they always get a
+                // sentence instead.
+                DebugLog.log(
+                    DebugLog.Stage.ERROR,
+                    "agent step timed out after ${System.currentTimeMillis() - askedAt}ms",
+                )
+                AgentMove.Blocked("no answer in time")
             } catch (e: Exception) {
-                DebugLog.log(DebugLog.Stage.ERROR, "agent step failed: ${e.message ?: e.javaClass.simpleName}")
+                DebugLog.log(
+                    DebugLog.Stage.ERROR,
+                    "agent step failed after ${System.currentTimeMillis() - askedAt}ms: " +
+                        (e.message ?: e.javaClass.simpleName),
+                )
                 AgentMove.Blocked(e.message ?: "no answer")
             }
 
@@ -1511,6 +1600,14 @@ class AssistantEngine(context: Context) {
         // but has not drawn yet. Five of these is ~3s, which covers a cold start
         // without leaving the user waiting on a silent phone.
         const val RENDER_WAIT_MS = 600L
+
+        // The whole budget for ONE agent-loop question, across every model the
+        // chain tries. Deliberately shorter than the transport's own ceiling
+        // (15s connect + 30s read, PER MODEL): the point is not to be generous,
+        // it is that a next-move question which cannot be answered in this long
+        // is not going to be answered usefully at all, and every second past it
+        // is the user staring at a tinted screen hearing nothing.
+        const val AGENT_STEP_TIMEOUT_MS = 25_000L
 
         // Wake-word idle timeout: after this long awake with nothing said, JARVIS
         // returns to sleep and needs "Hey JARVIS" again. Long enough to think
