@@ -64,4 +64,37 @@ class SystemPromptTest {
             assertTrue("the rule '$rule' was dropped from the prompt", SYSTEM_PROMPT.contains(phrase))
         }
     }
+
+    @Test
+    fun `the screen listing may be read back when the user asks for it`() {
+        // From a device trace (2026-08-18): "can you read my screen" five times,
+        // answered every time with "I can't see the screen" / "I don't have
+        // visual access" — while the accessibility service was connected and the
+        // listing WAS in the context. The old wording said the listing was "for
+        // YOU — never read it out or describe it back to the user", and the model
+        // generalised "do not describe it" into "cannot see it".
+        //
+        // That is the worse half of the bug. Refusing to narrate a screen is a
+        // choice; telling the user you are blind when you are not is the app
+        // claiming something untrue about itself, which the prompt forbids
+        // everywhere else.
+        assertTrue(
+            "asking what is on screen must be answerable",
+            SYSTEM_PROMPT.contains("if they ASK what is on screen, read it back"),
+        )
+        assertTrue(
+            "must not claim blindness while holding the listing",
+            SYSTEM_PROMPT.contains("NEVER claim you cannot see it when it is there"),
+        )
+    }
+
+    @Test
+    fun `the screen listing is still not narrated unprompted`() {
+        // The original intent was right: the user can see their own screen, and a
+        // reply that recites it is noise. Only the refusal was wrong.
+        assertTrue(
+            "unprompted narration must stay off",
+            SYSTEM_PROMPT.contains("Never narrate that listing unasked"),
+        )
+    }
 }

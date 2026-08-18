@@ -1150,6 +1150,20 @@ class AssistantEngine(context: Context) {
         // things it already tapped (which is how "send the message" ended up
         // opening the contact's profile).
         val screen = ScreenControlService.instance?.describeScreen().orEmpty()
+        // A device trace (2026-08-18) has JARVIS insisting "I don't have visual
+        // access to your screen" five times in a row while the accessibility
+        // service was connected and this very line was running. Nothing in the
+        // trace could settle whether the listing had reached the model or not,
+        // because the context is assembled silently. Log what was read — the app
+        // line only, never the contents, which are the user's private screen.
+        DebugLog.log(
+            DebugLog.Stage.THINK,
+            if (screen.isBlank()) {
+                "screen: nothing readable from here"
+            } else {
+                "screen: ${screen.length} chars — ${screen.lineSequence().firstOrNull().orEmpty().take(60)}"
+            },
+        )
         // Note the last line: without it the model concluded from "use the labels
         // on screen" that it could ONLY act on what was visible, and started
         // refusing to open apps at all ("I can only interact with the current
