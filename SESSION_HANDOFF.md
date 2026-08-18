@@ -23,6 +23,28 @@ conflicting `pic`/`peak` memory fact; exempt JARVIS from Realme battery optimisa
 sixteen-second hole was; (3) the parked `AskGuard` fault; (4) deliberate scrolling, asked for and
 still not built; (5) grow the E2E tier to the three 2026-08-14 root causes.
 
+### 👁️ He COULD see the screen — the prompt told him not to admit it
+A trace has JARVIS answering "can you read my screen" five times with *"I can't view your
+screen"*, *"I don't have visual access to your screen"* — with the accessibility service
+connected. **`buildContext` puts `describeScreen()` into the context on EVERY turn**; it is the
+same listing the executor taps from. He had it the whole time.
+
+One clause did it: *"That listing is for YOU — never read it out or describe it back to the user."*
+The intent was right and is kept — reciting a screen the user is looking at is noise — but the
+model generalised **"do not describe it"** into **"cannot see it"**. Refusing to narrate is a
+choice; claiming blindness while holding the listing is the app saying something untrue about
+itself, which every other line of the prompt forbids. Now: never narrate unasked, answer when
+ASKED, never claim it cannot see what it has.
+
+**GOTCHA: a prohibition on TALKING about a capability reads to the model as not HAVING it.**
+Watch for this shape anywhere the prompt suppresses output about something the app can do.
+
+**GOTCHA: the context is assembled silently, so a trace could not settle this.** The symptom was
+equally consistent with an empty screen read (JARVIS's own window in front, an app exposing no
+text). `buildContext` now logs `screen: N chars — App: …` or `screen: nothing readable from here`
+— the app line only, never the contents, which are the user's private screen. **Read that line
+first** before believing any future "he can't see it" report.
+
 ### 🧰 RUN THE OFF-DEVICE GATE BEFORE EVERY PUSH — it is a file now, not a recipe
 ```sh
 gradle -p scripts/jvmcheck test     # 432 tests, 42 classes, ~10s

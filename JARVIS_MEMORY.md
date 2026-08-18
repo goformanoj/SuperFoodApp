@@ -3061,6 +3061,31 @@ bearing part.** The state it covers is entered and left by the media check, long
 after `pause()` ran; deciding it once on the way out of the foreground would have
 left the gap precisely as it was.
 
+**5. He could see the screen the whole time.** A third trace, and the user's question was the
+right one: *"idk why it can't see the things on my screen, it should be able to read right?"* Five
+times he answered "I can't view your screen" / "I don't have visual access to your screen" — with
+the accessibility service connected and `buildContext` putting `describeScreen()` into the context
+on **every** turn. It is the same listing the executor taps from. He was holding it and denying it.
+
+One clause: *"That listing is for YOU — never read it out or describe it back to the user; they can
+already see their own screen."* The intent was sound and survives — a reply that recites a screen
+the user is staring at is noise. But the model generalised **"do not describe it"** into **"cannot
+see it"**, and that is the worse half by far. Refusing to narrate a screen is a product choice;
+telling the user you are blind when you are not is the app asserting something false about itself,
+which is the one thing this prompt forbids everywhere else.
+
+**GOTCHA worth carrying: a prohibition on TALKING about a capability reads, to a model, as not
+HAVING it.** The same shape will appear anywhere the prompt suppresses output about something the
+app can actually do — and it degrades from "quiet" into "dishonest" without anyone editing a word.
+
+The diagnostic half matters as much. The context is assembled silently, so **nothing in the trace
+could tell me whether the listing had reached the model** — the symptom was equally consistent with
+an empty read (JARVIS's own window in front, or an app exposing no text). I could have argued
+either way from the same evidence. `buildContext` now logs `screen: N chars — App: …`, the app line
+only and never the contents, which are the user's private screen. Third time this session that the
+fix was *instrumentation plus a narrow change* rather than a confident guess, and the pattern is
+now the method rather than a habit.
+
 **5. The off-device harness is committed at last (`scripts/jvmcheck/`).** It has
 been in the handoff notes as a recipe for two sessions. `gradle -p scripts/jvmcheck
 test` → **432 tests, 0 failures**, in about ten seconds, and it type-checks all 50
