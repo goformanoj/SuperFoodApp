@@ -53,6 +53,42 @@ time is one the user cannot rely on, and nothing tells them which kind of turn t
 still asks (it catches phrasings the parser does not); it is no longer the only thing between a
 typed rule and the wrong app. A trace line now reports when a rule fires.
 
+### 🔁 THE SAME BUG TWICE: state derived from the session must be re-derived in `applyMicOwner`
+The orb stayed on screen after "thank you Jarvis". The rule was right; the **placement of the
+decision** was wrong — it was evaluated only in `resume()`/`pause()`, and the stop phrase ends a
+session **from the background**, so neither fired. The orb outlived the one phrase the user has for
+dismissing him.
+
+**This is the wake-word gap again, made three commits after writing the note about it.** That note
+said: "the state is entered and left long after `pause()` ran, so deciding it once on the way out of
+the foreground would have left the gap exactly as it was." It was true of the hotword and it was
+true of the orb, and the second time it was not spotted by reasoning — the user reported it.
+
+**RULE: anything derived from session state is decided in `applyMicOwner`, never in a lifecycle
+callback.** `applyBubble()` now sits next to `applyHotword()` there. Both rules are pure and live on
+`WorkSession` (`wantsBubble`, `wantsHotword`) so they are tested rather than reasoned about.
+
+`wantsBubble = sessionActive && !jarvisVisible`. **Deliberately still true while audio plays and the
+mic has stood down** — the session is live, only the microphone yielded, and hiding the orb there
+would remove the way back in exactly when the wake word is covering the gap.
+
+### 🎨 The floating orb draws its state INSIDE the disc — no rings, no arcs
+User's words: "i don't want rings outside the circle but waves inside it depicting that it's
+speaking." The first version put every state on the OUTSIDE — a listening ring, a thinking arc, a
+speaking pulse — which is what made it read as a widget with decorations bolted on rather than as
+one object.
+
+Now: three stacked sine bands filling the lower part of the disc, clipped to the circle, like liquid
+with a swell in it. **Layered rather than one stroke on purpose** — a single line at 76dp reads as a
+scratch, while three translucent fills overlapping give depth; each has its own wavelength, speed and
+direction so they never align into one thick band. **The swell height IS the state**: tall and quick
+speaking, real mic level listening, slow even roll thinking, nearly flat idle (drawn once, no
+animation, so an idle orb over someone else's app costs nothing).
+
+**GOTCHA: the body is a vertical ramp, not a centred radial.** The light in the reference comes from
+BELOW; a centred radial makes it look like a button with a highlight on it. The remaining halo has
+no edge anywhere, so it reads as light coming off the orb rather than as another circle.
+
 ### 🔵 The floating orb needs NO permission — accessibility overlays can be touchable
 `control/OrbBubble` is a draggable bubble that rides over other apps. It does **not** use
 `SYSTEM_ALERT_WINDOW`. **`TYPE_ACCESSIBILITY_OVERLAY` accepts touches** — the scrim and the tap

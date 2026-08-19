@@ -3038,7 +3038,62 @@ The prompt still asks for the substitution; it catches phrasings the parser does
 not. It is simply no longer the only thing standing between a rule the user
 typed out and the wrong app opening.
 
-### 2026-08-18 — A floating orb that costs no permission, and a backdrop that was dull for a measurable reason
+### 2026-08-18 — I wrote down the lesson, then made the same mistake three commits later
+
+"and the orb doesn't disappear after saying thank you jarvis".
+
+The rule was right: show the orb while JARVIS is engaged with you somewhere
+else. What was wrong was **where the rule was evaluated** — only in `resume()`
+and `pause()`. And "thank you Jarvis" ends a session **from the background**,
+where no lifecycle callback fires at all. So the orb outlived the single phrase
+the user has for dismissing him, which is the difference between a presence and
+litter.
+
+**This is the wake-word gap, repeated.** Two commits earlier I wrote, in this
+file: *"the state is entered and left by the media check, long after pause() ran,
+so deciding this once on the way out of the foreground would have left the gap
+exactly as it was."* Then I put the orb's decision in `pause()`. The note was
+correct, sitting in the same file, describing the same failure — and it did not
+stop me, because I was thinking about the orb as a *visibility* concern rather
+than as a *session-derived* one, and the note was filed under the wake word.
+
+**A lesson written against one feature does not generalise itself.** The fix is
+to state it as a rule about a place rather than about a feature: **anything
+derived from session state is decided in `applyMicOwner`, never in a lifecycle
+callback.** `applyBubble()` now sits beside `applyHotword()` there, and both
+rules are pure properties on `WorkSession` — `wantsBubble`, `wantsHotword` — so
+the next one is tested rather than reasoned about. Six tests, including the stop
+phrase and the notification Stop.
+
+One case is deliberately kept: the orb **stays** while audio plays and the
+microphone has stood down. The session is live; only the mic yielded. Hiding it
+there would remove the way back in at precisely the moment the wake word is
+covering the gap.
+
+**And the drawing, to the user's own brief:** *"i don't want rings outside the
+circle but waves inside it depicting that it's speaking."*
+
+The first version put every state on the outside — a listening ring, a thinking
+arc, a speaking pulse. That is what made it read as a widget with decorations
+bolted on instead of as one object, and it is a fair criticism of a design I
+reached for because rings are the easy way to show state without touching the
+body.
+
+Now the state happens **inside**: three stacked sine bands filling the lower
+part of the disc, clipped to the circle, like liquid with a swell running
+through it. Layered rather than a single stroke because one line at 76dp reads
+as a scratch, while three translucent fills overlapping give the depth that
+makes it look like motion in a volume; each band has its own wavelength, speed
+and direction so they never line up into one thick band. The swell height IS the
+state — tall and quick speaking, the real microphone level listening, a slow
+even roll thinking, and nearly flat when idle, drawn once with no animation so
+an idle orb over somebody else's foreground app costs nothing.
+
+**GOTCHA worth keeping: the body is a vertical ramp, not a centred radial.** The
+light in the reference comes from below. A centred radial highlight makes any
+circle look like a button, which is the exact thing the reference is not.
+
+, and a backdrop that was dull for a measurable reason
 
 Two asks, both about how the app *feels* rather than what it does: a floating
 presence like Gemini's, and a home screen that is "way too dull".
