@@ -7,6 +7,25 @@ on:
   workflow_dispatch:
 
 jobs:
+  # The proxy. Gated the same way `testDebugUnitTest` gates the app, and for the
+  # same reason — but this one costs seconds: no Android SDK, no emulator, and no
+  # dependencies at all, because a Worker is an ES module and Node's own test
+  # runner can drive it with real Request/Response globals.
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test the proxy
+        working-directory: backend
+        run: npm test
+
   build:
     runs-on: ubuntu-latest
 

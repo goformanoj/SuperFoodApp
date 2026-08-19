@@ -1,0 +1,9 @@
+{
+  "name": "jarvis-proxy",
+  "private": true,
+  "type": "module",
+  "description": "JARVIS OS proxy — holds the API key, meters tokens, serves the model list.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

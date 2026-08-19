@@ -1,0 +1,11 @@
+# Config only — NEVER a key. The Groq key is set with:
+#   wrangler secret put GROQ_API_KEY
+name = "jarvis-proxy"
+main = "src/index.js"
+compatibility_date = "2026-08-18"
+
+# Created in Phase 1 with `wrangler d1 create jarvis`, which prints the id.
+[[d1_databases]]
+binding = "DB"
+database_name = "jarvis"
+database_id = "REPLACE_ME_IN_PHASE_1"

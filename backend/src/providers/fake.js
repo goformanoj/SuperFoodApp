@@ -1,0 +1,22 @@
+/**
+ * A stand-in for the real provider, so the quota and accounting can be built and
+ * tested before any account, key or deploy exists.
+ *
+ * Deterministic on purpose: a fake that returned random token counts would make
+ * every accounting assertion approximate, and approximate is exactly what this
+ * layer must not be.
+ */
+export function fakeProvider(options = {}) {
+  const calls = []
+  const reply = options.reply ?? 'This is a fake reply.'
+  const usage = options.usage ?? { prompt_tokens: 1000, completion_tokens: 200, total_tokens: 1200 }
+
+  return {
+    calls,
+    async complete({ model, messages }) {
+      calls.push({ model, messages })
+      if (options.fail) throw new Error(options.fail)
+      return { text: reply, usage }
+    },
+  }
+}
