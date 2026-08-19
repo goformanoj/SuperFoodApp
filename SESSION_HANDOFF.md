@@ -53,6 +53,45 @@ time is one the user cannot rely on, and nothing tells them which kind of turn t
 still asks (it catches phrasings the parser does not); it is no longer the only thing between a
 typed rule and the wrong app. A trace line now reports when a rule fires.
 
+### 🗣️ TTS reads markdown out loud — clean on the way to the SPEAKER, never the display
+The model formats for a screen (`**bold**`, `* bullets`, `# headings`) and Android's TTS says every
+character. The user heard "asterisk asterisk U I testing". New pure `voice/SpokenText.plain()`,
+applied in `speakTurn` — **the single path to the speaker**, so no route added later can miss it.
+
+**GOTCHA: this is a display/speech SPLIT, not a cleanup.** Nothing is stripped from what is shown;
+on the chat screen the bold and bullets are what make a long answer readable. Strip it at the
+storage layer and you fix the ears by breaking the eyes.
+**GOTCHA: be conservative.** `snake_case`, `2 * 3` and list numbers all survive on purpose —
+removing a character that was really part of a sentence changes the meaning, which is worse than
+reading one stray symbol. 13 tests, built from the actual trace reply.
+
+### ✂️ `max_tokens` was 300 — replies were being guillotined mid-word
+A reply about testing ended `* **UI`. 300 tokens ≈ 220 words, chosen when every reply was a
+sentence or two. The system prompt already asks for brevity, so the cap was doing that job twice and
+only the crude copy could cut a sentence in half. Now **900**.
+
+### 🗑️ "JARVIS is controlling the screen" is REMOVED (asked for twice)
+`setControlOverlay`, `addScrim`/`removeScrim`, `ScrimView`, the safety timer and all four engine
+call sites are gone. **Worth remembering why it existed:** it was the only *always-visible* sign
+JARVIS was driving the screen, and the floating orb only covers that while a session runs. If Play
+review ever wants a visible indicator, it comes back quieter — not as a full-screen tint.
+
+### 🔵 The orb: drag-to-dismiss, and a thumbnail of the in-app orb
+**Dismissal.** A close button ON the orb is the obvious answer and the wrong one — it is 76dp, a
+second target inside it would be a fingernail wide, and tap already means talk. The ✕ appears at
+the bottom the moment a drag starts (not on touch-down — a tap must not flash a target nobody asked
+for), so it is discovered by doing the thing you were already doing, and unlike a long-press it
+cannot fire by accident. Dropping on it **turns the setting off**; an orb that returns next session
+after being deliberately thrown away reads as the dismissal not working.
+
+**Design.** Deep-space body, two tilted ellipses turning around a burning core, a little star dust.
+**GOTCHA: the ellipses must be INSIDE the disc.** An orbit crossing in front of and behind a core is
+part of the object; a ring drawn *around* a circle is a border, and the border version is exactly
+what the user called bolted on. The core's size and brightness carry the state; the speaking swell
+is kept for the one state it describes.
+**GOTCHA (third time in this file): dust PLACEMENT is deterministic, never `Math.random`.** A Canvas
+redraws every frame; a real random re-scatters a sky into static. Brightness takes the clock.
+
 ### 🔁 THE SAME BUG TWICE: state derived from the session must be re-derived in `applyMicOwner`
 The orb stayed on screen after "thank you Jarvis". The rule was right; the **placement of the
 decision** was wrong — it was evaluated only in `resume()`/`pause()`, and the stop phrase ends a

@@ -3038,6 +3038,69 @@ The prompt still asks for the substitution; it catches phrasings the parser does
 not. It is simply no longer the only thing standing between a rule the user
 typed out and the wrong app opening.
 
+### 2026-08-18 — Five reports at once, and the two that were really one bug
+
+The user asked JARVIS to explain backends and testing, and the answer exposed
+four separate faults plus one standing request.
+
+**The reply stopped mid-word.** `max_tokens` was 300 — roughly 220 words. The
+last thing they heard was `* **UI`. Not a wrong answer, a guillotined one, and
+nothing in the app said why. 300 was chosen when every reply was a sentence or
+two, and the system prompt already asks for brevity — so the cap was doing that
+job twice, and only the crude copy could cut a sentence in half. Now 900.
+
+**And it read the formatting out loud.** `**UI testing**` became "asterisk
+asterisk U I testing". The user: "the model starts reading asterisk out loud
+which ruins it."
+
+These two look like one bug and are not. The first is a limit set too low; the
+second is a **channel confusion** — the model formats for a screen because that
+is what models do, and the app was handing screen formatting to a speaker. The
+fix is therefore a split, not a cleanup: `voice/SpokenText.plain()` runs on the
+way to the speaker and **nothing is removed from what is displayed**, because on
+the chat screen the bold and the bullets are precisely what makes a long answer
+readable. Stripping it at the storage layer would have fixed the ears by
+breaking the eyes.
+
+Placed at `speakTurn` — the single path to the speaker — for the reason every
+guard in that class sits where it does: a rule at one choke point cannot be
+missed by a route somebody adds later. Deliberately conservative: `snake_case`
+survives, `2 * 3` survives, and list numbers survive because a spoken list that
+counts is easier to follow, not harder. Removing a character that was really
+part of a sentence changes the meaning; reading one stray symbol is merely ugly.
+Thirteen tests, built from the actual trace reply rather than from imagination.
+
+**No way to get rid of the orb.** "the orb has no button to remove it from the
+screen when I click it". A close button on the orb is the obvious answer and the
+wrong one — it is 76dp across, a second target inside it would be a fingernail
+wide, and tap already means talk. Drag-to-dismiss instead: the ✕ appears at the
+bottom the moment a drag begins, so it is discovered by doing the thing you were
+already doing, and unlike a long-press it cannot fire by accident. It appears on
+drag rather than on touch-down, because a tap must not flash a dismiss target
+nobody asked to see. Dropping on it turns the **setting** off — an orb that
+comes back next session after being deliberately thrown away reads as the
+dismissal not working.
+
+**The orb looked wrong.** Rebuilt as a thumbnail of the in-app orb: deep-space
+body, two tilted ellipses turning around a burning core, a little star dust.
+**The distinction that matters is inside versus around.** An orbit that crosses
+in front of and behind a core is part of the object. A ring drawn around a
+circle is a border — and the border version is exactly what read as decorations
+bolted on. The core's size and brightness carry the state; the swell asked for
+earlier is kept for the one state it actually describes, while he is talking.
+
+Third time in this project: dust **placement** is deterministic, never
+`Math.random`. A Canvas redraws every frame, so anything deciding WHERE
+something sits is asked sixty times a second and a real random turns a sky into
+static. Brightness is the opposite and takes the clock.
+
+**And the tint is gone.** Asked for twice, removed outright — view, window,
+safety timer, all four call sites. Worth recording the cost rather than only the
+change: that tint was the only *always-visible* sign JARVIS was driving the
+screen, and the floating orb covers that only while a session runs. If a Play
+review ever wants a visible control indicator, it should come back as something
+quieter, not as this.
+
 ### 2026-08-18 — I wrote down the lesson, then made the same mistake three commits later
 
 "and the orb doesn't disappear after saying thank you jarvis".
