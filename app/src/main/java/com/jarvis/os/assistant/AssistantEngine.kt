@@ -39,6 +39,7 @@ import com.jarvis.os.files.ArtifactWriter
 import com.jarvis.os.voice.BargeInListener
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
+import com.jarvis.os.voice.SpokenText
 import com.jarvis.os.voice.Transcript
 import com.jarvis.os.voice.VoiceController
 import com.jarvis.os.voice.WakeWord
@@ -525,6 +526,15 @@ class AssistantEngine(context: Context) {
         // Cheap enough to run on every mic reassignment, which is what it has to
         // do — see the call site in [applyMicOwner].
         service.bubble.onTap = { main.post { onBubbleTap() } }
+        // Dragging the orb onto the ✕ turns the setting off. Hiding it for now
+        // and bringing it back on the next session would read as the dismissal
+        // not having worked.
+        service.bubble.onDismissed = {
+            main.post {
+                userPrefs.floatingOrb = false
+                DebugLog.log(DebugLog.Stage.SESSION, "floating orb off — dismissed from the screen")
+            }
+        }
         service.setBubbleVisible(userPrefs.floatingOrb && session.wantsBubble)
     }
 
@@ -629,6 +639,7 @@ class AssistantEngine(context: Context) {
         WorkSessionService.onTalkRequested = null
         HotwordService.onDetectedInSession = null
         ScreenControlService.instance?.bubble?.onTap = null
+        ScreenControlService.instance?.bubble?.onDismissed = null
         WorkSessionService.stop(appContext)
         bargeIn.close()
         voice.destroy()
@@ -892,8 +903,17 @@ class AssistantEngine(context: Context) {
      * turn that never speaks never ends.
      */
     private fun speakTurn(line: String) {
-        turn.speak(speaker.speak(line))
-        armWatchdog(turn.currentSeq, line)
+        // The model formats for a screen — `**bold**`, `* bullets`, `# headings`
+        // — and text-to-speech reads every one of those characters out loud. A
+        // device trace has the user hearing "asterisk asterisk U I testing".
+        //
+        // Cleaned HERE and nowhere else, for the reason every guard in this class
+        // is where it is: this is the single path to the speaker, so no route
+        // added later can miss it. The markdown stays in what is DISPLAYED — on
+        // the chat screen it is exactly what makes a long answer readable.
+        val spoken = SpokenText.plain(line)
+        turn.speak(speaker.speak(spoken))
+        armWatchdog(turn.currentSeq, spoken)
     }
 
     /**
@@ -977,7 +997,6 @@ class AssistantEngine(context: Context) {
         currentGoal = userText
         // A new utterance ends any control the previous one had — drop the tint now
         // so it never lingers; the new command re-shows it if it drives the screen.
-        ScreenControlService.instance?.setControlOverlay(false)
         // Any new utterance abandons the errand in flight. Without this, an old
         // loop kept choosing steps while a new command ran — a trace shows the
         // user asking a question at 15:48:32 and the previous errand still
@@ -1315,7 +1334,6 @@ class AssistantEngine(context: Context) {
         // see that JARVIS is the one acting. Only for steps that actually drive the
         // screen — merely launching an app is not "taking control". Cleared when
         // the work finishes (say), is superseded (ask), or the turn ends.
-        if (plan.needsAccessibility) ScreenControlService.instance?.setControlOverlay(true)
         // A command that opens an app starts a work session: JARVIS keeps hearing
         // follow-ups while the user is in that app. Merely opening or closing
         // JARVIS itself never gets here, so it never starts one.
@@ -1376,7 +1394,6 @@ class AssistantEngine(context: Context) {
             val learnable = !replayingRoute
             ScreenControlService.instance?.runSteps(plan.steps) { ok, ranClean ->
                 // The sequence is over — stop showing the control tint.
-                main.post { ScreenControlService.instance?.setControlOverlay(false) }
                 // Only a sequence that ran clean is worth keeping. Routes that
                 // needed recovery are exactly the ones whose steps were wrong.
                 //
@@ -1659,7 +1676,6 @@ class AssistantEngine(context: Context) {
     private fun say(line: String) {
         // Reaching here ends an errand (done, asked, blocked, or out of steps), so
         // JARVIS is no longer driving the screen — drop the control tint.
-        ScreenControlService.instance?.setControlOverlay(false)
         // Claims the turn (below, via [speakTurn]) for exactly the same reason
         // [ask] and [speakAck] do. TTS comes out of the MUSIC stream, so while
         // this line is being spoken `AudioManager.isMusicActive` is true;

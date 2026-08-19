@@ -223,7 +223,16 @@ object GroqClient {
         return JSONObject().apply {
             put("model", model)
             put("temperature", 0.7)
-            put("max_tokens", 300)
+            // Was 300, which is roughly 220 words. A device trace shows the cost:
+            // asked how to test Android apps, the reply stopped mid-word — the
+            // last thing the user heard was "* **UI". Not a wrong answer, a
+            // guillotined one, and nothing said why.
+            //
+            // 300 was chosen when every reply was one or two sentences. It is the
+            // wrong ceiling for a question that deserves a real answer, and the
+            // system prompt already asks for brevity — so the limit was doing the
+            // same job twice and only the crude copy could cut a sentence in half.
+            put("max_tokens", 900)
             put("messages", msgArray)
         }.toString()
     }
