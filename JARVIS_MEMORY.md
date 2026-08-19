@@ -3038,6 +3038,57 @@ The prompt still asks for the substitution; it catches phrasings the parser does
 not. It is simply no longer the only thing standing between a rule the user
 typed out and the wrong app opening.
 
+### 2026-08-18 — Phase 0: the first code in this project verified where it was written
+
+`backend/` exists. 25 tests, 0 failures, **no dependencies, no account, no deploy**.
+
+The mechanical fact that makes it possible is small and worth recording: a
+Cloudflare Worker is an ES module exporting `fetch(request, env)`, and Node 22
+ships real `Request`/`Response` globals — so `node:test` drives the *real*
+handler with nothing installed. Every Android change in this project's history
+could only be reasoned about and handed to the user to try, which is how two bad
+device sessions happened. This one was proven before it was described.
+
+**What is pure is what is tested.** `quota.js` (UTC day key, cap, over-cap
+decision, the spoken refusal) and `models.js` (plan → model list) hold everything
+worth defending; `index.js` is routing and wiring. Deliberately the same split as
+the Android side, where `WorkSession`, `SendGuard` and `AgentLoop` are pure and
+`AssistantEngine` is the wiring.
+
+**Four behaviours are pinned, each because it is a way this could be quietly
+wrong rather than loudly broken:**
+
+- **Over the cap the provider is NEVER called.** A version that called first and
+  counted afterwards would pass a naive test and still spend the money, which is
+  the only thing the cap exists to prevent.
+- **Two turns arriving together are both counted.** This is the entire D1-not-KV
+  argument made executable: under eventual consistency both read the same stale
+  total and the quota silently becomes a suggestion.
+- **A provider failure charges nothing.** They got no answer; billing them for
+  the provider's bad day is the wrong way round.
+- **The overshoot-by-one is pinned as INTENDED.** The cap is checked before the
+  call and the true cost is known after, so a user can exceed it by one turn.
+  Left unpinned, a future reader would find it, call it a bug, and "fix" it by
+  pre-charging an estimate — which is wrong in both directions.
+
+**`models.js` is the file the whole backend is for.** Groq retired two models
+hours apart today; each removal cost a Kotlin change, a CI build and a reinstall,
+and in between the fallback chain ran down to one live model per tier, which is
+what made a single empty reply fatal. Here it is a deploy. Its test pins the
+**cross-cover** rather than the count, because "two entries" is also satisfied by
+two corpses — the exact shape that let the Android list rot.
+
+**Two small things learned building it**, both banked in the handoff:
+`node --test <dir>` fails on Node 22 (it resolves the directory as a module — use
+the glob), and `"type": "module"` is set explicitly because otherwise the `.js`
+sources load only by Node's ESM syntax sniffing, which is a fallback rather than
+a contract.
+
+**What is honestly still a stub:** auth is an `X-Uid` header, so any caller can
+claim any uid and therefore anyone's allowance. That is written in the README and
+again at the line in `index.js` that does it, because a stub whose danger is only
+recorded in a plan document is a stub that gets deployed.
+
 ### 2026-08-18 — Writing the backend plan down, and checking the claim before making it
 
 The user asked how to actually proceed with the backend, then to write the whole thing down.

@@ -125,6 +125,17 @@ wiring. Same split as the Android side, where the pure types are the tested ones
 
 **Done when:** `node --test backend/test` is green locally and in CI.
 
+### ✅ PHASE 0 IS DONE (2026-08-18)
+
+`cd backend && npm test` → **25 tests, 0 failures**, no dependencies, no account, no deploy.
+A `backend` job in `.github/workflows/build.yml` runs the same command.
+
+Two notes from building it:
+- **`node --test <dir>` does not work** on Node 22 — it resolves the directory as a module. Use
+  the glob (`node --test test/*.test.mjs`), which is what `npm test` does.
+- **`backend/package.json` sets `"type": "module"` deliberately.** Without it the `.js` sources
+  load only because Node 22 sniffs ESM syntax, which is a fallback, not a contract.
+
 ---
 
 ## Phase 1 — the real provider
@@ -241,5 +252,7 @@ with consent and redaction, they become a replay corpus — today that exists on
 
 ## Status
 
-Nothing built yet — there is no `backend/` directory and no Firebase, Billing or Play
-dependency in `app/build.gradle.kts`. **Phase 0 is startable with nothing from the user.**
+**Phase 0: done** — `backend/` exists, 25 tests green, gated in CI.
+**Phase 1 is next and is blocked on a Cloudflare account.** Nothing else has started; there is
+still no Firebase, Billing or Play dependency in `app/build.gradle.kts`, and the app is
+untouched — the phone still talks to Groq directly until Phase 4.

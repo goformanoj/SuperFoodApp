@@ -280,6 +280,33 @@ text). `buildContext` now logs `screen: N chars — App: …` or `screen: nothin
 — the app line only, never the contents, which are the user's private screen. **Read that line
 first** before believing any future "he can't see it" report.
 
+### ✅ BACKEND PHASE 0 IS DONE — `cd backend && npm test` → 25 tests, 0 failures
+Quota + token accounting against a fake provider. **No dependencies, no account, no deploy.** A
+`backend` job in `.github/workflows/build.yml` runs the same command in seconds.
+
+**Run it before touching anything under `backend/`.** It is to the proxy what `scripts/jvmcheck`
+is to the app.
+
+**GOTCHA: `node --test <dir>` fails on Node 22** — it resolves the directory as a module. Use the
+glob; `npm test` already does (`node --test test/*.test.mjs`).
+**GOTCHA: `backend/package.json` sets `"type": "module"` on purpose.** Without it the `.js` sources
+load only because Node 22 sniffs ESM syntax — a fallback, not a contract.
+
+**⚠️ Auth is a STUB (`X-Uid` header).** Any caller can claim any uid and therefore anyone's
+allowance. **Do not deploy to a public URL before Phase 3.** Said in `backend/README.md` and again
+at the line in `src/index.js` that does it.
+
+Pure and tested: `src/quota.js` (UTC day key, cap, over-cap decision, the spoken refusal) and
+`src/models.js` (plan → model list, retired-model guard, cross-cover). `src/index.js` is routing
+only — the same split as the Android side, where the pure types are the tested ones.
+
+Behaviours pinned because each is a way this could be quietly wrong: over the cap the provider is
+**never called**; two concurrent turns are both counted (the whole D1-not-KV argument); a provider
+failure charges nothing; and the overshoot-by-one is pinned as **intended**, so nobody later
+"fixes" it by pre-charging an estimate that would be wrong in both directions.
+
+**Next: Phase 1 — the real Groq call. Blocked on a Cloudflare account.**
+
 ### 🏗️ THE BACKEND PLAN IS WRITTEN — [`BACKEND_PLAN.md`](BACKEND_PLAN.md), phases 0–6
 All phases, what each is blocked on, and what is verifiable where. `COMMERCIALIZATION.md` §1d stays
 the source of truth for the *architecture*; the new file is the *plan of work*.
