@@ -3038,6 +3038,85 @@ The prompt still asks for the substitution; it catches phrasings the parser does
 not. It is simply no longer the only thing standing between a rule the user
 typed out and the wrong app opening.
 
+### 2026-08-18 — The confirmation had nothing to confirm
+
+The worst bug of the session, and the trace tells it in six lines:
+
+```
+16:47:51  (voice) can you reply with the best message you can and send it
+16:48:06  step 2/3 Type(text=Hey Saanuu! Thanks for the update—looking forward to…)
+16:48:12  step 3/3 Tap(label=❤) FAILED — no control matching "❤"
+16:48:13  agent stopped to ask: I'm about to tap Send, which I can't undo. Shall I?
+16:48:27  (voice) do it
+16:48:29  REPLY: <<TYPE|Got it! Let me know if you need anything else.>> <<TAP|Send>>
+```
+
+The user asked for a thoughtful message. JARVIS wrote one. He could not find the
+send control, so he asked permission — correctly, that guard worked. The user
+said "do it". And the answer went back to **the model**, which wrote a
+*different* message, typed it over the top, and sent it. The screenshot shows
+what actually landed in the chat: "Got it! Let me know if you need anything
+else." Messages do not come back.
+
+**`AgentMove.Ask` carried only the question.** The step it was asking about was
+discarded at the moment of asking. So by the time the answer arrived there was
+nothing to *confirm* — only a goal to re-plan, and the model re-planned it the
+way models do: reasonably, and differently.
+
+**The lesson is Rule 6 one level up from where it started.** This project has
+guards on irreversible *actions* — `SendGuard`, `SpendGuard`, `AlarmGuard` —
+and they all worked here. What none of them covered is that the *ask* itself
+could be answered by a different action than the one it asked about. Guarding
+the action is not enough while the question is answered by re-deriving it.
+
+`Ask` now carries `pending: ScreenStep?`. The engine holds it. A plain yes runs
+**that step and nothing else**, with no model call at all — which is the point:
+if the model is not consulted, it cannot invent new content.
+
+New pure `Confirmation` matches **whole utterances only**, and the restraint is
+the interesting part. "yes but change the wording first" contains "yes", and
+substring matching would send the wrong message — the exact bug being fixed.
+Anything not plainly yes or no is `NEITHER` and falls through as an ordinary
+request, because guessing is worse in both directions: read as yes it fires an
+irreversible act nobody authorised, read as no it silently drops something the
+user asked for.
+
+### 2026-08-18 — You cannot interrupt what cannot hear you
+
+"it doesn't let me interrupt Jarvis when it's in the background and a task is
+ongoing."
+
+An errand is mostly **silence**: a step executing, a model call in flight for up
+to 25 seconds. Throughout all of it `turn.micGated` is true, and the one listener
+that exists precisely to be open while the turn is gated — `BARGE_IN` — was
+conditioned on `speaking` alone. So the moment the user most wanted him to stop
+was the one moment he could not hear them. Not a missing feature; a condition
+written against the wrong half of the state.
+
+`WorkSession.busyWithTask` is deliberately a separate flag from `speaking`
+rather than folded into it. A task is mostly silence, and it was the silence that
+was unreachable — merging the two would have made exactly the distinction that
+matters impossible to express.
+
+`interrupt()` had two faults of its own, and the second is worse than the first.
+It refused outside `SPEAKING`. And it stopped the **sentence** without stopping
+the **task**, so an interrupted errand carried on choosing steps. It now bumps
+`errandToken` — every continuation re-checks it, so the answer already on its way
+back from the model returns to a post that quietly drops it — cancels the running
+sequence in the service, and idles the turn **unconditionally**. That last part
+is load-bearing: a turn left anywhere but `IDLE` keeps the microphone gated, so
+stopping a task without idling would leave the user having successfully
+interrupted into silence.
+
+**GOTCHA, and it was caught by a test rather than by thinking.** With a task
+running AND media playing, `BARGE_IN` now takes the microphone — but
+`yieldedToMedia` still reported that the mic was yielded, so the wake word would
+have opened a **second listener alongside it**. That is precisely the two-owner
+state that forced a revert the last time it happened. The exhaustive walk over
+visible × session × media × speaking found it immediately; the four cases I would
+have written by hand would not have. **Write the combinatorial test even when the
+property looks obvious — especially when adding a new input to an old rule.**
+
 ### 2026-08-18 — Three tries at the same orb, and the brief had been right the first time
 
 "could u remove those rings from the overlay orb and only keep the waves."

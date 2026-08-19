@@ -53,6 +53,49 @@ time is one the user cannot rely on, and nothing tells them which kind of turn t
 still asks (it catches phrasings the parser does not); it is no longer the only thing between a
 typed rule and the wrong app. A trace line now reports when a rule fires.
 
+### 🛑 "do it" SENT A MESSAGE HE REWROTE — a confirmation must carry its step
+The worst bug of the session. From a trace: the user asked for a thoughtful reply, JARVIS wrote one,
+could not find the send control, and asked *"I'm about to tap Send, which I can't undo. Shall I?"*.
+The user said **"do it"** → the answer went back to the **model**, which invented a *different*
+message, typed it, and sent it.
+
+`AgentMove.Ask` carried only the **question**. The step being asked about was discarded, so the
+confirmation had nothing to confirm and the model re-planned from scratch. `Ask` now carries
+`pending: ScreenStep?`, the engine holds it in `pendingConfirm`, and a plain yes runs **that step
+and nothing else** — no model round trip, so there is no opportunity to invent new content.
+
+New pure `assistant/Confirmation` matches **whole utterances only**.
+**GOTCHA: "yes but change the wording first" contains "yes" and is NOT permission.** Substring
+matching here sends the wrong message, which is the exact bug being fixed. Anything not plainly yes
+or no is `NEITHER` and falls through to the model as an ordinary request — guessing is worse in both
+directions: yes fires an irreversible action nobody authorised, no silently drops a real request.
+
+**Rule 6, one level up from where it started:** guarding the *action* was not enough while the *ask*
+could still be answered by a different action.
+
+### 🎙️ You could not interrupt a RUNNING TASK — an errand is mostly silence
+Reported: "it doesn't let me interrupt Jarvis when it's in the background and a task is ongoing."
+An errand spends most of its time NOT talking — a step executing, a model call in flight for up to
+25s — and in those stretches `turn.micGated` is true. `BARGE_IN` is the one listener that exists to
+be open while the turn is gated, and it was conditioned on `speaking` alone.
+
+`WorkSession.busyWithTask` (set via `onBusyWithTask`, deliberately separate from `speaking` — a task
+is mostly silence and the silence was the unreachable half) now also claims `BARGE_IN`.
+
+`interrupt()` had two faults of its own: it refused outside `SPEAKING`, and it stopped the
+**sentence** without stopping the **task**. It now bumps `errandToken` (every continuation
+re-checks it, so the in-flight model answer is discarded rather than acted on), calls the new
+`ScreenControlService.cancelSequence()`, and idles the turn **unconditionally**.
+**GOTCHA: that last part is load-bearing** — a turn left anywhere but `IDLE` keeps the mic gated,
+so stopping a task without idling leaves the user having successfully interrupted into silence.
+
+**GOTCHA found by the exhaustive test, not by reasoning:** with a task running AND media playing,
+`BARGE_IN` takes the mic but `yieldedToMedia` still claimed it was yielded — so the wake word would
+have opened a **second listener alongside it**. That is the exact two-owner state that forced a
+revert once before. `yieldedToMedia` now excludes `busyWithTask`. Walking every combination of
+visible × session × media × speaking is what caught it; the four cases I would have written by hand
+would not have.
+
 ### 🗣️ TTS reads markdown out loud — clean on the way to the SPEAKER, never the display
 The model formats for a screen (`**bold**`, `* bullets`, `# headings`) and Android's TTS says every
 character. The user heard "asterisk asterisk U I testing". New pure `voice/SpokenText.plain()`,
