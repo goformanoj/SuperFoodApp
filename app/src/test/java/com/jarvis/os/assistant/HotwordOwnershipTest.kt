@@ -152,4 +152,71 @@ class HotwordOwnershipTest {
         assertEquals(MicOwner.SESSION, s.owner)
         assertFalse(s.wantsHotword)
     }
+
+    // --- interrupting a task ---------------------------------------------------
+
+    @Test
+    fun `the microphone stays reachable while a task runs, not only while he talks`() {
+        // Reported: "it doesn't let me interrupt Jarvis when it's in the
+        // background and a task is ongoing." An errand is mostly SILENCE — a step
+        // running, a model call in flight for up to 25s — and in those stretches
+        // the turn is mic-gated. The listener that exists precisely to be open
+        // then is BARGE_IN, and it was conditioned on speaking alone.
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        s.onSpeaking(false)
+
+        s.onBusyWithTask(true)
+
+        assertEquals(MicOwner.BARGE_IN, s.owner)
+    }
+
+    @Test
+    fun `once the task ends the ordinary listener takes the microphone back`() {
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        s.onBusyWithTask(true)
+        assertEquals(MicOwner.BARGE_IN, s.owner)
+
+        s.onBusyWithTask(false)
+
+        assertEquals(MicOwner.SESSION, s.owner)
+    }
+
+    @Test
+    fun `a task in the background with no session still cannot open the mic`() {
+        // Android 9+ hands a backgrounded app with no microphone foreground
+        // service silence rather than an error, so a listener here would read
+        // zeros and look exactly like a user who said nothing.
+        val s = session(visible = false)
+        s.onBusyWithTask(true)
+
+        assertEquals(MicOwner.NONE, s.owner)
+    }
+
+    @Test
+    fun `a task never puts two listeners on the microphone`() {
+        for (visible in listOf(false, true)) {
+            for (inSession in listOf(false, true)) {
+                for (media in listOf(false, true)) {
+                    for (speaking in listOf(false, true)) {
+                        val s = session(visible = visible)
+                        if (inSession) s.onAppOpenedByCommand()
+                        s.onMediaPlaying(media)
+                        s.onSpeaking(speaking)
+                        s.onBusyWithTask(true)
+
+                        val listening = s.owner == MicOwner.ENGINE ||
+                            s.owner == MicOwner.SESSION ||
+                            s.owner == MicOwner.BARGE_IN
+                        assertFalse(
+                            "two mic owners mid-task: owner=${s.owner} visible=$visible " +
+                                "session=$inSession media=$media speaking=$speaking",
+                            listening && s.wantsHotword,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

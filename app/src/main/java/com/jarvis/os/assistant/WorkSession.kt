@@ -46,6 +46,7 @@ class WorkSession {
     private var mediaPlaying = false
     private var talkRequested = false
     private var speaking = false
+    private var busyWithTask = false
 
     /** True once an app-opening command has started a session and it hasn't been ended. */
     val isActive: Boolean get() = sessionActive
@@ -62,12 +63,18 @@ class WorkSession {
             // is the user cutting him off, and the ordinary recogniser cannot do
             // that job -- it mutes STREAM_MUSIC to hide its earcon, and TTS plays
             // on STREAM_MUSIC, so opening it here would make JARVIS inaudible.
-            speaking && canRecordNow -> MicOwner.BARGE_IN
+            // Speaking OR mid-task. The second half is the fix for a reported
+            // failure: during an errand JARVIS spends most of his time NOT
+            // talking — running a step, or waiting up to 25s on the model — and
+            // in those stretches the turn is mic-gated and nothing at all was
+            // listening. So the one moment the user most wants to stop him was
+            // the one moment he could not hear them.
+            (speaking || busyWithTask) && canRecordNow -> MicOwner.BARGE_IN
             // Speaking from the background with no session to hold a microphone
             // foreground service. Android 9+ hands a background app SILENCE
             // rather than an error, so a listener here would sit reading zeros
             // with nothing in the trace to say why it never triggered.
-            speaking -> MicOwner.NONE
+            speaking || busyWithTask -> MicOwner.NONE
             // On JARVIS's own screen the user is deliberately talking to it, so
             // listening wins even if something is playing.
             jarvisVisible -> MicOwner.ENGINE
@@ -92,10 +99,19 @@ class WorkSession {
      */
     private val canRecordNow: Boolean get() = jarvisVisible || sessionActive
 
-    /** True while a session is up but yielding the microphone to playback. */
+    /**
+     * True while a session is up but yielding the microphone to playback.
+     *
+     * `!busyWithTask` was added after the exhaustive "never two owners" test
+     * caught the drift: once a running task claims [MicOwner.BARGE_IN], the
+     * microphone is NOT yielded any more, and a property still claiming it was
+     * would have had the wake word open a second listener alongside it. Exactly
+     * the two-owner state that forced a revert the last time it happened — found
+     * here by walking every combination rather than the four that came to mind.
+     */
     val yieldedToMedia: Boolean
         get() = sessionActive && micGranted && mediaPlaying &&
-            !jarvisVisible && !talkRequested && !speaking
+            !jarvisVisible && !talkRequested && !speaking && !busyWithTask
 
     /**
      * True when the floating orb should be on screen.
@@ -150,6 +166,19 @@ class WorkSession {
      * cannot drift apart the way they would if each speak path had to remember
      * to announce itself.
      */
+    /**
+     * Whether JARVIS is part-way through something the user might want to stop —
+     * an errand driving the screen, whether or not he happens to be talking.
+     *
+     * Separate from [speaking] on purpose. A task is mostly silence: steps
+     * running, a model call in flight. Folding it into "speaking" would have made
+     * the two impossible to tell apart, and it is the SILENT half that was
+     * unreachable.
+     */
+    fun onBusyWithTask(value: Boolean) {
+        busyWithTask = value
+    }
+
     fun onSpeaking(value: Boolean) {
         speaking = value
     }

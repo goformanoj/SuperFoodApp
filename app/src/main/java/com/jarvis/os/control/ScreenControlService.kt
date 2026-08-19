@@ -83,6 +83,25 @@ class ScreenControlService : AccessibilityService() {
      * outline next door learned the hard way that "already on main" is a promise
      * about today's callers only.
      */
+    /**
+     * Abandon whatever sequence is running, right now.
+     *
+     * Bumping [runToken] is what actually stops it: every step re-checks the
+     * token before acting, so the callback already in flight returns quietly
+     * instead of taking one more swipe at somebody's screen. Removing the queued
+     * callbacks as well means it stops within a frame rather than after the
+     * current settle delay.
+     */
+    fun cancelSequence() {
+        handler.post {
+            runToken++
+            sequenceRunning = false
+            handler.removeCallbacksAndMessages(null)
+            removeOutline()
+            DebugLog.log(DebugLog.Stage.SCREEN, "sequence cancelled")
+        }
+    }
+
     fun setBubbleVisible(visible: Boolean) {
         handler.post { if (visible) bubble.show() else bubble.hide() }
     }

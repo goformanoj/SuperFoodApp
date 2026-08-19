@@ -371,4 +371,23 @@ class AgentLoopTest {
             ),
         )
     }
+
+    @Test
+    fun `an irreversible step is carried WITH the question that asks about it`() {
+        // The step used to be thrown away and only the sentence kept, so the
+        // answer went back to the model — which, in a device trace, wrote a
+        // different message, typed it and sent it. Whatever is confirmed has to
+        // be the thing that runs.
+        val move = AgentLoop.parseMove(
+            "<<TAP|Send>>",
+            avoid = null,
+            taken = emptyList(),
+            stayInApp = "",
+            goal = "reply to her",
+        )
+
+        val ask = move as? AgentMove.Ask
+        org.junit.Assert.assertNotNull("an irreversible tap must ask first", ask)
+        org.junit.Assert.assertEquals(ScreenStep.Tap("Send"), ask!!.pending)
+    }
 }

@@ -11,8 +11,17 @@ sealed interface AgentMove {
     /** The goal is met. */
     data object Done : AgentMove
 
-    /** The next action is irreversible, or the goal is ambiguous: ask first. */
-    data class Ask(val question: String) : AgentMove
+    /**
+     * The next action is irreversible, or the goal is ambiguous: ask first.
+     *
+     * [pending] is the EXACT step being asked about, carried so the answer can
+     * run it rather than re-deriving it. A device trace shows why that matters:
+     * JARVIS typed a message, could not find the send control, asked "I'm about
+     * to tap Send, which I can't undo. Shall I?", and on "do it" went back to the
+     * model — which invented a different message, typed THAT, and sent it. The
+     * user confirmed one thing and a different thing happened, irreversibly.
+     */
+    data class Ask(val question: String, val pending: ScreenStep? = null) : AgentMove
 
     /** Nothing sensible to do from here. */
     data class Blocked(val reason: String) : AgentMove
@@ -309,7 +318,9 @@ object AgentLoop {
         }
 
         if (needsConfirmation(first)) {
-            return AgentMove.Ask(confirmationFor(first))
+            // The step travels WITH the question. Asking without carrying it is
+            // how a confirmed "tap Send" turned into a freshly invented message.
+            return AgentMove.Ask(confirmationFor(first), first)
         }
         return AgentMove.Act(first)
     }

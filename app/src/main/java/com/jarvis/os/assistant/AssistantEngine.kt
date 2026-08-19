@@ -107,6 +107,33 @@ class AssistantEngine(context: Context) {
     private var errandToken: Int = 0
 
     /**
+     * True while an errand is part-way through — driving the screen, or waiting
+     * on the model for its next move.
+     *
+     * Deliberately not folded into "speaking": a task is mostly SILENCE, and the
+     * silence is the part that was unreachable. See [WorkSession.onBusyWithTask].
+     */
+    private var taskRunning = false
+
+    /**
+     * The exact step JARVIS last asked permission for, kept until it is answered.
+     *
+     * Storing the STEP, not just the fact that a question was asked, is the whole
+     * fix: a confirmation must run the thing that was confirmed, never a fresh
+     * plan for the same goal. See [Confirmation].
+     */
+    private var pendingConfirm: ScreenStep? = null
+
+    private fun setTaskRunning(value: Boolean) {
+        if (taskRunning == value) return
+        taskRunning = value
+        session.onBusyWithTask(value)
+        // The microphone owner changes with this, so it has to be re-derived —
+        // the whole point is that the mic stays reachable while a task runs.
+        applyMicOwner()
+    }
+
+    /**
      * Counts turns, purely so [Acknowledgement] can vary its wording.
      *
      * The complaint that produced it: every action reply was "On it.", every
@@ -956,11 +983,32 @@ class AssistantEngine(context: Context) {
      * another app a moment later anyway.
      */
     fun interrupt() {
-        // Only while actually speaking. Cutting off a turn that is still THINKING
-        // would look like it worked and then be overridden a second later: the
-        // request is already out to the model, and when it lands it speaks the
-        // answer regardless of anything decided here.
-        if (turn.phase != TurnPhase.SPEAKING) return
+        val stoppingTask = taskRunning
+        // Speaking, or mid-task. The second half is the fix for a reported
+        // failure: an errand is mostly silence — a step running, a model call in
+        // flight — and refusing to interrupt outside SPEAKING meant the moment
+        // the user most wanted him to stop was the moment he would not.
+        //
+        // The old comment said cutting off a THINKING turn would be overridden a
+        // second later when the request landed. That is no longer true for a
+        // task: [errandToken] is bumped below, and every continuation re-checks
+        // it, so the in-flight answer is discarded instead of acted on.
+        if (turn.phase != TurnPhase.SPEAKING && !stoppingTask) return
+        if (stoppingTask) {
+            // Bumping the token is what actually stops the loop — the reply
+            // already on its way back from the model returns to a post that
+            // quietly drops it.
+            errandToken++
+            agentSteps = 0
+            errandSteps = emptyList()
+            pendingGoal = ""
+            ScreenControlService.instance?.cancelSequence()
+            setTaskRunning(false)
+            DebugLog.log(DebugLog.Stage.SCREEN, "task stopped — interrupted")
+        }
+        // Unconditional: after stopping a task the turn can be THINKING, and a
+        // turn left anywhere but IDLE keeps the microphone gated — which would
+        // leave the user having successfully interrupted into silence.
         turn.interrupt()
         speaker.stop()
         disarmWatchdog()
@@ -1002,6 +1050,41 @@ class AssistantEngine(context: Context) {
         // user asking a question at 15:48:32 and the previous errand still
         // tapping at 15:48:37, two loops fighting over one screen.
         errandToken++
+        setTaskRunning(false)
+
+        // A question is outstanding and this is the answer to it. Handled here,
+        // before the model is involved at all, for the reason the trace showed:
+        // asked "I'm about to tap Send, which I can't undo. Shall I?" the user
+        // said "do it", the reply went back to the model, and the model wrote a
+        // DIFFERENT message, typed it and sent it. Permission was given for one
+        // specific act, so that act is what runs.
+        val awaiting = pendingConfirm
+        if (awaiting != null) {
+            when (Confirmation.answerFor(userText)) {
+                Confirmation.Answer.YES -> {
+                    pendingConfirm = null
+                    DebugLog.log(DebugLog.Stage.SCREEN, "confirmed — running $awaiting exactly")
+                    addTurn(ChatTurn(ChatTurn.USER, userText))
+                    ScreenControlService.instance?.runSteps(listOf(awaiting), recover = false)
+                    return
+                }
+                Confirmation.Answer.NO -> {
+                    pendingConfirm = null
+                    DebugLog.log(DebugLog.Stage.SCREEN, "declined — $awaiting dropped")
+                    addTurn(ChatTurn(ChatTurn.USER, userText))
+                    val line = "Left it alone."
+                    addTurn(ChatTurn(ChatTurn.ASSISTANT, line))
+                    set { it.copy(orb = OrbState.Speaking, status = "Speaking…", transcript = userText, reply = line) }
+                    speakTurn(line)
+                    return
+                }
+                // Anything that is not plainly yes or no is a new request, and
+                // guessing either way is worse than both: yes fires an
+                // irreversible action nobody authorised, no silently drops
+                // something they asked for.
+                Confirmation.Answer.NEITHER -> pendingConfirm = null
+            }
+        }
 
         // "Thank you Jarvis" ends the work session. Handled here, before the model
         // is called, so it always works even if the network is down.
@@ -1519,9 +1602,16 @@ class AssistantEngine(context: Context) {
             return
         }
         val service = ScreenControlService.instance
-        if (service == null || goal.isBlank()) return
+        if (service == null || goal.isBlank()) {
+            setTaskRunning(false)
+            return
+        }
+        // From here the loop owns the screen until it says otherwise, and the
+        // user must be able to stop it at any point in between.
+        setTaskRunning(true)
         if (AgentLoop.exhausted(agentSteps)) {
             DebugLog.log(DebugLog.Stage.SCREEN, "agent budget spent")
+            setTaskRunning(false)
             say(AgentLoop.exhaustedMessage(goal))
             return
         }
@@ -1550,6 +1640,7 @@ class AssistantEngine(context: Context) {
         val stalled = if (screen == lastScreen) stalls + 1 else 0
         if (stalled >= AgentLoop.STALL_LIMIT) {
             DebugLog.log(DebugLog.Stage.SCREEN, "errand stopped — the screen stopped changing")
+            setTaskRunning(false)
             say(AgentLoop.blockedMessage(goal, AgentLoop.NO_STEP))
             return
         }
@@ -1635,10 +1726,15 @@ class AssistantEngine(context: Context) {
                     }
                     AgentMove.Done -> {
                         DebugLog.log(DebugLog.Stage.SCREEN, "errand done after $agentSteps steps")
+                        setTaskRunning(false)
                         say("That's done.")
                     }
                     is AgentMove.Ask -> {
                         DebugLog.log(DebugLog.Stage.SCREEN, "errand stopped to ask: ${move.question}")
+                        setTaskRunning(false)
+                        // Held so that "do it" runs THIS, and not whatever the
+                        // model would come up with a second time.
+                        pendingConfirm = move.pending
                         say(move.question)
                     }
                     is AgentMove.Blocked -> {
@@ -1658,6 +1754,7 @@ class AssistantEngine(context: Context) {
                             driveErrand(goal, token, lastFailed, app, stalled, lastScreen, nudges = 1)
                         } else {
                             DebugLog.log(DebugLog.Stage.SCREEN, "errand stuck: ${move.reason}")
+                            setTaskRunning(false)
                             say(AgentLoop.blockedMessage(goal, move.reason))
                         }
                     }
