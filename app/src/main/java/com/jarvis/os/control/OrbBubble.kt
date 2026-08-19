@@ -302,8 +302,6 @@ class OrbBubble(private val service: AccessibilityService) {
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
         private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
         private val wave = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val orbit = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val dust = Paint(Paint.ANTI_ALIAS_FLAG)
         private val wavePath = Path()
         private val clip = Path()
 
@@ -339,24 +337,30 @@ class OrbBubble(private val service: AccessibilityService) {
             invalidate()
         }
 
-        /** Idle draws once and stops. Everything else is alive and must tick. */
+        /**
+         * Only the two talking states move. Thinking is deliberately NOT here —
+         * the brief was that the waves stay still when nobody is speaking, and
+         * thinking is not speaking. It is told apart by its colour instead, which
+         * also means an orb sitting over somebody else's app is drawing nothing
+         * at all unless a conversation is actually happening.
+         */
         private fun animates(): Boolean =
-            state == OrbState.Listening || state == OrbState.Thinking || state == OrbState.Speaking
+            state == OrbState.Listening || state == OrbState.Speaking
 
         override fun onDraw(canvas: Canvas) {
             val cx = width / 2f
             val cy = height / 2f
             val r = minOf(width, height) * 0.38f
-            val core = colourFor(state)
+            val tint = colourFor(state)
 
-            // Halo. Diffuse, no edge anywhere, so it reads as light coming off
-            // the orb rather than as a second circle drawn round the first.
+            // Halo. Diffuse, no edge anywhere, so it is light coming off the orb
+            // rather than a second circle drawn round the first.
             val reach = minOf(width, height) * 0.50f
             glow.shader = RadialGradient(
                 cx, cy, reach,
                 intArrayOf(
-                    withAlpha(core, if (animates()) 0.34f else 0.20f),
-                    withAlpha(core, 0.07f),
+                    withAlpha(tint, if (animates()) 0.34f else 0.18f),
+                    withAlpha(tint, 0.06f),
                     Color.TRANSPARENT,
                 ),
                 floatArrayOf(0.58f, 0.80f, 1f),
@@ -364,33 +368,30 @@ class OrbBubble(private val service: AccessibilityService) {
             )
             canvas.drawCircle(cx, cy, reach, glow)
 
-            // The body: deep space, darkest at the rim. Everything else is drawn
-            // inside it, which is what makes this one object rather than a disc
-            // with decorations stuck on.
-            fill.shader = RadialGradient(
-                cx, cy, r,
+            // The body: near-black across the top falling to a lit floor. A
+            // vertical ramp rather than a centred radial, because the light comes
+            // from BELOW — a centred highlight makes any circle look like a button.
+            fill.shader = LinearGradient(
+                cx, cy - r, cx, cy + r,
                 intArrayOf(
-                    blend(scheme.background, scheme.secondary, 0.45f),
-                    blend(scheme.background, scheme.secondary, 0.18f),
-                    darken(scheme.background, 0.30f),
+                    darken(scheme.background, 0.35f),
+                    blend(scheme.background, tint, 0.22f),
+                    blend(scheme.background, tint, 0.55f),
+                    darken(blend(scheme.background, tint, 0.42f), 0.28f),
                 ),
-                floatArrayOf(0f, 0.62f, 1f),
+                floatArrayOf(0f, 0.44f, 0.82f, 1f),
                 Shader.TileMode.CLAMP,
             )
+            fill.style = Paint.Style.FILL
             canvas.drawCircle(cx, cy, r, fill)
 
+            // The waves, and nothing else. Clipped to the disc so they behave as
+            // something moving WITHIN the orb rather than over it.
             clip.reset()
             clip.addCircle(cx, cy, r, Path.Direction.CW)
             canvas.save()
             canvas.clipPath(clip)
-
-            starDust(canvas, cx, cy, r)
-            orbits(canvas, cx, cy, r)
-            // Kept from the previous design, and only where it was asked for:
-            // while he is TALKING, a swell runs across the lower part of the disc.
-            if (state == OrbState.Speaking) waves(canvas, cx, cy, r, core)
-            burningCore(canvas, cx, cy, r, core)
-
+            waves(canvas, cx, cy, r, tint)
             canvas.restore()
 
             if (animates()) {
@@ -401,98 +402,46 @@ class OrbBubble(private val service: AccessibilityService) {
         }
 
         /**
-         * Two tilted ellipses turning around the core — the in-app orb's shape,
-         * shrunk to a thumbnail.
+         * Three stacked sine bands filling the lower part of the disc, like
+         * liquid with a swell running through it. The only thing in the orb.
          *
-         * They live INSIDE the disc, which is the distinction that matters: the
-         * version before this drew rings AROUND the circle and the user's note was
-         * that it looked bolted on. An orbit crossing in front of and behind a
-         * core is part of the object; a ring around a circle is a border.
-         */
-        private fun orbits(canvas: Canvas, cx: Float, cy: Float, r: Float) {
-            val turn = phase * (if (animates()) 0.55f else 0.12f)
-            for (i in 0 until ORBITS) {
-                val tilt = ORBIT_TILTS[i] + turn * (if (i == 0) 1f else -0.7f)
-                // Breathing the minor axis is what sells rotation in 3D from a
-                // 2D ellipse — a ring that only spins in place looks flat.
-                val squash = 0.20f + 0.26f * kotlin.math.abs(kotlin.math.sin(turn * 0.8f + i))
-                val rx = r * (0.86f - i * 0.16f)
-                val ry = rx * squash
-
-                canvas.save()
-                canvas.rotate(Math.toDegrees(tilt.toDouble()).toFloat(), cx, cy)
-                orbit.style = Paint.Style.STROKE
-                orbit.strokeWidth = (if (i == 0) 1.6f else 1.2f) * density(1f)
-                orbit.color = withAlpha(scheme.highlight, if (i == 0) 0.60f else 0.38f)
-                canvas.drawOval(cx - rx, cy - ry, cx + rx, cy + ry, orbit)
-                canvas.restore()
-            }
-        }
-
-        /** A handful of motes, so the inside of the disc is space and not paint. */
-        private fun starDust(canvas: Canvas, cx: Float, cy: Float, r: Float) {
-            dust.style = Paint.Style.FILL
-            for (i in 0 until DUST) {
-                // Deterministic placement. A Canvas redraws every frame, so a real
-                // random would re-scatter these into static instead of a sky.
-                val a = unit(i * 3 + 1) * 6.2831853f
-                val d = 0.20f + unit(i * 3 + 2) * 0.74f
-                val x = cx + kotlin.math.cos(a) * r * d
-                val y = cy + kotlin.math.sin(a) * r * d
-                val twinkle = 0.55f + 0.45f * kotlin.math.sin(phase * 1.3f + i)
-                dust.color = withAlpha(
-                    if (unit(i * 7 + 3) > 0.6f) scheme.highlight else Color.WHITE,
-                    (0.20f + unit(i * 5 + 4) * 0.45f) * twinkle,
-                )
-                canvas.drawCircle(x, y, (0.6f + unit(i * 11 + 5) * 1.2f) * density(1f), dust)
-            }
-        }
-
-        /** The lit centre. Its size and brightness are the state at a glance. */
-        private fun burningCore(canvas: Canvas, cx: Float, cy: Float, r: Float, core: Int) {
-            val pulse = when (state) {
-                OrbState.Speaking -> 1f + 0.22f * kotlin.math.sin(phase * 2.6f)
-                OrbState.Listening -> 1f + amplitude * 0.55f
-                OrbState.Thinking -> 1f + 0.12f * kotlin.math.sin(phase * 1.2f)
-                else -> 0.86f
-            }
-            val cr = r * 0.30f * pulse
-            fill.shader = RadialGradient(
-                cx, cy, cr * 2.4f,
-                intArrayOf(
-                    Color.WHITE,
-                    lighten(core, 0.45f),
-                    withAlpha(core, 0.55f),
-                    Color.TRANSPARENT,
-                ),
-                floatArrayOf(0f, 0.20f, 0.52f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-            canvas.drawCircle(cx, cy, cr * 2.4f, fill)
-        }
-
-        /**
-         * The swell the user asked for, kept for the one state it describes.
+         * Layered rather than one line because a single stroke at 76dp reads as a
+         * scratch, while translucent fills overlapping give the depth that makes
+         * it look like motion in a volume. Each band has its own wavelength, speed
+         * and direction so they never line up into one thick bar.
          *
-         * Three stacked bands rather than a single line: one stroke at this size
-         * reads as a scratch, while translucent fills overlapping give the depth
-         * that makes it look like motion in a volume.
+         * **They only move while somebody is talking.** The clock is frozen in
+         * every other state, so what is drawn is a still surface with a shallow
+         * curve in it — liquid at rest, not a flat line, and not a widget
+         * animating at nobody.
          */
-        private fun waves(canvas: Canvas, cx: Float, cy: Float, r: Float, core: Int) {
-            val level = 0.55f + 0.45f * kotlin.math.abs(kotlin.math.sin(phase * 1.7f))
+        private fun waves(canvas: Canvas, cx: Float, cy: Float, r: Float, tint: Int) {
+            // Frozen unless someone is speaking. A fixed non-zero value rather
+            // than 0 so the resting surface has a gentle shape to it.
+            val t = if (animates()) phase else RESTING_PHASE
+            val level = when (state) {
+                // JARVIS talking: a strong, steady swell of his own.
+                OrbState.Speaking -> 0.60f + 0.40f * kotlin.math.abs(kotlin.math.sin(phase * 1.7f))
+                // The user talking: driven by the real microphone level, so a
+                // glance says whether he can actually hear you.
+                OrbState.Listening -> 0.18f + amplitude * 0.82f
+                // Nobody is talking. Still water.
+                else -> 0.10f
+            }
+
             for (layer in 0 until WAVE_LAYERS) {
                 val depth = layer.toFloat() / WAVE_LAYERS
-                val baseline = cy + r * (0.30f + depth * 0.28f)
-                val height = r * (0.16f * level) * (1f - depth * 0.35f)
+                val baseline = cy + r * (0.06f + depth * 0.32f)
+                val height = r * (0.34f * level) * (1f - depth * 0.35f)
                 val length = 2.1f + layer * 0.75f
-                val speed = phase * (1.5f + layer * 0.45f) * (if (layer % 2 == 0) 1f else -1f)
+                val speed = t * (1.5f + layer * 0.45f) * (if (layer % 2 == 0) 1f else -1f)
 
                 wavePath.reset()
                 wavePath.moveTo(cx - r, cy + r)
                 var x = cx - r
                 while (x <= cx + r) {
-                    val t = (x - cx) / r
-                    wavePath.lineTo(x, baseline - kotlin.math.sin(t * length + speed) * height)
+                    val u = (x - cx) / r
+                    wavePath.lineTo(x, baseline - kotlin.math.sin(u * length + speed) * height)
                     x += WAVE_STEP
                 }
                 wavePath.lineTo(cx + r, cy + r)
@@ -500,25 +449,32 @@ class OrbBubble(private val service: AccessibilityService) {
 
                 wave.shader = null
                 wave.style = Paint.Style.FILL
-                wave.color = withAlpha(core, (0.34f - depth * 0.10f) * level)
+                wave.color = withAlpha(
+                    if (layer == 0) lighten(tint, 0.38f) else tint,
+                    (0.58f - depth * 0.20f) * (0.50f + level * 0.50f),
+                )
                 canvas.drawPath(wavePath, wave)
             }
         }
 
-        /** Deterministic 0..1 from an index — never `Math.random` on a draw path. */
-        private fun unit(seed: Int): Float {
-            val x = kotlin.math.sin(seed * 12.9898f) * 43758.5453f
-            return (x - kotlin.math.floor(x))
-        }
-
+        /**
+         * The colour says WHO is talking, which is the one thing a 76dp circle
+         * can carry at a glance and the reason the two live states are the two
+         * furthest-apart colours in every theme.
+         */
         private fun colourFor(s: OrbState): Int = when (s) {
-            OrbState.Listening -> scheme.accent
-            OrbState.Thinking -> scheme.highlight
+            // The user is talking — the warm counter-colour of the theme.
+            OrbState.Listening -> scheme.highlight
+            // JARVIS is talking — the theme's own accent.
             OrbState.Speaking -> scheme.accent
+            // Nobody is talking, but he has not finished with you. Still, and a
+            // third colour, because a frozen orb that also looks idle is
+            // indistinguishable from one that has given up.
+            OrbState.Thinking -> scheme.secondary
             OrbState.Error, OrbState.Offline -> 0xFF8A5A5A.toInt()
-            // Idle is deliberately dimmer than every active state. An orb sitting
-            // at full brightness all day stops meaning anything.
-            OrbState.Idle -> blend(scheme.accent, scheme.background, 0.34f)
+            // Deliberately dimmer than every active state. An orb sitting at full
+            // brightness all day stops meaning anything.
+            OrbState.Idle -> blend(scheme.accent, scheme.background, 0.42f)
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -589,12 +545,11 @@ class OrbBubble(private val service: AccessibilityService) {
             /** Enough for depth, few enough to stay legible at 76dp. */
             const val WAVE_LAYERS = 3
 
-            /** Two reads as orbits; three at this size reads as scribble. */
-            const val ORBITS = 2
-            val ORBIT_TILTS = floatArrayOf(-0.42f, 0.66f)
-
-            /** Motes inside the disc. Enough to be space, few enough to be cheap. */
-            const val DUST = 14
+            /**
+             * The frozen clock a resting surface is drawn at. Not 0 — that gives
+             * a dead-straight line, and still water has a shape.
+             */
+            const val RESTING_PHASE = 0.8f
 
             /** Pixels between points along a wave. Small enough to look smooth. */
             const val WAVE_STEP = 3f
