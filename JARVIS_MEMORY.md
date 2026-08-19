@@ -3038,6 +3038,38 @@ The prompt still asks for the substitution; it catches phrasings the parser does
 not. It is simply no longer the only thing standing between a rule the user
 typed out and the wrong app opening.
 
+### 2026-08-18 — Writing the backend plan down, and checking the claim before making it
+
+The user asked how to actually proceed with the backend, then to write the whole thing down.
+`BACKEND_PLAN.md` now carries phases 0–6: what gets built, in what order, what each is
+blocked on, and what is verifiable where. `COMMERCIALIZATION.md` §1d stays the authority on
+*architecture* — schema, endpoint flow, auth choice — and the new file is the *plan of work*.
+Splitting them that way avoids the thing that usually happens to a second planning doc, which
+is quietly disagreeing with the first.
+
+**The one piece of real work in this was checking a claim I had already made twice.** I had
+been saying the Worker "can be tested in a Claude session" on the strength of it being plain
+JavaScript. Before writing it into a plan the user would act on, I actually tried it: Node
+v22.22.2 is present, the npm registry is reachable, and a Worker-shaped ES module runs under
+`node --test` with **zero dependencies**, because Node 22 ships real `Request`/`Response`
+globals. A one-test probe passed.
+
+That turned a plausible claim into a verified one, and improved the plan — Phase 0 needs no
+`npm install`, no wrangler, and no Cloudflare account. Given this session's running theme
+(two dead models that were in the list because somebody trusted memory), running the probe
+was the least I could do before telling the user to build on it.
+
+**Also corrected: `COMMERCIALIZATION.md` §1d named `llama-3.1-8b-instant` and
+`llama-3.3-70b-versatile` as the free and pro tier models.** Both were retired by Groq within
+hours of each other today. A plan that starts from stale facts produces stale work, and this
+one would have been read by a future session as decided.
+
+**The argument for the backend is also no longer hypothetical.** It used to be "keys and
+billing". Today it is: two model retirements, each costing a code change, a CI build and a
+reinstall — and a fallback chain that silently ran down to one live model, which is what made
+a single empty reply fatal. On a server that is a one-line deploy. The same is true of the
+system prompt, which is where most of this project's bugs have actually lived.
+
 ### 2026-08-18 — The fallback that had nothing to fall back to, and a claim nobody checked
 
 **Groq retired the second llama model the same day as the first.** This morning I

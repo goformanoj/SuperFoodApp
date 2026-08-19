@@ -280,6 +280,27 @@ text). `buildContext` now logs `screen: N chars — App: …` or `screen: nothin
 — the app line only, never the contents, which are the user's private screen. **Read that line
 first** before believing any future "he can't see it" report.
 
+### 🏗️ THE BACKEND PLAN IS WRITTEN — [`BACKEND_PLAN.md`](BACKEND_PLAN.md), phases 0–6
+All phases, what each is blocked on, and what is verifiable where. `COMMERCIALIZATION.md` §1d stays
+the source of truth for the *architecture*; the new file is the *plan of work*.
+
+**Phase 0 is startable with NOTHING from the user**, and it is the first part of this whole project
+that can be genuinely tested where it is written. Verified in this environment: Node **v22.22.2**,
+npm registry reachable, and a Worker-shaped ES module (`export default { fetch(req, env) }`) runs
+under **`node --test` with ZERO dependencies** — Node 22 ships real `Request`/`Response` globals.
+A probe passed. No Cloudflare account, no Firebase, no deploy, no `npm install` needed to start.
+
+**Blockers, in order:** Cloudflare account → Phase 1. Firebase project → Phase 3. Free-tier cap
+(~60k tokens/day recommended) → before go-live.
+
+**⭐ Phase 2 is the testing answer** and should be pulled forward the moment Phase 1 lands: a script
+firing every `docs/SCREEN_CONTROL_EVAL.md` prompt at `/chat` and asserting marker shapes turns the
+50-prompt manual checklist into an automated eval. It does NOT cover whether a tap lands on the real
+Blinkit — the backend owns the *deciding*, the phone still owns the *doing*.
+
+**GOTCHA already banked: the Firebase Admin SDK is Node-only and does NOT run on Workers.** Verify
+the RS256 JWT by hand with WebCrypto — ~60 lines, no dependencies. Biggest trap in the plan.
+
 ### 🧰 RUN THE OFF-DEVICE GATE BEFORE EVERY PUSH — it is a file now, not a recipe
 ```sh
 gradle -p scripts/jvmcheck test     # 432 tests, 42 classes, ~10s

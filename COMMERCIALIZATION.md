@@ -116,6 +116,10 @@ it against the Google Play Developer API → sets `plan = pro`. Google pushes re
 
 ## 1d. How to actually build it — implementation guide (2026-08-05)
 
+> **The ordered plan of work now lives in [`BACKEND_PLAN.md`](BACKEND_PLAN.md)** — phases,
+> blockers, and what is verifiable where. This section remains the source of truth for the
+> *architecture*: schema, endpoint flow, auth choice, and the gotchas.
+
 > Everything below is decided and ready to build. Nothing here exists in the repo yet:
 > there is no `backend/` directory, and no Firebase, Billing or Play dependency in
 > `app/build.gradle.kts`. This section is the brief a fresh session can start from.
@@ -158,7 +162,11 @@ CREATE TABLE usage_daily (
 2. Verify the Play Integrity token (can be added after step 1 works).
 3. Load `plan` and today's `usage_daily` row.
 4. Over cap → `429` with a JSON body the app can speak aloud.
-5. Choose the model from the plan — free on `llama-3.1-8b-instant`, pro on `llama-3.3-70b-versatile`.
+5. Choose the model from the plan. ⚠️ **CORRECTED 2026-08-18: both models originally named here
+   (`llama-3.1-8b-instant`, `llama-3.3-70b-versatile`) have been RETIRED by Groq, hours apart on
+   the same day.** Live and proven by this account's own traffic: free on `openai/gpt-oss-20b`,
+   pro on `openai/gpt-oss-120b`. Never add a model id from memory — guessing is what left two
+   dead models in `GroqClient`; check the provider's live list.
 6. Call Groq with the server-held key.
 7. Read `usage` from the response and UPSERT it.
 8. Return the reply, plus remaining quota so the app can show it.

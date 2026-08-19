@@ -76,7 +76,10 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
 - Tap-to-talk toggle (always-on vs press-to-talk); clear idle transcript/reply; first-run permission onboarding (mic/calendar/accessibility incl. the Realme "Downloaded apps" path).
 
 ### Part E — commercialization ⏸️ **← NEXT, by the user's request (2026-08-05)**
-Build brief with schema, endpoint flow and gotchas: **[`COMMERCIALIZATION.md` §1d](COMMERCIALIZATION.md)**.
+**Ordered build, all phases, with what each is blocked on: [`BACKEND_PLAN.md`](BACKEND_PLAN.md).**
+Architecture and gotchas (schema, endpoint flow, auth choice): **[`COMMERCIALIZATION.md` §1d](COMMERCIALIZATION.md)**.
+**Phase 0 is startable with nothing from the user** — the Worker against a fake provider, fully
+testable in a Claude session with `node --test` and zero dependencies.
 Sequencing changed: the backend now comes **before** the remaining feature work, because the
 user asked for it directly and because it is the only part of this project that can be tested
 inside a Claude session rather than only on a device.
