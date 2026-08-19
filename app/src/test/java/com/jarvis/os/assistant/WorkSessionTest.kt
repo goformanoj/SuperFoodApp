@@ -301,4 +301,67 @@ class WorkSessionTest {
 
         assertFalse(s.isActive)
     }
+
+    // --- the floating orb ----------------------------------------------------
+
+    @Test
+    fun `the floating orb is up while a session runs in another app`() {
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+
+        assertTrue(s.wantsBubble)
+    }
+
+    @Test
+    fun `thank you Jarvis takes the floating orb away`() {
+        // Reported from a device: the orb stayed on screen after the stop phrase.
+        // "thank you Jarvis" ends the session, the wake word and the listening —
+        // if it does not also end the orb, the one dismissal the user has does
+        // not dismiss it, and it stops being a presence and becomes litter.
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        assertTrue(s.wantsBubble)
+
+        s.endIfStopPhrase("thank you jarvis")
+
+        assertFalse(s.wantsBubble)
+    }
+
+    @Test
+    fun `the notification Stop takes it away too`() {
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+
+        s.end()
+
+        assertFalse(s.wantsBubble)
+    }
+
+    @Test
+    fun `no orb on JARVIS's own screen`() {
+        // There is already a 280dp orb in the middle of it.
+        val s = session(visible = true)
+        s.onAppOpenedByCommand()
+
+        assertFalse(s.wantsBubble)
+    }
+
+    @Test
+    fun `no orb without a session — leaving the app is not being asked for something`() {
+        val s = session(visible = false)
+
+        assertFalse(s.wantsBubble)
+    }
+
+    @Test
+    fun `the orb stays up while audio plays and the mic has stood down`() {
+        // The session is still live; only the microphone yielded. Hiding the orb
+        // here would remove the one way back in at exactly the moment the wake
+        // word is covering the gap.
+        val s = session(visible = false)
+        s.onAppOpenedByCommand()
+        s.onMediaPlaying(true)
+
+        assertTrue(s.wantsBubble)
+    }
 }

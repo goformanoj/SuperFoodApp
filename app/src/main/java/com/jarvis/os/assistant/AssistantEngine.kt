@@ -378,7 +378,6 @@ class AssistantEngine(context: Context) {
 
     fun resume() {
         session.onVisibilityChanged(true)
-        applyBubble()
         // Foreground now, so the engine owns the mic — the background hotword must
         // let go, or two listeners would fight over it (the one-owner rule).
         HotwordService.stop(appContext)
@@ -392,7 +391,6 @@ class AssistantEngine(context: Context) {
 
     fun pause() {
         session.onVisibilityChanged(false)
-        applyBubble()
         main.removeCallbacksAndMessages(null)
         // Outside a session, leaving the screen silences JARVIS as before. Inside
         // one, it keeps talking and listening from the background.
@@ -450,6 +448,15 @@ class AssistantEngine(context: Context) {
         // the media check, long after pause() ran, so deciding this once on the
         // way out of the foreground would have left the gap exactly as it was.
         applyHotword()
+
+        // The floating orb, for the SAME reason — and it is worth saying plainly
+        // that this was got wrong once already, three commits after writing the
+        // note above. The orb was decided in resume() and pause() only, so
+        // "thank you Jarvis" ended the session from the background, no lifecycle
+        // callback fired, and the orb stayed on screen after the one phrase the
+        // user has for dismissing him. Anything derived from session state has to
+        // be re-derived wherever session state changes, and that is here.
+        applyBubble()
 
         val owner = session.owner
         // Mid think/speak nothing may listen — with the one exception of the
@@ -515,8 +522,10 @@ class AssistantEngine(context: Context) {
      */
     private fun applyBubble() {
         val service = ScreenControlService.instance ?: return
+        // Cheap enough to run on every mic reassignment, which is what it has to
+        // do — see the call site in [applyMicOwner].
         service.bubble.onTap = { main.post { onBubbleTap() } }
-        service.setBubbleVisible(userPrefs.floatingOrb && !session.jarvisOnScreen)
+        service.setBubbleVisible(userPrefs.floatingOrb && session.wantsBubble)
     }
 
     /**

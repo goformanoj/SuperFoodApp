@@ -92,19 +92,25 @@ class WorkSession {
      */
     private val canRecordNow: Boolean get() = jarvisVisible || sessionActive
 
-    /**
-     * True while JARVIS's own UI is the foreground window.
-     *
-     * Exposed for the floating orb, which must be up exactly when this is false.
-     * It reads the same field [owner] does, so the bubble cannot disagree with the
-     * microphone about where the user is looking.
-     */
-    val jarvisOnScreen: Boolean get() = jarvisVisible
-
     /** True while a session is up but yielding the microphone to playback. */
     val yieldedToMedia: Boolean
         get() = sessionActive && micGranted && mediaPlaying &&
             !jarvisVisible && !talkRequested && !speaking
+
+    /**
+     * True when the floating orb should be on screen.
+     *
+     * Tied to the SESSION, not merely to being backgrounded. The first version
+     * showed it whenever JARVIS was off his own screen, which meant "thank you
+     * Jarvis" — the phrase that ends everything else — left the orb sitting
+     * there. If the one dismissal the user has does not dismiss it, it is not a
+     * presence, it is litter.
+     *
+     * So the orb is up exactly while JARVIS is engaged with you somewhere else:
+     * a command opened an app, the session is live, and he is not on his own
+     * screen (where a 280dp orb is already in the middle of it).
+     */
+    val wantsBubble: Boolean get() = sessionActive && !jarvisVisible
 
     /**
      * True when the background wake word should be the one holding the microphone.
