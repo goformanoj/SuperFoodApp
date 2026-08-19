@@ -3038,6 +3038,42 @@ The prompt still asks for the substitution; it catches phrasings the parser does
 not. It is simply no longer the only thing standing between a rule the user
 typed out and the wrong app opening.
 
+### 2026-08-18 — Three tries at the same orb, and the brief had been right the first time
+
+"could u remove those rings from the overlay orb and only keep the waves."
+
+The history is the lesson. The brief two rounds earlier was: *no rings outside
+the circle, waves inside it depicting that it's speaking.* I built that. Then,
+asked to make it less boring and pointed at the in-app orb, I added tilted
+orbital ellipses, star dust and a burning core — and buried the waves under
+them. The correction was to delete all three.
+
+**A request to make something "less boring" is not a request to add things.**
+The orb had one job — say what JARVIS is doing, in a circle the width of a
+thumbnail — and every layer I added competed with the one element that was
+actually carrying the information.
+
+**What is left, and why each part earns its place.** The disc, and the swell
+inside it. The clock is **frozen** in every state except Speaking and Listening,
+so what is drawn the rest of the time is a resting surface — a shallow *static*
+curve rather than a straight line, because still water has a shape. Thinking is
+deliberately not animated: the brief was that the waves stay still when nobody
+is speaking, and thinking is not speaking. That also means an orb sitting over
+somebody else's foreground app draws nothing at all unless a conversation is
+actually happening, which is the right default for a window living on top of
+other people's work.
+
+**Colour carries who is talking**, which is the one thing a 76dp circle can say
+at a glance: the theme accent while JARVIS speaks, the theme's warm highlight
+while the user speaks with the swell driven by the real microphone level, and
+the secondary colour, still, while thinking.
+
+**GOTCHA worth keeping: thinking needed its own colour precisely BECAUSE it is
+now frozen.** A still orb that also looks idle is indistinguishable from one
+that has given up — and this project has already shipped a sixteen-second
+silence that looked exactly like that. Removing motion from a state means the
+remaining channel has to work harder, not that the state stops mattering.
+
 ### 2026-08-18 — Five reports at once, and the two that were really one bug
 
 The user asked JARVIS to explain backends and testing, and the answer exposed

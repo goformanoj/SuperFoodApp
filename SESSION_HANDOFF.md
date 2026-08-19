@@ -84,13 +84,22 @@ for), so it is discovered by doing the thing you were already doing, and unlike 
 cannot fire by accident. Dropping on it **turns the setting off**; an orb that returns next session
 after being deliberately thrown away reads as the dismissal not working.
 
-**Design.** Deep-space body, two tilted ellipses turning around a burning core, a little star dust.
-**GOTCHA: the ellipses must be INSIDE the disc.** An orbit crossing in front of and behind a core is
-part of the object; a ring drawn *around* a circle is a border, and the border version is exactly
-what the user called bolted on. The core's size and brightness carry the state; the speaking swell
-is kept for the one state it describes.
-**GOTCHA (third time in this file): dust PLACEMENT is deterministic, never `Math.random`.** A Canvas
-redraws every frame; a real random re-scatters a sky into static. Brightness takes the clock.
+**Design — waves and nothing else.** Orbits, star dust and the burning core were all tried and all
+removed. The disc plus the swell inside it is what was asked for two rounds earlier; each "richer"
+version was me adding things on top of a brief that was already complete.
+
+**The clock is FROZEN except while Speaking or Listening.** Nobody talking → a resting surface: a
+shallow *static* curve, not a dead-straight line, because still water has a shape (`RESTING_PHASE`).
+Thinking is deliberately not animated — the brief was "still when there is no speaking", and
+thinking is not speaking. Consequence worth keeping: an orb over somebody else's foreground app
+draws **nothing** unless a conversation is actually happening.
+
+**Colour says WHO is talking** — the one thing a 76dp circle can carry at a glance:
+`Speaking` → accent (JARVIS), `Listening` → highlight (the user, swell driven by real mic level),
+`Thinking` → secondary, still.
+**GOTCHA: thinking needs its own colour precisely BECAUSE it is now frozen.** A still orb that also
+looks idle is indistinguishable from one that has given up — and this app has already shipped a
+sixteen-second silence that looked exactly like that.
 
 ### 🔁 THE SAME BUG TWICE: state derived from the session must be re-derived in `applyMicOwner`
 The orb stayed on screen after "thank you Jarvis". The rule was right; the **placement of the
