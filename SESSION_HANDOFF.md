@@ -53,6 +53,36 @@ time is one the user cannot rely on, and nothing tells them which kind of turn t
 still asks (it catches phrasings the parser does not); it is no longer the only thing between a
 typed rule and the wrong app. A trace line now reports when a rule fires.
 
+### ☠️ BOTH llama MODELS ARE RETIRED — the fallback chain had run out
+Groq retired `llama-3.1-8b-instant` too, hours after `llama-3.3-70b-versatile`. That left SMART and
+FAST holding **one live model each**, so there was no fallback at all — and a trace shows a single
+`Empty reply from model` killing the turn outright with `Brain error`, twice.
+
+**Both tiers now list the same two proven-alive models (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`)
+in opposite order**, so each can reach the other's. `GroqModelListTest` pins the **cross-cover**, not
+the count — "two entries" would also be satisfied by two dead ones.
+
+**GOTCHA: do NOT add model ids from memory.** Guessing is what put two dead models in the list.
+These two are the only ones this account's own traffic proves alive. To add more, check Groq's live
+model list first.
+**GOTCHA: an empty reply is not a broken model.** It is a model that spent its budget without
+producing text — transient. It now retries the SAME model once before falling through.
+
+### 🧾 "That's done." is a CLAIM, and a claim can be checked
+Asked to open Claude and send it a prompt, the errand tapped one control and announced *"That's
+done."* having typed nothing. The user: "you didn't ask him anything yet."
+
+New pure `AgentLoop.donePrematurely(goal, taken)` refuses Done when the GOAL names composing
+something (ask/write/send/search/…) and no `Type` step has ever run. Narrow on purpose: "open YouTube
+and play the first video" needs no typing and is untouched.
+**GOTCHA: "find" and "tell" are deliberately NOT composing words** — "find my messages" and "tell me
+the time" finish with taps alone, and nudging them would cost a round trip on an already-complete
+task. Being wrong costs one round trip (`NOTHING_TYPED` is in `NUDGEABLE`); not checking costs the
+user being told a job is finished when nothing happened.
+**GOTCHA caught by an existing test, not by reasoning:** every `NUDGEABLE` reason must also be in
+`INTERNAL_REASONS`, or a second failure reads the raw diagnostic out loud. Add a reason to one set
+and the suite tells you about the other.
+
 ### 🛑 "do it" SENT A MESSAGE HE REWROTE — a confirmation must carry its step
 The worst bug of the session. From a trace: the user asked for a thoughtful reply, JARVIS wrote one,
 could not find the send control, and asked *"I'm about to tap Send, which I can't undo. Shall I?"*.

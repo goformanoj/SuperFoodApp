@@ -3038,6 +3038,60 @@ The prompt still asks for the substitution; it catches phrasings the parser does
 not. It is simply no longer the only thing standing between a rule the user
 typed out and the wrong app opening.
 
+### 2026-08-18 — The fallback that had nothing to fall back to, and a claim nobody checked
+
+**Groq retired the second llama model the same day as the first.** This morning I
+removed `llama-3.3-70b-versatile` after a 404; by evening the trace read
+`model llama-3.1-8b-instant is retired — dropping it`. Between them that left
+SMART and FAST holding **exactly one live model each**, and the cost showed up
+within minutes: `Brain error: Empty reply from model`, twice, killing the turn
+outright because there was nothing left to try.
+
+**A fallback chain with one entry is not a fallback chain, and nothing warned
+about it.** The tests asserted each tier had ≥2 models — which was true, and
+useless, because one of the two was dead. The fix is both tiers listing the same
+two proven-alive models in opposite order, and a test that pins the **cross-cover**
+rather than the count. "Two entries" would also be satisfied by two corpses.
+
+**GOTCHA banked: do not add model ids from memory.** Guessing is exactly what put
+two dead models in that list. The two now there are the only ones this account's
+own traffic shows working — the dashboard and the trace, not recall.
+
+And an empty reply now retries the **same** model once before moving on. It is
+not a broken model; it is a model that spent its budget without emitting text,
+which is transient, and a second ask to the same one beats a first ask to a
+different one.
+
+**"That's done." after doing nothing.** Asked to open Claude and send it a
+prompt, the errand tapped a single control and announced completion. The user:
+"you didn't ask him anything yet."
+
+Done was accepted on the model's word alone. But **Done is a claim, and a claim
+can be checked** — the app already knows what the goal was and every step it has
+taken. New pure `donePrematurely(goal, taken)` refuses it when the goal names
+composing something and no `Type` has ever run.
+
+The interesting part is the restraint. "find" and "tell" are deliberately NOT
+composing words: "find my messages" and "tell me the time" finish with taps
+alone, and a rule that nudged them would spend a round trip on tasks that were
+already complete. Being wrong costs one extra question, since `NOTHING_TYPED`
+went into `NUDGEABLE`; not checking costs the user being told a job is finished
+when nothing happened — which is the single thing this project's prompt forbids
+everywhere else.
+
+**And the suite caught the follow-on before a device could.** An existing
+invariant says every nudgeable reason must also be unspeakable, or a second
+failure reads the raw diagnostic aloud. Adding `NOTHING_TYPED` to one set broke
+the test about the other, immediately. That test was written months ago against a
+different bug, and it is still earning its keep — which is the argument for
+writing the invariant rather than the example.
+
+**Confirmed working in the same trace**, worth recording because each was a fix
+made blind: the "Cloud means Claude" alias (`you go to cloud` → `<<OPEN|Claude>>`),
+the floating orb, tap-to-interrupt, and the new agent-step timing lines —
+`asking for the next move` / `next move answered in 1296ms` — which close the
+diagnostic hole that made the sixteen-second silence unreadable.
+
 ### 2026-08-18 — The confirmation had nothing to confirm
 
 The worst bug of the session, and the trace tells it in six lines:
