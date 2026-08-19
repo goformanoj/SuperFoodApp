@@ -61,7 +61,23 @@ class GroqModelListTest {
     fun `the fast tier leads with the small model and smart with the large one`() {
         // Quotas are per model, so the tiers exist to keep a command from spending
         // the allowance a real conversational turn will need.
-        assertEquals("llama-3.1-8b-instant", GroqClient.modelsForTest(Tier.FAST).first())
+        assertEquals("openai/gpt-oss-20b", GroqClient.modelsForTest(Tier.FAST).first())
         assertEquals("openai/gpt-oss-120b", GroqClient.modelsForTest(Tier.SMART).first())
+    }
+
+    @Test
+    fun `each tier can fall back to the other tier's model`() {
+        // By the evening of 2026-08-18, Groq had retired both llama models,
+        // leaving each tier with ONE live entry and therefore no fallback at all.
+        // A trace shows the cost within minutes: a single "Empty reply from model"
+        // killed the turn outright because there was nothing left to try.
+        //
+        // Pinning the cross-cover rather than just the count, because "two
+        // entries" would also be satisfied by two models that are both dead.
+        val fast = GroqClient.modelsForTest(Tier.FAST)
+        val smart = GroqClient.modelsForTest(Tier.SMART)
+
+        assertTrue("FAST cannot reach SMART's model", fast.contains(smart.first()))
+        assertTrue("SMART cannot reach FAST's model", smart.contains(fast.first()))
     }
 }

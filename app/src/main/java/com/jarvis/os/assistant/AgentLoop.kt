@@ -98,14 +98,19 @@ object AgentLoop {
     /** Reason given when the model backs out of the app it only just opened. */
     const val JUST_ARRIVED = "backing out of the app it just opened"
 
+    /** Claimed the job was finished without ever typing the thing it was asked to type. */
+    const val NOTHING_TYPED = "said done without typing anything"
+
     /** Blocked reasons JARVIS produced itself, which must never be read aloud. */
-    val INTERNAL_REASONS = setOf(NO_STEP, ALREADY_FAILED, GOING_IN_CIRCLES, LEFT_APP, JUST_ARRIVED)
+    val INTERNAL_REASONS =
+        setOf(NO_STEP, ALREADY_FAILED, GOING_IN_CIRCLES, LEFT_APP, JUST_ARRIVED, NOTHING_TYPED)
 
     /**
      * Blocked reasons worth ONE more question before the errand is abandoned.
      *
-     * Both of these are habits rather than dead ends: re-opening an app already in
-     * front, or reflexively going Back on arrival. A device trace shows three
+     * All three are habits rather than dead ends: re-opening an app already in
+     * front, reflexively going Back on arrival, or announcing the job is finished
+     * without having typed the thing it was asked to type. A device trace shows three
      * errands in a row — Blinkit, Amazon Music, and a failed launch — dying on
      * their very first move to [JUST_ARRIVED], each telling the user "I can't see
      * what to do from this screen" before JARVIS had tried anything at all. The
@@ -115,7 +120,7 @@ object AgentLoop {
      * [ALREADY_FAILED] and [LEFT_APP] are deliberately absent: those name a route
      * that is known wrong, so asking again invites the same answer.
      */
-    val NUDGEABLE = setOf(GOING_IN_CIRCLES, JUST_ARRIVED)
+    val NUDGEABLE = setOf(GOING_IN_CIRCLES, JUST_ARRIVED, NOTHING_TYPED)
 
     /**
      * How many interactive items a live screen must show before the loop will
@@ -302,7 +307,12 @@ object AgentLoop {
         // says "done" while still tapping has not finished.
         if (first == null) {
             return if (DONE.containsMatchIn(reply)) {
-                AgentMove.Done
+                // "Done" is a claim, and a claim can be checked. From a device
+                // trace: asked to open Claude and send it a prompt, the loop
+                // tapped one control and announced "That's done." having typed
+                // nothing at all. The user's reply was "you didn't ask him
+                // anything yet".
+                if (donePrematurely(goal, taken)) AgentMove.Blocked(NOTHING_TYPED) else AgentMove.Done
             } else {
                 AgentMove.Blocked(ScreenActions.parse(reply).clean.ifBlank { NO_STEP })
             }
@@ -339,6 +349,42 @@ object AgentLoop {
         val what = (step as? ScreenStep.Tap)?.label ?: "that"
         return "I'm about to tap $what, which I can't undo. Shall I?"
     }
+
+    /**
+     * True when the loop says it has finished a task that plainly required typing
+     * and it has not typed anything.
+     *
+     * Narrow on purpose. It fires only when the GOAL names composing something —
+     * ask, write, send, search — and no [ScreenStep.Type] has run. A goal like
+     * "open YouTube and play the first video" needs no typing and is untouched,
+     * so a genuine Done is never refused for it.
+     *
+     * The consequence of being wrong is one extra round trip: [NOTHING_TYPED] is
+     * in [NUDGEABLE], so the loop asks once more rather than giving up. The
+     * consequence of NOT checking is JARVIS telling the user a job is finished
+     * when nothing happened, which is the one thing this project's prompt forbids
+     * everywhere else.
+     */
+    fun donePrematurely(goal: String?, taken: List<ScreenStep>): Boolean {
+        // No goal recorded means nothing to check it against — never refuse on a
+        // guess. The errand paths always pass one; the parser is also called from
+        // tests and from replays that may not.
+        val g = goal?.lowercase() ?: return false
+        if (COMPOSING.none { g.contains(it) }) return false
+        return taken.none { it is ScreenStep.Type }
+    }
+
+    /**
+     * Words in a goal that mean nothing has happened until text was entered.
+     *
+     * "find" and "tell" are deliberately absent: "find my messages" and "tell me
+     * the time" can both be finished with taps alone, and a rule that nudges them
+     * would cost a round trip on tasks that were already complete.
+     */
+    private val COMPOSING = listOf(
+        "ask", "write", "type", "send", "message", "prompt",
+        "reply", "post", "search", "look up", "google",
+    )
 
     /** True when the loop has spent its budget. */
     fun exhausted(stepsTaken: Int): Boolean = stepsTaken >= MAX_STEPS

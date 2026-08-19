@@ -41,6 +41,15 @@ object GroqClient {
      * that actually need it — and each list still ends with the others, so a
      * model out of quota is never a dead end.
      *
+     * **Both tiers now list the SAME two models in opposite order, on purpose.**
+     * By the evening of 2026-08-18, Groq had retired `llama-3.3-70b-versatile`
+     * AND `llama-3.1-8b-instant` — leaving each tier with exactly ONE live model
+     * and therefore no fallback at all. A trace shows the cost immediately: one
+     * `Empty reply from model` and the whole turn died with `Brain error`,
+     * because there was nothing left to try. Two live models, each preferred by
+     * one tier, restores real depth without inventing model ids from memory —
+     * these two are the only ones this account's own traffic proves are alive.
+     *
      * `llama-3.3-70b-versatile` used to lead [SMART_MODELS] and was REMOVED on
      * 2026-08-18: Groq has retired it. A device trace shows the cost of leaving a
      * dead model in the list — `model llama-3.3-70b-versatile is retired —
@@ -52,12 +61,12 @@ object GroqClient {
      */
     private val SMART_MODELS = listOf(
         "openai/gpt-oss-120b",
-        "llama-3.1-8b-instant",
+        "openai/gpt-oss-20b",
     )
 
     private val FAST_MODELS = listOf(
-        "llama-3.1-8b-instant",
         "openai/gpt-oss-20b",
+        "openai/gpt-oss-120b",
     )
 
     /**
@@ -65,7 +74,11 @@ object GroqClient {
      * Asserted in `GroqClientParseTest`, since the lists themselves are the thing
      * being protected.
      */
-    internal val RETIRED_UPSTREAM = listOf("llama-3.3-70b-versatile", "gemma2-9b-it")
+    internal val RETIRED_UPSTREAM = listOf(
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "gemma2-9b-it",
+    )
 
     /** Exposed for unit tests only — the lists above are otherwise private. */
     internal fun modelsForTest(tier: Tier) = modelsFor(tier)
@@ -73,6 +86,9 @@ object GroqClient {
     private fun modelsFor(tier: Tier) = if (tier == Tier.FAST) FAST_MODELS else SMART_MODELS
 
     private const val ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+
+    /** Matched on, so it is a constant rather than a string repeated twice. */
+    private const val EMPTY_REPLY = "Empty reply from model"
 
     fun hasKey(): Boolean = BuildConfig.GROQ_API_KEY.isNotBlank()
 
@@ -95,7 +111,17 @@ object GroqClient {
                 if (model in retired) continue
                 if (blockedUntil.getOrDefault(model, 0L) > System.currentTimeMillis()) continue
                 anyTried = true
-                val outcome = requestModel(model, messages, context, key, systemOverride)
+                var outcome = requestModel(model, messages, context, key, systemOverride)
+                // An empty reply is not a broken model — it is a model that spent
+                // its budget without producing text, which is transient. Trying
+                // the SAME one again is far more likely to work than falling
+                // through to a different one, and a trace shows a turn dying with
+                // "Brain error: Empty reply from model" when there was nothing
+                // left to fall through to.
+                if (outcome.text == null && outcome.reason == EMPTY_REPLY) {
+                    DebugLog.log(DebugLog.Stage.ERROR, "$model returned nothing — asking once more")
+                    outcome = requestModel(model, messages, context, key, systemOverride)
+                }
                 if (outcome.text != null) return@withContext outcome.text
                 lastReason = outcome.reason ?: "Unknown error"
                 if (!outcome.retryable) throw GroqException(lastReason)
@@ -175,7 +201,7 @@ object GroqClient {
             val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
             if (ok) {
                 val text = parseContent(body)
-                if (text.isBlank()) Outcome(null, "Empty reply from model", true)
+                if (text.isBlank()) Outcome(null, EMPTY_REPLY, true)
                 else Outcome(text, null, false)
             } else {
                 val reason = if (code == 429) {

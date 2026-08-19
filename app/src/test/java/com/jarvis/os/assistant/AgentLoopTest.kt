@@ -390,4 +390,64 @@ class AgentLoopTest {
         org.junit.Assert.assertNotNull("an irreversible tap must ask first", ask)
         org.junit.Assert.assertEquals(ScreenStep.Tap("Send"), ask!!.pending)
     }
+
+    // --- "done" is a claim, and a claim can be checked ------------------------
+
+    @Test
+    fun `done is refused when the task needed typing and nothing was typed`() {
+        // From a device trace: asked to open Claude and send it a prompt, the loop
+        // tapped one control and announced "That's done." having typed nothing.
+        // The user: "you didn't ask him anything yet".
+        assertTrue(
+            AgentLoop.donePrematurely(
+                "go to cloud and ask him to make a website about food",
+                listOf(ScreenStep.Open("Claude"), ScreenStep.Tap("Claude")),
+            ),
+        )
+    }
+
+    @Test
+    fun `done is accepted once something has actually been typed`() {
+        assertFalse(
+            AgentLoop.donePrematurely(
+                "ask him to make a website",
+                listOf(ScreenStep.Open("Claude"), ScreenStep.Type("make a website"), ScreenStep.Tap("Send")),
+            ),
+        )
+    }
+
+    @Test
+    fun `a goal that needs no typing is never refused`() {
+        // The false-positive direction. Playing a video, opening a chat and
+        // turning on shuffle are all finished with taps, and nudging them would
+        // cost a round trip on a task that was already complete.
+        listOf(
+            "open youtube and play the first video",
+            "open the chat with mom",
+            "turn on shuffle",
+            "pause the music",
+        ).forEach {
+            assertFalse("\"$it\" needs no typing", AgentLoop.donePrematurely(it, listOf(ScreenStep.Tap("x"))))
+        }
+    }
+
+    @Test
+    fun `a premature done is nudged rather than ending the errand`() {
+        // It goes through NUDGEABLE, so the loop asks once more instead of giving
+        // up — the same treatment as a reflexive first-move Back.
+        assertTrue(AgentLoop.NOTHING_TYPED in AgentLoop.NUDGEABLE)
+    }
+
+    @Test
+    fun `parseMove turns a premature done into a nudge`() {
+        val move = AgentLoop.parseMove(
+            "<<DONE>>",
+            avoid = null,
+            taken = listOf(ScreenStep.Open("Claude"), ScreenStep.Tap("Claude")),
+            stayInApp = "",
+            goal = "ask cloud to make a website about food",
+        )
+
+        assertEquals(AgentMove.Blocked(AgentLoop.NOTHING_TYPED), move)
+    }
 }
