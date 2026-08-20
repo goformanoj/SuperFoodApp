@@ -15,6 +15,7 @@
 import { capFor, dayKey, isOverCap, overCapBody, remaining } from './quota.js'
 import { modelsFor } from './models.js'
 import { d1Store } from './db.js'
+import { MIGRATIONS } from './schema.js'
 import { groqProvider } from './providers/groq.js'
 
 /**
@@ -33,6 +34,24 @@ export function createWorker({ store, provider, proxySecret = null, now = () => 
         return Response.json({ ok: true })
       }
 
+      // Creating the tables, without a terminal.
+      //
+      // This project is built and operated entirely from a phone, so
+      // `wrangler d1 execute --file=schema.sql` is not a step the user can take.
+      // Every statement is IF NOT EXISTS, so this is idempotent — which is what
+      // makes it safe to expose at all — and it is behind the same shared secret
+      // as everything else.
+      if (request.method === 'POST' && url.pathname === '/admin/migrate') {
+        if (!checkSecret(request, proxySecret)) {
+          return Response.json({ error: 'forbidden' }, { status: 403 })
+        }
+        if (!store.migrate) {
+          return Response.json({ error: 'not_supported' }, { status: 501 })
+        }
+        await store.migrate()
+        return Response.json({ ok: true, tables: MIGRATIONS.length })
+      }
+
       if (request.method !== 'POST' || url.pathname !== '/chat') {
         return Response.json({ error: 'not_found' }, { status: 404 })
       }
@@ -44,11 +63,8 @@ export function createWorker({ store, provider, proxySecret = null, now = () => 
       // an open relay to somebody's Groq account: the uid below is self-declared,
       // so anyone who finds the URL could spend the whole allowance. This makes it
       // a closed relay in the meantime.
-      if (proxySecret) {
-        const offered = request.headers.get('X-Proxy-Secret') ?? ''
-        if (!constantTimeEquals(offered, proxySecret)) {
-          return Response.json({ error: 'forbidden' }, { status: 403 })
-        }
+      if (!checkSecret(request, proxySecret)) {
+        return Response.json({ error: 'forbidden' }, { status: 403 })
       }
 
       // PHASE 3 replaces this with a verified Firebase ID token. Until then any
@@ -111,6 +127,12 @@ export function createWorker({ store, provider, proxySecret = null, now = () => 
       })
     },
   }
+}
+
+/** True when the caller presented the shared secret, or none is configured. */
+function checkSecret(request, proxySecret) {
+  if (!proxySecret) return true
+  return constantTimeEquals(request.headers.get('X-Proxy-Secret') ?? '', proxySecret)
 }
 
 /**

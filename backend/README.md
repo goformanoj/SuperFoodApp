@@ -42,6 +42,31 @@ rather than reasoned about and handed to the user to try on a phone.
 Full plan: [`../BACKEND_PLAN.md`](../BACKEND_PLAN.md). Architecture and the
 reasoning behind each decision: [`../COMMERCIALIZATION.md`](../COMMERCIALIZATION.md) §1b/§1d.
 
+## Deploying, from a phone
+
+1. **D1 → Create database**, named `jarvis`. Its id is already in `wrangler.toml`.
+2. **Workers & Pages → Create → Connect to Git**, this repo, **root directory `backend`**.
+   Cloudflare builds and deploys on every push; nothing needs to reach Cloudflare from a
+   dev machine, which matters because this project has never had one.
+3. After the first deploy, add the two secrets below.
+4. Create the tables — no terminal required:
+
+   ```
+   POST https://<your-worker>/admin/migrate
+   X-Proxy-Secret: <PROXY_SECRET>
+   ```
+
+   Idempotent by construction (every statement is `CREATE TABLE IF NOT EXISTS`), guarded by
+   the same shared secret as `/chat`, and incapable of dropping anything — there is a test
+   asserting no migration contains `DROP`, `DELETE`, `TRUNCATE` or `ALTER`, because this is
+   reachable over the internet behind one string.
+
+5. `GET /health` to confirm it is alive.
+
+`schema.sql` is the same thing for anyone who does have a terminal
+(`wrangler d1 execute jarvis --file=schema.sql`). `src/schema.js` is the authoritative copy
+and a test checks the two have not drifted.
+
 ## Secrets, set in the Cloudflare dashboard
 
 Worker → Settings → Variables and Secrets. Never in this repo, never in `wrangler.toml`:

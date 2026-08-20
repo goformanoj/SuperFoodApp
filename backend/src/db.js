@@ -14,11 +14,18 @@
  * whole reason it was chosen.
  */
 
+import { MIGRATIONS } from './schema.js'
+
 /** @typedef {{ userPlan(uid): Promise<string>, usedToday(uid, day): Promise<number>, addUsage(uid, day, inTok, outTok): Promise<void> }} Store */
 
 /** Backed by a real D1 binding. */
 export function d1Store(db, nowMs = () => Date.now()) {
   return {
+    /** Creates the tables if they are not there. Idempotent by construction. */
+    async migrate() {
+      for (const sql of MIGRATIONS) await db.prepare(sql).run()
+    },
+
     async userPlan(uid) {
       const row = await db.prepare('SELECT plan FROM users WHERE uid = ?1').bind(uid).first()
       if (row) return row.plan
@@ -66,11 +73,15 @@ export function d1Store(db, nowMs = () => Date.now()) {
  * concurrency test here is testing something real rather than a fiction.
  */
 export function memoryStore(seed = {}) {
+  const migrations = []
   const users = new Map(Object.entries(seed.users ?? {}))
   const usage = new Map(Object.entries(seed.usage ?? {}))
   const key = (uid, day) => `${uid}|${day}`
 
   return {
+    async migrate() {
+      migrations.push(...MIGRATIONS)
+    },
     async userPlan(uid) {
       if (!users.has(uid)) users.set(uid, 'free')
       return users.get(uid)
@@ -88,6 +99,7 @@ export function memoryStore(seed = {}) {
       usage.set(k, row)
     },
     // Test-only windows onto the state.
+    _migrations: migrations,
     _users: users,
     _usage: usage,
   }

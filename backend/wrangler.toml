@@ -4,8 +4,14 @@ name = "jarvis-proxy"
 main = "src/index.js"
 compatibility_date = "2026-08-18"
 
-# Created in Phase 1 with `wrangler d1 create jarvis`, which prints the id.
+# Created in the dashboard (Storage & databases -> D1). The id is not a secret —
+# Cloudflare's own convention is that it lives in committed config, and it is
+# useless without an API token.
 [[d1_databases]]
 binding = "DB"
 database_name = "jarvis"
-database_id = "REPLACE_ME_IN_PHASE_1"
+database_id = "3841685b-2ad2-4f38-94e5-065697c0efcb"
+
+# Logs, so a failing deploy can be diagnosed from the dashboard rather than guessed at.
+[observability]
+enabled = true
