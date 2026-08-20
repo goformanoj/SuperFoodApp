@@ -24,15 +24,32 @@ rather than reasoned about and handed to the user to try on a phone.
 |---|---|---|
 | Quota + token accounting | **real, tested** | — |
 | Model list per plan | **real, tested** | — |
-| Provider | fake, deterministic | Phase 1: Groq |
-| Auth | **stubbed** — `X-Uid` header | Phase 3: Firebase ID token |
+| Provider | **real Groq**, with the fallback chain | — |
+| App gate | **shared secret** (`X-Proxy-Secret`) | Phase 3 replaces with Firebase |
+| User identity | **stubbed** — `X-Uid` header | Phase 3: Firebase ID token |
 | Storage | D1 in prod, in-memory in tests | — |
 
-> ⚠️ **Do not deploy to a public URL before Phase 3.** Auth is a stub: any caller
-> can claim any uid, and therefore anyone's allowance.
+> ⚠️ **The shared secret is not real auth.** Everyone sends the same string, so
+> it identifies the *app*, not a user — a person who has the app can still claim
+> any uid and therefore any allowance. What it does buy is that a stranger who
+> finds the URL cannot spend the Groq key at all, which is the difference between
+> a closed relay and an open one. Firebase replaces it in Phase 3.
+>
+> The deployed entry point **fails closed**: with `PROXY_SECRET` or `GROQ_API_KEY`
+> unset it returns 503 and serves nothing. "Allow when unconfigured" is the kind
+> of default nobody notices until the bill does.
 
 Full plan: [`../BACKEND_PLAN.md`](../BACKEND_PLAN.md). Architecture and the
 reasoning behind each decision: [`../COMMERCIALIZATION.md`](../COMMERCIALIZATION.md) §1b/§1d.
+
+## Secrets, set in the Cloudflare dashboard
+
+Worker → Settings → Variables and Secrets. Never in this repo, never in `wrangler.toml`:
+
+| Secret | What |
+|---|---|
+| `GROQ_API_KEY` | the provider key the phone must never hold |
+| `PROXY_SECRET` | any long random string; the app sends it as `X-Proxy-Secret` |
 
 ## The three decisions worth not re-litigating
 

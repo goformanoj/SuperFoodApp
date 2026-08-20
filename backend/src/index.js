@@ -15,7 +15,7 @@
 import { capFor, dayKey, isOverCap, overCapBody, remaining } from './quota.js'
 import { modelsFor } from './models.js'
 import { d1Store } from './db.js'
-import { fakeProvider } from './providers/fake.js'
+import { groqProvider } from './providers/groq.js'
 
 /**
  * Builds a handler from its dependencies.
@@ -24,7 +24,7 @@ import { fakeProvider } from './providers/fake.js'
  * provider and a clock. The alternative — reaching for globals inside the
  * handler — is what makes a worker testable only by deploying it.
  */
-export function createWorker({ store, provider, now = () => Date.now() }) {
+export function createWorker({ store, provider, proxySecret = null, now = () => Date.now() }) {
   return {
     async fetch(request) {
       const url = new URL(request.url)
@@ -37,9 +37,22 @@ export function createWorker({ store, provider, now = () => Date.now() }) {
         return Response.json({ error: 'not_found' }, { status: 404 })
       }
 
+      // A shared secret, until Firebase lands in Phase 3.
+      //
+      // Crude, and not a substitute for real auth — everyone shares one string,
+      // so it identifies the APP, not a user. But without it a deployed Worker is
+      // an open relay to somebody's Groq account: the uid below is self-declared,
+      // so anyone who finds the URL could spend the whole allowance. This makes it
+      // a closed relay in the meantime.
+      if (proxySecret) {
+        const offered = request.headers.get('X-Proxy-Secret') ?? ''
+        if (!constantTimeEquals(offered, proxySecret)) {
+          return Response.json({ error: 'forbidden' }, { status: 403 })
+        }
+      }
+
       // PHASE 3 replaces this with a verified Firebase ID token. Until then any
-      // caller can claim any uid, which is exactly why this must not be deployed
-      // to a public URL before Phase 3.
+      // caller past the shared secret can claim any uid.
       const uid = request.headers.get('X-Uid')
       if (!uid) return Response.json({ error: 'no_uid' }, { status: 401 })
 
@@ -67,16 +80,19 @@ export function createWorker({ store, provider, now = () => Date.now() }) {
         return Response.json(overCapBody(nowMs, plan), { status: 429 })
       }
 
-      const model = modelsFor(plan)[0]
+      // The whole candidate list, not one: which of them is dead or cooling down
+      // is the provider's business, and today's two retirements are exactly why
+      // that decision must not be frozen into a single choice up here.
+      const models = modelsFor(plan)
       let result
       try {
-        result = await provider.complete({ model, messages, system: body.system })
+        result = await provider.complete({ models, messages, system: body.system })
       } catch (e) {
         // Nothing is charged. The user got no answer; billing them for the
         // provider's bad day would be the wrong way round.
         return Response.json(
           { error: 'provider_failed', detail: String(e?.message ?? e) },
-          { status: 502 },
+          { status: e?.status ?? 502 },
         )
       }
 
@@ -88,7 +104,7 @@ export function createWorker({ store, provider, now = () => Date.now() }) {
 
       return Response.json({
         reply: result.text,
-        model,
+        model: result.model,
         plan,
         usage: { input: inTok, output: outTok },
         remaining: remaining(used + inTok + outTok, cap),
@@ -97,11 +113,30 @@ export function createWorker({ store, provider, now = () => Date.now() }) {
   }
 }
 
+/**
+ * Compares without leaking length or position through timing. Overkill for a
+ * shared secret behind TLS, and cheap enough that there is no reason not to.
+ */
+function constantTimeEquals(a, b) {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
 export default {
   async fetch(request, env) {
-    // PHASE 1 swaps this for the real Groq provider behind the same interface.
-    const provider = fakeProvider()
+    // FAIL CLOSED. A Worker deployed without its secret would otherwise be an
+    // open relay to the Groq key sitting next to it — and the failure mode of
+    // "allow when unconfigured" is that nobody notices until the bill does.
+    if (!env.PROXY_SECRET) {
+      return Response.json({ error: 'server_unconfigured' }, { status: 503 })
+    }
+    if (!env.GROQ_API_KEY) {
+      return Response.json({ error: 'server_unconfigured' }, { status: 503 })
+    }
+    const provider = groqProvider(env.GROQ_API_KEY)
     const store = d1Store(env.DB)
-    return createWorker({ store, provider }).fetch(request)
+    return createWorker({ store, provider, proxySecret: env.PROXY_SECRET }).fetch(request)
   },
 }

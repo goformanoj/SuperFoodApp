@@ -13,10 +13,14 @@ export function fakeProvider(options = {}) {
 
   return {
     calls,
-    async complete({ model, messages }) {
-      calls.push({ model, messages })
+    async complete({ models, messages, system }) {
+      // Takes a LIST, exactly like the real provider: choosing among candidates
+      // is provider-specific knowledge (what is retired, what is cooling down),
+      // and a fake with a different shape would let the Worker compile against
+      // an interface nothing really implements.
+      calls.push({ models, messages, system })
       if (options.fail) throw new Error(options.fail)
-      return { text: reply, usage }
+      return { text: reply, usage, model: models[0] }
     },
   }
 }
