@@ -49,6 +49,16 @@ combination, and precisely what a pure-logic gate is for. Same lesson as
 `HotwordOwnershipTest` finding the two-owner drift — the fault was found by
 *running* the rules over their range, not by reasoning about them.
 
+**A placement fault that no amount of staring at the file would show.** The
+overlay was first put inside the `bottomDashboard` else-branch of the host Box —
+the layout that only the Orbit theme uses. It reads perfectly: correct nesting,
+correct ordering, drawn last so it covers the navigation. It just means three of
+the four themes get an orb that does nothing when you pinch it. The shape of this
+is familiar from the wake word and the floating orb earlier in the session:
+**state and UI that belong to the whole app put inside a branch that only some of
+it travels.** The question to ask is not "is this in the right place in the
+file", it is "which code paths reach this line".
+
 **A Gradle trap worth remembering.** Narrowing the `ui/` exclusion needed a Spec
 rather than an include pattern, because Gradle's pattern sets let an exclude beat
 an include. But the Spec is asked about **directories** too, and excluding one
