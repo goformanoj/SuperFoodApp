@@ -1,5 +1,72 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (the two owed) — galaxies that differ, and a sky per place
+
+The two items held back from the variety round, deliberately, so they would not
+stack on an unverified base. That base is now green and merged, so here they are.
+
+### Galaxies had the planets' disease
+
+`GalaxyKind` decided the whole picture — five kinds, five `when` branches — and
+`arms`, `twist` and `tilt` were adjustments nobody can see across a gap. Exactly
+the shape recorded last time: **a `when` over an enum that returns a whole
+rendering is a generator with that enum's cardinality**, however rich the data
+hanging off it looks.
+
+Eight axes now, each independently visible at a glance and each composing with the
+rest:
+
+| Axis | Why it reads |
+|---|---|
+| `core` | The bulge was a flat `0.34` for every galaxy in the universe. A small hub with long arms and a huge hub with stubs are different objects at a glance, and nothing else has to change. |
+| `bar` | And **not** tied to `Barred` — plenty of ordinary spirals have a short one, and tying it to the kind was part of what made five kinds read as five fixed pictures. |
+| `dust` | The only feature here that takes light **away**. Every other addition brightens the same shape; a dark lane cutting an arm changes the shape. |
+| `lopsided` | Real galaxies are rarely balanced — a neighbour has usually pulled one side out — and perfect symmetry is most of why a generated one looks generated. |
+| `scatter` | Sharp spiral through to fog. |
+| `clusters` | Globulars in the halo, drawn on a *sphere* rather than flattened with the disc, because a halo is not a disc. |
+| `starburst` | Star-forming knots. An irregular always has them: it is irregular precisely because something is happening to it. |
+| `companion` | A satellite dwarf — and the reason it is lopsided, so the two belong together. |
+
+An elliptical is given no dust, because it used its up an age ago, and a test says
+so. One implausible combination undoes fifty good ones.
+
+### There was one sky
+
+Seven clouds, one diagonal band at one **fixed angle**, one star density —
+recoloured per place and identical in every other respect. So every galaxy you
+entered had the same weather as the last, and *"better backdrops for all these"*
+is what that looked like from outside.
+
+New pure `SkySpec` + `skyFor(seed)`: band angle, band weight, band width, cloud
+count and spread, star density, distant galaxies, and how dark the ground is.
+Seeded off the place, so a galaxy's sky is the same every time you return — **a
+backdrop that reshuffles on each visit is worse than one that never changes**,
+because it says the place is not real. A test pins that.
+
+A quarter of skies come out nearly empty, on purpose. Emptiness is a
+characteristic, and without quiet skies the busy ones stop reading as busy because
+there is nothing they are busier than. A test asserts both that some are quiet and
+that most are not.
+
+### The same lag fault, in the other file
+
+`drawDeepField` drew **420 individual circles a frame** and gave a diffraction
+cross to every star above 0.86 brightness — around sixty of them, each allocating
+two gradient shaders. Roughly **120 shader allocations per frame**, for a
+backdrop, on the one screen that is also running a 3D orb.
+
+That is precisely the fault found in `ThemeBackdrop` last round, in a different
+file, and it was still sitting here. Same fix: the faint majority bucket into a
+dozen `drawPoints` calls, the cross threshold moves to 0.93 (sixty crosses in one
+sky is a lens fault, not a star field), and the geometry is built once instead of
+recomputed every frame to produce the same answer.
+
+**Worth stating as a rule rather than a third anecdote:** any `for` loop in a
+draw that allocates a `Brush` is a per-frame shader allocation. Two files have now
+had one. Grep for `Brush.` inside a loop before assuming the next lag report is
+something new.
+
+
 ## 2026-08-23 (build break) — threaded a parameter to the wrong depth
 
 **What broke.** `b753359` failed on two lines:

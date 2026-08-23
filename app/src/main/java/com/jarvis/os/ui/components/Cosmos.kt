@@ -339,6 +339,62 @@ data class PlanetSpec(
     val intact: Float,
 )
 
+
+// ── The sky a place has ─────────────────────────────────────────────────────
+
+/**
+ * The backdrop of wherever you are standing.
+ *
+ * There was one sky. Seven drifting clouds, one diagonal band at one angle, one
+ * star density — recoloured per place and identical in every other respect, so
+ * every galaxy you entered and every system you flew into had the same weather.
+ * *"better backdrops for all these"*.
+ *
+ * A sky is cheap to vary and it is the largest thing on the screen, so it does
+ * more for a place feeling like somewhere than anything drawn in front of it.
+ * All of this is seeded off the place, so a galaxy's sky is the same every time
+ * you go back to it — a backdrop that reshuffles on each visit is worse than one
+ * that never changes, because it says the place is not real.
+ */
+data class SkySpec(
+    /** Which way the galactic band runs, in radians. */
+    val bandAngle: Float,
+    /** How obvious the band is, 0 none to 1 dominant. */
+    val bandWeight: Float,
+    /** How broad it is across its length. */
+    val bandWidth: Float,
+    /** Drifting nebulosity, 0 to 9 of them. */
+    val clouds: Int,
+    /** How far the clouds spread from the centre. */
+    val cloudSpread: Float,
+    /** Star density as a fraction of the maximum field. */
+    val density: Float,
+    /** Far-off galaxies, seen edge-on or as smudges. */
+    val distant: Int,
+    /** How dark the ground behind everything is, 0 black to 1 washed. */
+    val depth: Float,
+)
+
+/** The sky at [seed] — stable for a place, different between places. */
+fun skyFor(seed: Int): SkySpec {
+    val quiet = OrbMath.unitRandom(seed * 5171 + 3) > 0.72f
+    return SkySpec(
+        bandAngle = OrbMath.range(seed * 5209 + 7, 0f, OrbMath.PI_F),
+        // A quarter of places have essentially no band. Emptiness is a
+        // characteristic too, and it is the one that makes a busy sky elsewhere
+        // feel like a choice rather than the only setting available.
+        bandWeight = if (quiet) OrbMath.range(seed * 5231 + 11, 0f, 0.18f)
+        else OrbMath.range(seed * 5231 + 11, 0.45f, 1f),
+        bandWidth = OrbMath.range(seed * 5279 + 13, 0.10f, 0.34f),
+        clouds = if (quiet) (OrbMath.unitRandom(seed * 5297 + 17) * 3).toInt()
+        else 3 + (OrbMath.unitRandom(seed * 5297 + 17) * 7).toInt(),
+        cloudSpread = OrbMath.range(seed * 5333 + 19, 0.20f, 0.70f),
+        density = OrbMath.range(seed * 5387 + 23, 0.35f, 1f),
+        distant = (OrbMath.unitRandom(seed * 5407 + 29) * 6).toInt(),
+        depth = OrbMath.range(seed * 5443 + 31, 0f, 0.55f),
+    )
+}
+
 /** The world at [seed], in a dimension belonging to [star]. */
 fun planetFor(seed: Int, star: StarKind?): PlanetSpec {
     val choices = PlanetKind.formingIn(star)
@@ -458,6 +514,38 @@ data class GalaxySpec(
     val twist: Float,
     val tilt: Float,
     val palette: DimensionPalette,
+    /**
+     * How much of the light sits in the central bulge, as a fraction of the
+     * radius. The most visible single difference between two galaxies of the same
+     * kind: a tiny hub with long arms and a huge hub with stubs are not the same
+     * object at a glance, and nothing else about them has to change.
+     */
+    val core: Float,
+    /** Straight spine through the middle, 0 for none. Not only for [GalaxyKind.Barred]. */
+    val bar: Float,
+    /**
+     * Dark lanes cutting along the arms.
+     *
+     * Real, and unusually valuable here: a dust lane is the only feature that
+     * takes light AWAY, so it reads even where every other addition would just
+     * brighten the same shape.
+     */
+    val dust: Float,
+    /**
+     * How lopsided it is, 0 symmetric to 1 markedly one-sided.
+     *
+     * Real galaxies are rarely balanced — a neighbour has usually pulled one side
+     * out — and perfect symmetry is most of why a generated one looks generated.
+     */
+    val lopsided: Float,
+    /** How tightly stars hug the arms: low is a sharp spiral, high is a fog. */
+    val scatter: Float,
+    /** Globular clusters in the halo, well outside the disc. */
+    val clusters: Int,
+    /** Bright star-forming knots along the arms, 0 for a quiet galaxy. */
+    val starburst: Float,
+    /** A satellite dwarf, at this bearing from the hub — negative for none. */
+    val companion: Float,
 )
 
 /**
@@ -483,6 +571,40 @@ fun galaxiesFor(ringCount: Int): List<GalaxySpec> = (0 until ringCount.coerceAtL
         tilt = OrbMath.range(seed + 47, 0.18f, 0.92f),
         // A galaxy's own colour comes from its ring, not from any star in it.
         palette = paletteFor(seed, StarKind.entries[ring % StarKind.entries.size]),
+        // ── The axes that stop five kinds being five pictures ────────────────
+        //
+        // Same lesson the planets taught: `kind` was deciding the whole image, so
+        // there were five galaxies and `arms`/`twist`/`tilt` were adjustments
+        // nobody could see across a gap. These are each independently visible at
+        // a glance, and they multiply.
+        core = OrbMath.range(seed + 53, 0.10f, 0.42f),
+        // A bar is not the exclusive property of a barred spiral — plenty of
+        // ordinary spirals have a short one, and tying it to the kind was part of
+        // what made the kinds read as five fixed pictures.
+        bar = if (kind == GalaxyKind.Barred) {
+            OrbMath.range(seed + 59, 0.28f, 0.55f)
+        } else if (kind == GalaxyKind.Spiral && OrbMath.unitRandom(seed + 61) > 0.55f) {
+            OrbMath.range(seed + 67, 0.10f, 0.26f)
+        } else {
+            0f
+        },
+        // Ellipticals have long since lost their dust; the rest keep some.
+        dust = if (kind == GalaxyKind.Elliptical) 0f else OrbMath.range(seed + 71, 0f, 0.85f),
+        lopsided = OrbMath.range(seed + 73, 0f, 0.75f),
+        scatter = OrbMath.range(seed + 79, 0.22f, 0.85f),
+        clusters = (OrbMath.unitRandom(seed + 83) * 14).toInt(),
+        // An irregular is irregular BECAUSE something is happening to it, so it
+        // is the one kind that always has star formation running.
+        starburst = if (kind == GalaxyKind.Irregular) {
+            OrbMath.range(seed + 89, 0.45f, 1f)
+        } else {
+            OrbMath.range(seed + 89, 0f, 0.70f)
+        },
+        companion = if (OrbMath.unitRandom(seed + 97) > 0.55f) {
+            OrbMath.range(seed + 101, 0f, OrbMath.TAU)
+        } else {
+            -1f
+        },
     )
 }
 

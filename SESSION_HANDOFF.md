@@ -2,8 +2,8 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `9cfc4fa`, **green with the
-`jarvis-debug-apk` artifact**, and `main` fast-forwarded to it. The universe is
+Branch `claude/phone-glitch-investigation-g6dnhk`, **CI pending** — `main` is at
+`9cfc4fa`, the last green state. The universe is
 now four layers you can touch: orb → galaxy → a star's **system** → a **world** with things on it. Every
 layer zooms, the orb turns under a drag, and the theme stops at the orb.
 
@@ -48,6 +48,21 @@ is exactly the "a fixture keeps dead code alive" trap recorded below. Left in
 rather than ripped out blind at the end of a large blind-Compose change. It is
 the next cleanup; do not mistake the passing tests for coverage of anything that
 ships.
+
+### Two rules that have now each been learned twice
+
+**1. A `when` over an enum that returns a whole rendering is a generator with that
+enum's cardinality.** Planets had it (`PlanetKind` → eight pictures), galaxies had
+it (`GalaxyKind` → five). Extra seeds cannot help; only another independent axis
+can. If a spec has ten fields and one `when` decides the image, it has one field.
+
+**2. Any loop in a draw that allocates a `Brush` is a per-frame shader
+allocation.** `ThemeBackdrop` had it (~45 a frame), `drawDeepField` had it (~120 a
+frame) and was still doing it a round later. Before treating a lag report as new,
+grep for `Brush.` inside a `for`.
+
+Both were found by reading rather than by profiling, which is available here and
+a profiler is not.
 
 ### Threading a parameter through Compose: check the DEPTH, not the call sites
 

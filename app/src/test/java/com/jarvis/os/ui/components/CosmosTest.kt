@@ -487,6 +487,86 @@ class CosmosTest {
     }
 
 
+    // ── Galaxies, and skies ─────────────────────────────────────────────────
+
+    private fun lookOfGalaxy(g: GalaxySpec): String = listOf(
+        g.kind.name,
+        g.arms,
+        (g.core * 8).toInt(),
+        (g.bar * 6).toInt(),
+        (g.dust * 5).toInt(),
+        (g.lopsided * 4).toInt(),
+        (g.scatter * 5).toInt(),
+        g.clusters / 3,
+        (g.starburst * 4).toInt(),
+        if (g.companion >= 0f) "sat" else "-",
+        (g.tilt * 5).toInt(),
+    ).joinToString("/")
+
+    @Test
+    fun `galaxies do not repeat themselves`() {
+        // Five kinds meant five pictures, with arms and twist as adjustments
+        // nobody could see across a gap — the same fault the planets had.
+        val looks = (1..60).map { lookOfGalaxy(galaxiesFor(it).last()) }
+        assertTrue("only ${looks.toSet().size} distinct galaxies in 60", looks.toSet().size >= 58)
+    }
+
+    @Test
+    fun `an elliptical has no dust left`() {
+        // It used it up an age ago. A dust lane on one would say the generator is
+        // rolling numbers rather than describing anything.
+        (1..80).forEach {
+            val g = galaxiesFor(it).last()
+            if (g.kind == GalaxyKind.Elliptical) {
+                assertEquals("${g.designation} has dust", 0f, g.dust, 1e-6f)
+            }
+        }
+    }
+
+    @Test
+    fun `a barred galaxy always has its bar, and others may`() {
+        var plainWithBar = 0
+        (1..90).forEach {
+            val g = galaxiesFor(it).last()
+            if (g.kind == GalaxyKind.Barred) {
+                assertTrue("${g.designation} is barred with no bar", g.bar > 0.2f)
+            }
+            if (g.kind == GalaxyKind.Spiral && g.bar > 0f) plainWithBar++
+        }
+        // Tying the bar to the kind is part of what made five kinds read as five
+        // fixed pictures; plenty of ordinary spirals have a short one.
+        assertTrue("no unbarred spiral ever got a bar", plainWithBar > 0)
+    }
+
+    @Test
+    fun `skies differ from place to place and never reshuffle`() {
+        val looks = (1..80).map {
+            val s = skyFor(it * 31)
+            listOf(
+                (s.bandAngle * 4).toInt(),
+                (s.bandWeight * 5).toInt(),
+                s.clouds,
+                (s.density * 5).toInt(),
+                s.distant,
+                (s.depth * 4).toInt(),
+            ).joinToString("/")
+        }
+        assertTrue("only ${looks.toSet().size} distinct skies in 80", looks.toSet().size >= 74)
+        // Stable: a backdrop that reshuffles on each visit says the place is not
+        // real, which is worse than one that never changes.
+        assertEquals(skyFor(4242), skyFor(4242))
+    }
+
+    @Test
+    fun `some skies are nearly empty`() {
+        // Emptiness is a characteristic. Without quiet skies the busy ones stop
+        // reading as busy, because there is nothing they are busier than.
+        val quiet = (1..120).map { skyFor(it * 17) }.count { it.bandWeight < 0.20f }
+        assertTrue("no sky is quiet", quiet > 0)
+        assertTrue("nearly every sky is quiet ($quiet of 120)", quiet < 60)
+    }
+
+
     private fun lookOf(p: PlanetSpec): String = listOf(
         p.kind.name,
         p.pattern.name,

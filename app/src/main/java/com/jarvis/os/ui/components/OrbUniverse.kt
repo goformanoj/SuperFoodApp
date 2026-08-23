@@ -162,6 +162,12 @@ fun OrbUniverse(
     // recomposition loop, and the gesture lambda reading it is a composition
     // read. A plain holder has no observers and cannot loop.
     val placedWorlds = remember { WorldPlacements() }
+    // The star field's geometry, held across frames rather than rebuilt in each.
+    val deepField = remember { DeepFieldCache() }
+    // The sky belongs to the PLACE, and is stable for it: a backdrop that
+    // reshuffles every time you come back says the place is not real.
+    val skySeed = chosen?.branch?.times(7919) ?: galaxy?.let { (it.ring + 1) * 104_729 } ?: 1
+    val sky = remember(skySeed) { skyFor(skySeed) }
     // How far through the flight into the chosen star, 0..1. Held separately from
     // the zoom because the map has to keep drawing, receding, while the first
     // shell of the new dimension grows out of the star that was touched.
@@ -470,8 +476,10 @@ fun OrbUniverse(
             val skyA = here?.gas?.toColor() ?: palette.accent
             val skyB = here?.arm?.toColor() ?: palette.secondary
             val skyC = here?.spark?.toColor() ?: palette.highlight
-            drawSky(clock, skyA, skyB, skyC)
-            drawDeepField(clock, skyA, skyC)
+            // Its SHAPE comes from the place too, not only its colour. One sky
+            // recoloured per place gave every galaxy the same weather.
+            drawSky(sky, clock, skyA, skyB, skyC)
+            drawDeepField(sky, clock, skyA, skyC, deepField)
 
             val flight = enterStar.value
 
@@ -1029,7 +1037,11 @@ private fun DrawScope.drawGalaxyStage(
     val turn = clock * 0.06f
     val squash = galaxy.tilt
 
-    // The hub.
+    // THE HUB, at this galaxy's own size. It was a flat 0.34 for every galaxy in
+    // the universe — and the bulge is the most visible thing about one. A small
+    // hub with long arms and a huge hub with stubs are not the same object at a
+    // glance, and nothing else has to differ for that to read.
+    val hub = r * galaxy.core
     drawCircle(
         brush = Brush.radialGradient(
             listOf(
@@ -1038,12 +1050,31 @@ private fun DrawScope.drawGalaxyStage(
                 Color.Transparent,
             ),
             center = at,
-            radius = r * 0.34f,
+            radius = hub,
         ),
-        radius = r * 0.34f,
+        radius = hub,
         center = at,
         blendMode = BlendMode.Plus,
     )
+
+    // A bar, where there is one — and there may be one on an ordinary spiral,
+    // not only on a barred galaxy. Drawn before the disc so the arms lie over it.
+    if (galaxy.bar > 0.01f) {
+        val bx = cos(turn) * r * galaxy.bar
+        val by = sin(turn) * r * galaxy.bar * squash
+        drawLine(
+            brush = Brush.linearGradient(
+                listOf(Color.Transparent, ink.core.toColor().copy(alpha = 0.45f * fade), Color.Transparent),
+                start = Offset(at.x - bx, at.y - by),
+                end = Offset(at.x + bx, at.y + by),
+            ),
+            start = Offset(at.x - bx, at.y - by),
+            end = Offset(at.x + bx, at.y + by),
+            strokeWidth = r * 0.11f,
+            cap = StrokeCap.Round,
+            blendMode = BlendMode.Plus,
+        )
+    }
 
     // The body, by shape.
     val motes = 900
@@ -1055,7 +1086,8 @@ private fun DrawScope.drawGalaxyStage(
             GalaxyKind.Spiral, GalaxyKind.Barred -> {
                 val armIdx = i % galaxy.arms
                 f = OrbMath.unitRandom(seed * 3 + 1).let { it * it }
-                val scatter = (OrbMath.unitRandom(seed * 7 + 5) - 0.5f) * 0.55f * (1f - f * 0.55f)
+                val scatter = (OrbMath.unitRandom(seed * 7 + 5) - 0.5f) *
+                    galaxy.scatter * (1f - f * 0.55f)
                 // A barred spiral holds its inner stars on a straight spine
                 // instead of letting them wind — that bar IS the difference.
                 val wind = if (galaxy.kind == GalaxyKind.Barred && f < 0.34f) 0f else f * galaxy.twist
@@ -1079,7 +1111,11 @@ private fun DrawScope.drawGalaxyStage(
                 angle = OrbMath.unitRandom(seed * 7 + 2) * OrbMath.TAU + turn
             }
         }
-        val rr = r * (0.06f + f * 0.98f)
+        // LOPSIDED. Real galaxies are rarely balanced — a neighbour has usually
+        // pulled one side out — and perfect symmetry is most of why a generated
+        // one looks generated. One side reaches further than the other.
+        val pull = 1f + galaxy.lopsided * 0.45f * cos(angle - turn)
+        val rr = r * (0.06f + f * 0.98f) * pull
         val p = Offset(at.x + cos(angle) * rr, at.y + sin(angle) * rr * squash)
         val colour = if (i % 7 == 0) spark else if (i % 3 == 0) gas else arm
         drawCircle(
@@ -1107,6 +1143,99 @@ private fun DrawScope.drawGalaxyStage(
             center = q,
             blendMode = BlendMode.Plus,
         )
+    }
+
+    // DUST LANES. The only feature here that takes light AWAY, which is why it is
+    // worth having: every other addition brightens the same shape, and a dark
+    // lane cutting an arm changes the shape itself.
+    if (galaxy.dust > 0.04f) {
+        for (a in 0 until galaxy.arms) {
+            val lane = Path()
+            val steps = 26
+            for (k in 0..steps) {
+                val f = 0.14f + (k.toFloat() / steps) * 0.86f
+                val ang = turn + a * (OrbMath.TAU / galaxy.arms) + f * galaxy.twist + 0.16f
+                val rr = r * f * (1f + galaxy.lopsided * 0.45f * cos(ang - turn))
+                val x = at.x + cos(ang) * rr
+                val y = at.y + sin(ang) * rr * squash
+                if (k == 0) lane.moveTo(x, y) else lane.lineTo(x, y)
+            }
+            drawPath(
+                path = lane,
+                color = Color.Black.copy(alpha = 0.34f * galaxy.dust * fade),
+                style = Stroke(r * 0.055f, cap = StrokeCap.Round),
+            )
+        }
+    }
+
+    // STAR-FORMING KNOTS along the arms. A quiet galaxy has none; an irregular is
+    // irregular precisely because something is happening to it, so it always has.
+    if (galaxy.starburst > 0.05f) {
+        val knots = (galaxy.starburst * 22f).toInt()
+        for (i in 0 until knots) {
+            val f = OrbMath.range(galaxy.ring * 137 + i, 0.22f, 1f)
+            val a = turn + (i % galaxy.arms) * (OrbMath.TAU / galaxy.arms) +
+                f * galaxy.twist + OrbMath.range(galaxy.ring * 149 + i, -0.18f, 0.18f)
+            val rr = r * f * (1f + galaxy.lopsided * 0.45f * cos(a - turn))
+            val q = Offset(at.x + cos(a) * rr, at.y + sin(a) * rr * squash)
+            val kr = r * OrbMath.range(galaxy.ring * 151 + i, 0.02f, 0.055f)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(spark.copy(alpha = 0.55f * fade), Color.Transparent),
+                    center = q,
+                    radius = kr,
+                ),
+                radius = kr,
+                center = q,
+                blendMode = BlendMode.Plus,
+            )
+        }
+    }
+
+    // GLOBULAR CLUSTERS in the halo, well outside the disc and not flattened with
+    // it — a halo is a sphere, and drawing these on the disc's ellipse would say
+    // the generator does not know that.
+    for (i in 0 until galaxy.clusters) {
+        val a = OrbMath.range(galaxy.ring * 163 + i, 0f, OrbMath.TAU)
+        val d = r * OrbMath.range(galaxy.ring * 167 + i, 0.75f, 1.45f)
+        val q = Offset(at.x + cos(a) * d, at.y + sin(a) * d * 0.92f)
+        halo(q, r * 0.035f, arm, 0.30f * fade)
+        point(q, r * 0.006f, 0.55f * fade, spark)
+    }
+
+    // A SATELLITE, where this galaxy has one. It is also the reason it is
+    // lopsided, so the two belong together.
+    if (galaxy.companion >= 0f) {
+        val d = r * 1.15f
+        val q = Offset(
+            at.x + cos(galaxy.companion + turn * 0.3f) * d,
+            at.y + sin(galaxy.companion + turn * 0.3f) * d * squash,
+        )
+        val cr = r * 0.16f
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    ink.core.toColor().copy(alpha = 0.40f * fade),
+                    gas.copy(alpha = 0.16f * fade),
+                    Color.Transparent,
+                ),
+                center = q,
+                radius = cr,
+            ),
+            radius = cr,
+            center = q,
+            blendMode = BlendMode.Plus,
+        )
+        for (i in 0 until 40) {
+            val a = OrbMath.range(galaxy.ring * 173 + i, 0f, OrbMath.TAU)
+            val rr = cr * sqrt(OrbMath.unitRandom(galaxy.ring * 179 + i))
+            drawCircle(
+                color = arm.copy(alpha = 0.35f * fade),
+                radius = px(0.5f),
+                center = Offset(q.x + cos(a) * rr, q.y + sin(a) * rr * 0.8f),
+                blendMode = BlendMode.Plus,
+            )
+        }
     }
 
     // The stars you can enter, drawn over their own galaxy.
@@ -2548,58 +2677,176 @@ private fun DrawScope.drawCore(at: Offset, radius: Float, alpha: Float, highligh
     flare(at, r * 1.8f, Color.White, alpha * 0.45f)
 }
 
+/** One `drawPoints` call: every field star sharing a colour, size and brightness. */
+private class DeepBucket(val points: List<Offset>, val colour: Color, val diameter: Float)
+
+/** A field star bright enough to be worth a diffraction cross and a twinkle. */
+private class DeepStar(val at: Offset, val reach: Float, val alpha: Float, val rate: Float)
+
+private class DeepLayout(val buckets: List<DeepBucket>, val bright: List<DeepStar>)
+
 /**
- * The stars behind everything, fixed to the screen rather than to any shell.
+ * The star field behind the universe, batched and held across frames.
  *
- * They do not move with the zoom on purpose. Something has to stay still, or the
- * whole frame scales together and the dive reads as a picture being enlarged
- * instead of as travel through a space that keeps existing around you.
+ * It drew 420 individual circles a frame and gave a diffraction cross to every
+ * star above 0.86 brightness — around sixty of them, each allocating two gradient
+ * shaders. Roughly 120 shader allocations **per frame** for a backdrop, on the one
+ * screen that is also running a 3D orb. The identical fault the theme backdrop
+ * had, in the other file, found the same way.
+ *
+ * Same fix: the faint majority sort into a dozen buckets and go out as
+ * `drawPoints`, only a handful are worth a shader, and the geometry is built once
+ * rather than recomputed every frame to produce the same answer.
+ *
+ * **Deliberately not Compose state** — written from the draw phase, like
+ * `WorldPlacements` and for the same reason.
  */
-private fun DrawScope.drawDeepField(clock: Float, accent: Color, highlight: Color) {
-    // Three depths rather than one flat scatter. A sky where every star is the
-    // same size and brightness reads as noise on glass; the spread is what puts
-    // some of them behind the others.
-    for (i in 0 until 420) {
-        val x = OrbMath.unitRandom(i * 2 + 1) * size.width
-        val y = OrbMath.unitRandom(i * 2 + 2) * size.height
-        val depth = OrbMath.unitRandom(i * 7 + 5)
-        // Squared, so most stars are faint and a few are genuinely bright —
-        // which is how a real field is distributed and why it reads as one.
-        val near = depth * depth
-        val twinkle = 0.62f + 0.38f * abs(sin(clock * OrbMath.range(i, 0.6f, 2.4f) + i))
-        val colour = when {
-            i % 23 == 0 -> accent
-            i % 17 == 0 -> highlight
-            else -> Color.White
+private class DeepFieldCache {
+    private var key: String = ""
+    private var layout = DeepLayout(emptyList(), emptyList())
+
+    fun of(
+        w: Float,
+        h: Float,
+        count: Int,
+        accent: Color,
+        highlight: Color,
+        density: Float,
+    ): DeepLayout {
+        val k = "$w:$h:$count:${accent.hashCode()}:${highlight.hashCode()}:$density"
+        if (k == key) return layout
+
+        val sizes = listOf(0.45f, 0.85f, 1.35f)
+        val alphas = listOf(0.10f, 0.22f, 0.38f, 0.58f)
+        val buckets = LinkedHashMap<Int, MutableList<Offset>>()
+        val bright = mutableListOf<DeepStar>()
+
+        for (i in 0 until count) {
+            val at = Offset(
+                OrbMath.unitRandom(i * 2 + 1) * w,
+                OrbMath.unitRandom(i * 2 + 2) * h,
+            )
+            // Squared, so most stars are faint and a few genuinely bright — the
+            // distribution a real field has, and why it reads as one.
+            val d = OrbMath.unitRandom(i * 7 + 5)
+            val near = d * d
+            // 0.93, not the old 0.86: sixty crosses in one sky is a lens fault,
+            // not a star field, and each of them costs two shaders a frame.
+            if (near > 0.93f) {
+                bright += DeepStar(
+                    at = at,
+                    reach = (3.2f + near * 3.5f) * density,
+                    alpha = (0.05f + near * 0.55f) * 0.5f,
+                    rate = OrbMath.range(i, 0.6f, 2.4f),
+                )
+                continue
+            }
+            val ci = when {
+                i % 23 == 0 -> 1
+                i % 17 == 0 -> 2
+                else -> 0
+            }
+            val ai = (near * alphas.size).toInt().coerceAtMost(alphas.size - 1)
+            val si = (near * sizes.size).toInt().coerceAtMost(sizes.size - 1)
+            buckets.getOrPut(ci * 100 + si * 10 + ai) { mutableListOf() } += at
         }
-        val a = (0.05f + near * 0.55f) * twinkle
-        drawCircle(
-            color = colour.copy(alpha = a),
-            radius = px(0.35f + near * 1.15f),
-            center = Offset(x, y),
+
+        layout = DeepLayout(
+            buckets = buckets.map { (id, pts) ->
+                val ci = id / 100
+                val si = (id / 10) % 10
+                val ai = id % 10
+                DeepBucket(
+                    points = pts,
+                    colour = (
+                        when (ci) {
+                            1 -> accent
+                            2 -> highlight
+                            else -> Color.White
+                        }
+                        ).copy(alpha = alphas[ai]),
+                    diameter = sizes[si] * 2f * density,
+                )
+            },
+            bright = bright,
         )
-        // The brightest few get a cross, which is what stops the field reading
-        // as dust and starts it reading as stars.
-        if (near > 0.86f) {
-            spikes(Offset(x, y), px(3.2f + near * 3.5f), Color.White, a * 0.5f, 0f)
-        }
+        key = k
+        return layout
     }
 }
 
 /**
- * The gas the chart sits in.
+ * The star field, at whatever density this place's sky calls for.
  *
- * Two things a black rectangle does not have: a **galactic band** — the diagonal
- * thickening where you are looking along the disc rather than out of it — and
- * broad clouds you see the stars through. Both are drawn under the star field so
- * the stars sit inside the sky rather than on top of it.
+ * Density is per place now. A sky with 150 stars and one with 420 are different
+ * places before anything is drawn in front of them, and it costs nothing to say
+ * so.
  */
-private fun DrawScope.drawSky(clock: Float, accent: Color, secondary: Color, highlight: Color) {
-    // Clouds, drifting slowly and overlapping additively.
-    for (i in 0 until 7) {
+private fun DrawScope.drawDeepField(
+    sky: SkySpec,
+    clock: Float,
+    accent: Color,
+    highlight: Color,
+    cache: DeepFieldCache,
+) {
+    val count = (420 * sky.density).toInt()
+    val field = cache.of(size.width, size.height, count, accent, highlight, density)
+    field.buckets.forEach { b ->
+        drawPoints(
+            points = b.points,
+            pointMode = PointMode.Points,
+            color = b.colour,
+            strokeWidth = b.diameter,
+            cap = StrokeCap.Round,
+        )
+    }
+    field.bright.forEach { s ->
+        val twinkle = 0.62f + 0.38f * abs(sin(clock * s.rate))
+        spikes(s.at, s.reach, Color.White, s.alpha * twinkle, 0f)
+        point(s.at, s.reach * 0.13f, s.alpha * twinkle * 1.6f)
+    }
+}
+
+/**
+ * The sky of wherever you are, built to [SkySpec] rather than to one recipe.
+ *
+ * There was one sky: seven clouds, one diagonal band at one fixed angle, one
+ * density, recoloured per place and identical in every other respect — so every
+ * galaxy you entered had the same weather as the last. *"better backdrops for all
+ * these"*. Now the band runs at the place's own angle and may be absent
+ * altogether, the nebulosity is anywhere from none to nine, and some skies are
+ * genuinely empty, which is what lets a busy one read as busy.
+ */
+private fun DrawScope.drawSky(
+    spec: SkySpec,
+    clock: Float,
+    accent: Color,
+    secondary: Color,
+    highlight: Color,
+) {
+    // A little light on the ground, so the darkest skies are not all identically
+    // black and a washed one reads as somewhere with something behind it.
+    if (spec.depth > 0.02f) {
+        drawRect(
+            brush = Brush.radialGradient(
+                listOf(
+                    secondary.copy(alpha = 0.05f * spec.depth),
+                    Color.Transparent,
+                ),
+                center = Offset(size.width * 0.5f, size.height * 0.42f),
+                radius = size.maxDimension * 0.75f,
+            ),
+            blendMode = BlendMode.Plus,
+        )
+    }
+
+    // Nebulosity, drifting slowly and overlapping additively.
+    for (i in 0 until spec.clouds) {
         val drift = clock * OrbMath.range(i * 13 + 3, 0.04f, 0.12f) + i * 1.9f
-        val cx = size.width * (0.5f + cos(drift) * OrbMath.range(i * 5 + 1, 0.15f, 0.55f))
-        val cy = size.height * (0.5f + sin(drift * 1.2f) * OrbMath.range(i * 9 + 4, 0.15f, 0.48f))
+        val cx = size.width * (0.5f + cos(drift) * spec.cloudSpread *
+            OrbMath.range(i * 5 + 1, 0.35f, 1.15f))
+        val cy = size.height * (0.5f + sin(drift * 1.2f) * spec.cloudSpread *
+            OrbMath.range(i * 9 + 4, 0.30f, 1.05f))
         val r = size.minDimension * OrbMath.range(i * 11 + 7, 0.35f, 0.95f)
         val colour = when (i % 3) {
             0 -> accent
@@ -2622,28 +2869,61 @@ private fun DrawScope.drawSky(clock: Float, accent: Color, secondary: Color, hig
         )
     }
 
-    // The band. Drawn as a run of overlapping soft discs along a diagonal, so it
-    // has ragged edges instead of the hard boundary a rotated rectangle gives.
-    val steps = 22
-    for (k in 0 until steps) {
-        val t = k.toFloat() / (steps - 1)
-        val x = size.width * (-0.15f + 1.3f * t)
-        val y = size.height * (0.78f - 0.52f * t)
-        val r = size.minDimension * (0.20f + 0.10f * sin(t * 6.2f))
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(
-                    accent.copy(alpha = 0.055f),
-                    highlight.copy(alpha = 0.022f),
-                    Color.Transparent,
+    // The band, at THIS place's angle. Drawn as a run of overlapping soft discs
+    // so it has ragged edges instead of the hard boundary a rotated rectangle
+    // gives — and skipped entirely where the sky is a quiet one.
+    if (spec.bandWeight > 0.05f) {
+        val steps = 22
+        val dx = cos(spec.bandAngle)
+        val dy = sin(spec.bandAngle)
+        val half = size.maxDimension * 0.72f
+        for (k in 0 until steps) {
+            val t = k.toFloat() / (steps - 1) - 0.5f
+            val x = center.x + dx * half * t * 2f
+            val y = center.y + dy * half * t * 2f
+            val r = size.minDimension * spec.bandWidth * (0.75f + 0.35f * sin(t * 12.4f))
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(
+                        accent.copy(alpha = 0.055f * spec.bandWeight),
+                        highlight.copy(alpha = 0.022f * spec.bandWeight),
+                        Color.Transparent,
+                    ),
+                    center = Offset(x, y),
+                    radius = r,
                 ),
-                center = Offset(x, y),
                 radius = r,
-            ),
-            radius = r,
-            center = Offset(x, y),
-            blendMode = BlendMode.Plus,
-        )
+                center = Offset(x, y),
+                blendMode = BlendMode.Plus,
+            )
+        }
+    }
+
+    // Other galaxies, far enough away to be smudges. The cheapest possible cue
+    // that this sky is somewhere in particular rather than a texture: a shape you
+    // recognise, at a size that says how far off it is.
+    for (i in 0 until spec.distant) {
+        val gx = size.width * OrbMath.range(i * 71 + 5, 0.06f, 0.94f)
+        val gy = size.height * OrbMath.range(i * 73 + 7, 0.06f, 0.94f)
+        val gr = size.minDimension * OrbMath.range(i * 79 + 11, 0.012f, 0.038f)
+        val lean = OrbMath.range(i * 83 + 13, 0f, OrbMath.PI_F)
+        val flat = OrbMath.range(i * 89 + 17, 0.16f, 0.85f)
+        withTransform({ rotate(lean * 57.3f, Offset(gx, gy)) }) {
+            drawOval(
+                brush = Brush.radialGradient(
+                    listOf(
+                        highlight.copy(alpha = 0.22f),
+                        accent.copy(alpha = 0.09f),
+                        Color.Transparent,
+                    ),
+                    center = Offset(gx, gy),
+                    radius = gr * 1.6f,
+                ),
+                topLeft = Offset(gx - gr * 1.6f, gy - gr * 1.6f * flat),
+                size = Size(gr * 3.2f, gr * 3.2f * flat),
+                blendMode = BlendMode.Plus,
+            )
+        }
     }
 }
 
