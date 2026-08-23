@@ -55,6 +55,8 @@ fun SettingsScreen(
     onVoiceDownloadOffered: () -> Unit,
     palette: JarvisPalette,
     onSelectPalette: (JarvisPalette) -> Unit,
+    backdropId: String = "",
+    onSelectBackdrop: (String) -> Unit = {},
     backgroundWakeEnabled: Boolean = true,
     onSetBackgroundWake: (Boolean) -> Unit = {},
     floatingOrbEnabled: Boolean = true,
@@ -165,6 +167,8 @@ fun SettingsScreen(
                 current = palette,
                 onSelect = onSelectPalette,
                 modifier = Modifier.fillMaxWidth(),
+                backdropId = backdropId,
+                onSelectBackdrop = onSelectBackdrop,
             )
         }
     }

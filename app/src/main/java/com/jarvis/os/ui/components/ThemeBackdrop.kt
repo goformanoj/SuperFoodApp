@@ -19,9 +19,11 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import com.jarvis.os.ui.theme.BackdropStyle
 import com.jarvis.os.ui.theme.JarvisPalette
 import com.jarvis.os.ui.theme.LocalPalette
-import com.jarvis.os.ui.theme.OrbStyle
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * The world each theme's orb sits in.
@@ -40,6 +42,8 @@ import com.jarvis.os.ui.theme.OrbStyle
 fun ThemeBackdrop(
     modifier: Modifier = Modifier,
     palette: JarvisPalette = LocalPalette.current,
+    /** Which world to draw. Defaults to the one this theme ships with. */
+    backdrop: BackdropStyle = BackdropStyle.defaultFor(palette.orbStyle),
 ) {
     val transition = rememberInfiniteTransition(label = "backdrop")
     // Very slow. A backdrop that visibly turns competes with the orb; one that
@@ -107,35 +111,53 @@ fun ThemeBackdrop(
         // `hudBrackets`. So of seven themes, three were a neighbour recoloured.
         // Cutting Lattice, Prism and Core removed the duplicates; giving the four
         // survivors one distinct world each is what stops it recurring.
-        when (palette.orbStyle) {
-            // Arc: a blueprint. Wireframe globe and instrument brackets.
-            OrbStyle.Reactor -> {
+        when (backdrop) {
+            // Blueprint: a drafting table. Wireframe globe and instrument brackets.
+            BackdropStyle.Blueprint -> {
                 wireGlobe(focus, minOf(w, h) * 0.62f, drift, palette.accent, dense = false)
                 hudBrackets(palette.accent)
             }
-            // Forge: a workshop. Warm haze over a lit floor — no wire anywhere,
-            // because the point of this one is heat rather than instrumentation.
-            OrbStyle.Filigree -> {
+            // Forge Floor: a workshop. Warm haze over a lit floor — no wire
+            // anywhere, because the point of this one is heat rather than
+            // instrumentation.
+            BackdropStyle.ForgeFloor -> {
                 warmHaze(focus, minOf(w, h) * 0.70f, palette.accent, palette.highlight)
                 groundMesh(h * 0.66f, palette.highlight, rows = 12, columns = 18, alpha = 0.26f)
             }
-            // Nebula: deep sky. Clouds and a circuit floor, no globe, no brackets.
-            OrbStyle.Nebula -> {
+            // Deep Sky: clouds and a circuit floor, no globe, no brackets.
+            BackdropStyle.DeepSky -> {
                 nebulaClouds(w, h, palette.accent, palette.secondary)
                 circuitFloor(h * 0.66f, palette.accent)
             }
-            // Orbit: a planet limb across the bottom, and deliberately NOTHING
-            // else. It is the strongest single element of the four and it does
-            // not need help; brackets over it were what made it look like Forge.
-            OrbStyle.Orbit -> planetHorizon(w, h, palette.accent, palette.highlight)
+            // Low Orbit: a planet limb across the bottom and deliberately NOTHING
+            // else. It is the strongest single element here and does not need
+            // help; brackets over it were what made it look like the forge.
+            BackdropStyle.LowOrbit -> planetHorizon(w, h, palette.accent, palette.highlight)
+
+            BackdropStyle.DataRain -> dataRain(w, h, flow, palette.accent, palette.highlight)
+            BackdropStyle.Canyon -> canyon(w, h, drift, palette.accent, palette.secondary, base)
+            BackdropStyle.AuroraVeil -> auroraVeil(w, h, flow, palette.accent, palette.secondary, palette.highlight)
+            BackdropStyle.Monolith -> monolith(w, h, palette.accent, palette.highlight)
+            BackdropStyle.DeepReef -> deepReef(w, h, flow, palette.accent, palette.highlight)
+            BackdropStyle.Dune -> dune(w, h, drift, flow, palette.accent, palette.highlight, base)
         }
 
-        val deepSky = palette.orbStyle == OrbStyle.Nebula || palette.orbStyle == OrbStyle.Orbit
-        starField(w, h, palette.highlight, deepSky, flow)
+        // Which scenes have a sky to put stars in. Underwater, in a canyon and in
+        // a sandstorm there is nothing above you to see them through, and a star
+        // field over any of the three is the detail that breaks the illusion.
+        when (backdrop) {
+            BackdropStyle.DeepReef, BackdropStyle.Canyon, BackdropStyle.Dune -> Unit
+            BackdropStyle.DeepSky, BackdropStyle.LowOrbit, BackdropStyle.AuroraVeil ->
+                starField(w, h, palette.highlight, heavy = true, t = flow)
+            else -> starField(w, h, palette.highlight, heavy = false, t = flow)
+        }
 
-        // A light source below the fold. Orbit already has a lit planet down
-        // there and a second glow would fight it.
-        if (palette.orbStyle != OrbStyle.Orbit) horizonGlow(w, h, palette.accent, palette.secondary)
+        // A light source below the fold — skipped where the scene already has
+        // its own and a second would fight it.
+        when (backdrop) {
+            BackdropStyle.LowOrbit, BackdropStyle.Dune, BackdropStyle.Monolith, BackdropStyle.DeepReef -> Unit
+            else -> horizonGlow(w, h, palette.accent, palette.secondary)
+        }
 
         // Framed last. A vignette is what stops a bright backdrop competing with
         // the text on top of it — the corners fall away and the eye goes to the
@@ -442,5 +464,423 @@ private fun DrawScope.planetHorizon(w: Float, h: Float, edge: Color, warm: Color
         radius = planetRadius,
         center = centre,
         style = Stroke(width = 1.6f),
+    )
+}
+
+// ─── The six scenes that belong to no theme ─────────────────────────────────
+//
+// Each is a different KIND of place rather than a different palette of the same
+// place, which is the lesson the themes taught: three of the original seven
+// shared backdrop geometry and no amount of recolouring made them read as
+// distinct. So one has a strong vertical, one has real distance, one stands
+// still on purpose, one is underwater, one is weather.
+
+/**
+ * DATA RAIN — columns of falling light.
+ *
+ * The only scene with a strong vertical read, and the only one whose motion is
+ * meant to be noticed rather than felt: everything else here drifts on a
+ * 150-second clock, and this runs fast enough to look like a machine working.
+ *
+ * Each column falls at its own rate and wraps independently, so the field never
+ * pulses in step. The dashes shorten and dim toward the tail, which is what makes
+ * a column read as one thing falling rather than as a dotted line sliding.
+ */
+private fun DrawScope.dataRain(
+    w: Float,
+    h: Float,
+    t: Float,
+    accent: Color,
+    highlight: Color,
+) {
+    val columns = 26
+    for (c in 0 until columns) {
+        val x = (c + 0.5f) * w / columns + OrbMath.range(c * 13 + 1, -6f, 6f)
+        val speed = OrbMath.range(c * 7 + 3, 0.35f, 1.25f)
+        val length = OrbMath.range(c * 11 + 5, 5f, 14f).toInt()
+        val bright = OrbMath.range(c * 5 + 9, 0.25f, 1f)
+        // The head's position wraps through the column's own cycle. Offsetting by
+        // the column index keeps two neighbours from ever falling together.
+        val head = Orb3D.wrap01(t * speed * 0.16f + OrbMath.unitRandom(c * 17 + 2)) * (h * 1.25f) - h * 0.12f
+        for (k in 0 until length) {
+            val y = head - k * h * 0.026f
+            if (y < -20f || y > h + 20f) continue
+            val fade = (1f - k.toFloat() / length)
+            val colour = if (k == 0) highlight else accent
+            drawLine(
+                color = colour.copy(alpha = fade * fade * 0.55f * bright),
+                start = Offset(x, y),
+                end = Offset(x, y + h * 0.016f * fade),
+                strokeWidth = px(1.2f + fade * 1.4f),
+                cap = StrokeCap.Round,
+                blendMode = BlendMode.Plus,
+            )
+        }
+    }
+}
+
+/**
+ * CANYON — ridgelines receding into haze.
+ *
+ * The one scene with real DISTANCE in it. Five silhouettes, each higher on the
+ * frame, paler, and drifting more slowly than the one in front — parallax by
+ * layer, which is the whole trick and the reason it reads as depth rather than
+ * as five shapes stacked. Each ridge is a run of straight segments with heights
+ * hashed from its index, so the profile is jagged and unrepeating without
+ * anything being stored.
+ */
+private fun DrawScope.canyon(
+    w: Float,
+    h: Float,
+    t: Float,
+    accent: Color,
+    secondary: Color,
+    base: Color,
+) {
+    val layers = 5
+    for (layer in layers - 1 downTo 0) {
+        val far = layer.toFloat() / (layers - 1)
+        // Far ridges sit higher and are washed out toward the sky colour.
+        val baseY = h * (0.44f + far * 0.06f) + h * 0.20f * (1f - far)
+        val amplitude = h * (0.16f - far * 0.10f)
+        val colour = lerpTo(if (layer % 2 == 0) accent else secondary, base, 0.35f + far * 0.45f)
+        val slide = sin(t * (0.10f + (1f - far) * 0.22f)) * w * 0.04f * (1f - far)
+
+        val ridge = Path().apply {
+            moveTo(-w * 0.1f, h * 1.1f)
+            val steps = 22
+            for (i in 0..steps) {
+                val x = -w * 0.1f + (w * 1.2f) * i / steps + slide
+                val seed = layer * 977 + i * 31
+                // Two octaves: broad peaks with smaller teeth on them.
+                val peak = OrbMath.unitRandom(seed) * 0.7f + OrbMath.unitRandom(seed * 3 + 7) * 0.3f
+                lineTo(x, baseY - amplitude * peak)
+            }
+            lineTo(w * 1.1f, h * 1.1f)
+            close()
+        }
+        drawPath(ridge, colour.copy(alpha = 0.55f + far * 0.25f))
+        // A lit rim on the near ridges only, where a real light would catch.
+        if (layer <= 1) {
+            drawPath(
+                ridge,
+                accent.copy(alpha = 0.20f - layer * 0.08f),
+                style = Stroke(px(1.2f)),
+                blendMode = BlendMode.Plus,
+            )
+        }
+    }
+}
+
+/**
+ * AURORA — curtains standing on a dark horizon.
+ *
+ * Not the same thing as the `aurora` blooms every backdrop already carries:
+ * those are soft circles drifting behind everything, and these are vertical
+ * SHEETS with a defined bottom edge that ripples along its length. The
+ * difference is the edge — a curtain you can see the bottom of has a position in
+ * space, and a bloom does not.
+ *
+ * Drawn as many thin vertical gradients side by side rather than as one shape,
+ * so each slice can have its own height and the fold moves along the curtain.
+ */
+private fun DrawScope.auroraVeil(
+    w: Float,
+    h: Float,
+    t: Float,
+    accent: Color,
+    secondary: Color,
+    highlight: Color,
+) {
+    val curtains = 3
+    for (c in 0 until curtains) {
+        val colour = when (c % 3) {
+            0 -> accent
+            1 -> secondary
+            else -> highlight
+        }
+        val originX = w * OrbMath.range(c * 23 + 5, -0.15f, 0.75f)
+        val width = w * OrbMath.range(c * 19 + 3, 0.45f, 0.85f)
+        val phase = t * OrbMath.range(c * 11 + 7, 0.20f, 0.45f) + c * 2.1f
+        val slices = 34
+        for (i in 0 until slices) {
+            val f = i.toFloat() / (slices - 1)
+            val x = originX + width * f
+            if (x < -20f || x > w + 20f) continue
+            // The fold: two waves of different rates along the curtain, so the
+            // bottom edge never looks like a single sine.
+            val fold = sin(phase + f * 6.2f) * 0.5f + sin(phase * 1.7f + f * 11.4f) * 0.25f
+            val bottom = h * (0.52f + 0.16f * fold)
+            val top = h * (0.02f + 0.05f * OrbMath.unitRandom(c * 31 + i))
+            val bright = (0.10f + 0.10f * (1f + fold)) * (0.4f + 0.6f * sin(f * 3.14f))
+            drawRect(
+                brush = Brush.verticalGradient(
+                    listOf(
+                        Color.Transparent,
+                        colour.copy(alpha = bright * 0.55f),
+                        colour.copy(alpha = bright),
+                        Color.Transparent,
+                    ),
+                    startY = top,
+                    endY = bottom,
+                ),
+                topLeft = Offset(x, top),
+                size = androidx.compose.ui.geometry.Size(width / slices + px(1.5f), bottom - top),
+                blendMode = BlendMode.Plus,
+            )
+        }
+    }
+}
+
+/**
+ * MONOLITH — a slab standing in front of the light.
+ *
+ * The still one, deliberately. Nine of these scenes move, and a set where
+ * everything drifts has no quiet member — this is the one you choose when the
+ * orb should be the only thing on screen doing anything.
+ *
+ * All of its effect is in the edges: a hard black rectangle would be a hole, so
+ * the slab carries a lit rim down one side, a thin bounce down the other, and
+ * light spilling out from behind it.
+ */
+private fun DrawScope.monolith(w: Float, h: Float, accent: Color, highlight: Color) {
+    val left = w * 0.30f
+    val right = w * 0.70f
+    val top = h * 0.10f
+    val bottom = h * 0.86f
+
+    // The light behind it, which is what makes the slab read as blocking rather
+    // than as painted on.
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(accent.copy(alpha = 0.34f), accent.copy(alpha = 0.10f), Color.Transparent),
+            center = Offset(w * 0.5f, h * 0.38f),
+            radius = maxOf(w, h) * 0.62f,
+        ),
+        radius = maxOf(w, h) * 0.62f,
+        center = Offset(w * 0.5f, h * 0.38f),
+        blendMode = BlendMode.Plus,
+    )
+
+    // The slab: not flat black, but a face that falls off downward, so it has a
+    // surface rather than being an absence.
+    drawRect(
+        brush = Brush.verticalGradient(
+            listOf(Color.Black.copy(alpha = 0.80f), Color.Black.copy(alpha = 0.94f)),
+            startY = top,
+            endY = bottom,
+        ),
+        topLeft = Offset(left, top),
+        size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+    )
+
+    // The lit edge, and a dimmer bounce down the far side.
+    drawLine(
+        brush = Brush.verticalGradient(
+            listOf(Color.Transparent, highlight.copy(alpha = 0.75f), highlight.copy(alpha = 0.15f)),
+            startY = top,
+            endY = bottom,
+        ),
+        start = Offset(left, top),
+        end = Offset(left, bottom),
+        strokeWidth = px(2.0f),
+        blendMode = BlendMode.Plus,
+    )
+    drawLine(
+        brush = Brush.verticalGradient(
+            listOf(Color.Transparent, accent.copy(alpha = 0.30f), Color.Transparent),
+            startY = top,
+            endY = bottom,
+        ),
+        start = Offset(right, top),
+        end = Offset(right, bottom),
+        strokeWidth = px(1.2f),
+        blendMode = BlendMode.Plus,
+    )
+    // Where it meets the ground.
+    drawRect(
+        brush = Brush.verticalGradient(
+            listOf(Color.Transparent, accent.copy(alpha = 0.22f)),
+            startY = bottom - h * 0.06f,
+            endY = bottom,
+        ),
+        topLeft = Offset(left, bottom - h * 0.06f),
+        size = androidx.compose.ui.geometry.Size(right - left, h * 0.06f),
+        blendMode = BlendMode.Plus,
+    )
+}
+
+/**
+ * DEEP REEF — light bending down through water.
+ *
+ * The one scene lit from ABOVE rather than from behind, and the only one where
+ * things rise instead of falling or drifting sideways. Both are the same
+ * decision: a set of ten backdrops needs a member that inverts the others, or
+ * they all end up being weather over a horizon.
+ *
+ * The caustics are the point — overlapping shafts of different widths swaying on
+ * their own clocks, brightest where two cross, which is what light through a
+ * moving surface actually does.
+ */
+private fun DrawScope.deepReef(
+    w: Float,
+    h: Float,
+    t: Float,
+    accent: Color,
+    highlight: Color,
+) {
+    // The column of water: bright at the surface, black at depth.
+    drawRect(
+        brush = Brush.verticalGradient(
+            listOf(
+                highlight.copy(alpha = 0.26f),
+                accent.copy(alpha = 0.16f),
+                Color.Black.copy(alpha = 0.55f),
+            ),
+        ),
+    )
+
+    // Shafts, fanning slightly as they descend.
+    for (i in 0 until 9) {
+        val sway = sin(t * OrbMath.range(i * 13 + 3, 0.20f, 0.55f) + i) * w * 0.06f
+        val topX = w * OrbMath.range(i * 7 + 1, -0.05f, 1.05f) + sway
+        val spread = w * OrbMath.range(i * 11 + 5, 0.03f, 0.11f)
+        val depth = h * OrbMath.range(i * 5 + 9, 0.55f, 1.0f)
+        val bright = OrbMath.range(i * 17 + 2, 0.06f, 0.17f)
+        val shaft = Path().apply {
+            moveTo(topX - spread * 0.35f, -10f)
+            lineTo(topX + spread * 0.35f, -10f)
+            lineTo(topX + spread * 1.6f + sway, depth)
+            lineTo(topX - spread * 1.6f + sway, depth)
+            close()
+        }
+        drawPath(
+            shaft,
+            brush = Brush.verticalGradient(
+                listOf(highlight.copy(alpha = bright), Color.Transparent),
+                startY = 0f,
+                endY = depth,
+            ),
+            blendMode = BlendMode.Plus,
+        )
+    }
+
+    // Everything drifts UP. Nothing else in the set does.
+    for (i in 0 until 70) {
+        val x = OrbMath.unitRandom(i * 3 + 1) * w + sin(t * 0.4f + i) * w * 0.012f
+        val rise = Orb3D.wrap01(OrbMath.unitRandom(i * 5 + 2) + t * OrbMath.range(i * 7 + 4, 0.010f, 0.035f))
+        val y = h - rise * h * 1.05f
+        drawCircle(
+            color = highlight.copy(alpha = OrbMath.range(i * 11 + 6, 0.10f, 0.36f) * (1f - rise * 0.6f)),
+            radius = px(OrbMath.range(i * 13 + 8, 0.6f, 2.0f)),
+            center = Offset(x, y),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/**
+ * DUNE — sand ridges under a low sun.
+ *
+ * Weather rather than architecture: the ridges are lit hard along their crests
+ * and fall to shadow behind them, and grain moves ACROSS the frame rather than
+ * up or down, so it reads as wind. The sun sits low and off-centre and is the
+ * only light — no horizon glow is drawn over this one, because there already is
+ * one and a second would flatten it.
+ */
+private fun DrawScope.dune(
+    w: Float,
+    h: Float,
+    slow: Float,
+    fast: Float,
+    accent: Color,
+    highlight: Color,
+    base: Color,
+) {
+    val sun = Offset(w * 0.72f, h * 0.30f)
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(highlight.copy(alpha = 0.55f), highlight.copy(alpha = 0.14f), Color.Transparent),
+            center = sun,
+            radius = maxOf(w, h) * 0.55f,
+        ),
+        radius = maxOf(w, h) * 0.55f,
+        center = sun,
+        blendMode = BlendMode.Plus,
+    )
+
+    // Four ridges. Each crest is a smooth wave with its own rate, and the body
+    // below it falls to shadow — the contrast between the two is the whole read.
+    for (layer in 3 downTo 0) {
+        val far = layer.toFloat() / 3f
+        val crestY = h * (0.52f + (1f - far) * 0.26f)
+        val amp = h * (0.05f + (1f - far) * 0.05f)
+        val phase = slow * (0.06f + (1f - far) * 0.10f) + layer
+        val lit = lerpTo(highlight, base, 0.30f + far * 0.40f)
+        val shade = lerpTo(accent, Color.Black, 0.45f + far * 0.25f)
+
+        val ridge = Path().apply {
+            moveTo(-10f, h + 10f)
+            val steps = 34
+            for (i in 0..steps) {
+                val f = i.toFloat() / steps
+                val x = -10f + (w + 20f) * f
+                val y = crestY - amp * (sin(phase + f * 5.4f) + 0.45f * sin(phase * 1.6f + f * 9.1f))
+                lineTo(x, y)
+            }
+            lineTo(w + 10f, h + 10f)
+            close()
+        }
+        drawPath(
+            ridge,
+            brush = Brush.verticalGradient(
+                listOf(shade.copy(alpha = 0.92f), shade.copy(alpha = 0.72f)),
+                startY = crestY,
+                endY = h,
+            ),
+        )
+        // The crest catches the sun.
+        val crest = Path().apply {
+            val steps = 34
+            for (i in 0..steps) {
+                val f = i.toFloat() / steps
+                val x = -10f + (w + 20f) * f
+                val y = crestY - amp * (sin(phase + f * 5.4f) + 0.45f * sin(phase * 1.6f + f * 9.1f))
+                if (i == 0) moveTo(x, y) else lineTo(x, y)
+            }
+        }
+        drawPath(
+            crest,
+            lit.copy(alpha = 0.30f + (1f - far) * 0.35f),
+            style = Stroke(px(1.0f + (1f - far) * 1.4f), cap = StrokeCap.Round),
+            blendMode = BlendMode.Plus,
+        )
+    }
+
+    // Wind: grain crossing the frame, fast clock, near-horizontal.
+    for (i in 0 until 90) {
+        val lane = OrbMath.unitRandom(i * 5 + 3)
+        val y = h * (0.48f + lane * 0.50f)
+        val across = Orb3D.wrap01(OrbMath.unitRandom(i * 7 + 1) + fast * OrbMath.range(i * 11 + 2, 0.03f, 0.10f))
+        val x = across * (w + 40f) - 20f
+        drawLine(
+            color = highlight.copy(alpha = OrbMath.range(i * 13 + 5, 0.04f, 0.16f)),
+            start = Offset(x, y),
+            end = Offset(x + px(OrbMath.range(i * 3 + 9, 4f, 14f)), y - px(1.5f)),
+            strokeWidth = px(0.9f),
+            cap = StrokeCap.Round,
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/** Straight-line colour mix. The backdrops need it and ThemeArt's is private. */
+private fun lerpTo(a: Color, b: Color, t: Float): Color {
+    val k = t.coerceIn(0f, 1f)
+    return Color(
+        red = a.red + (b.red - a.red) * k,
+        green = a.green + (b.green - a.green) * k,
+        blue = a.blue + (b.blue - a.blue) * k,
+        alpha = 1f,
     )
 }

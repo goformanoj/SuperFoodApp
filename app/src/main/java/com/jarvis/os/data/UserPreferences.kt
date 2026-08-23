@@ -24,6 +24,18 @@ class UserPreferences(context: Context) {
         set(value) = prefs.edit().putString(KEY_THEME, value).apply()
 
     /**
+     * The chosen background, independent of the theme.
+     *
+     * Empty means "whatever this theme comes with", which is not the same as any
+     * particular backdrop: it has to survive a theme change and still follow it.
+     * Storing the resolved id instead would freeze whichever background happened
+     * to be showing when the setting was first written.
+     */
+    var backdropId: String
+        get() = prefs.getString(KEY_BACKDROP, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_BACKDROP, value).apply()
+
+    /**
      * Whether the background "Hey Jarvis" wake word runs — a mic foreground
      * service that lets JARVIS be summoned from any app. On by default (it is the
      * point of the feature), and turned off from the wake-word notification's Stop
@@ -120,6 +132,7 @@ class UserPreferences(context: Context) {
 
         private const val KEY_INSTRUCTIONS = "custom_instructions"
         private const val KEY_THEME = "theme"
+        private const val KEY_BACKDROP = "backdrop_id"
         private const val KEY_FACTS = "learned_facts"
         private const val KEY_BG_WAKE = "background_wake"
         private const val KEY_FLOATING_ORB = "floating_orb"

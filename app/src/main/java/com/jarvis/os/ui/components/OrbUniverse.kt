@@ -38,6 +38,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -114,6 +115,20 @@ fun OrbUniverse(
     // gesture the user almost certainly meant as "go deeper".
     var settled by remember { mutableStateOf(false) }
 
+    // Which dimension we are inside. Null means the star map is still showing:
+    // the universe now opens on a CHOICE, not on a structure.
+    //
+    // "begin with different kinds of stars on the screen, and depending on which
+    // star the user clicks it goes into that dimension". Every star mixes its own
+    // branch into every seed below it, so the six kinds are not six labels on the
+    // same place — pick a different star and nothing at any depth repeats.
+    var chosen by remember { mutableStateOf<StarSpec?>(null) }
+    val stars = remember { UniverseMath.starMap() }
+    // How far through the flight into the chosen star, 0..1. Held separately from
+    // the zoom because the map has to keep drawing, receding, while the first
+    // shell of the new dimension grows out of the star that was touched.
+    val enterStar = remember { Animatable(0f) }
+
     fun close() {
         if (!closing) {
             closing = true
@@ -121,16 +136,37 @@ fun OrbUniverse(
         }
     }
 
-    BackHandler(enabled = true) { close() }
+    BackHandler(enabled = true) {
+        // Same two steps as pinching out, for the same reason.
+        if (chosen != null) {
+            chosen = null
+            target = UniverseMath.START_ZOOM
+            scope.launch { zoom.snapTo(UniverseMath.START_ZOOM) }
+        } else {
+            close()
+        }
+    }
 
     // The arrival, as MOVEMENT rather than as an appearance. The host grows this
     // page out of the orb; this flies the camera inward at the same time, so the
     // first thing that happens after the pinch is a shell rushing up to meet you
     // rather than a picture settling into place. Landing exactly on START_ZOOM
     // means the dive begins from a known position however it was entered.
-    LaunchedEffect(Unit) {
+    LaunchedEffect(chosen) {
+        val star = chosen
+        if (star == null) {
+            // Back on the map: nothing is arriving, and a pinch means "leave".
+            enterStar.snapTo(0f)
+            settled = true
+            return@LaunchedEffect
+        }
+        settled = false
         zoom.snapTo(UniverseMath.ENTRY_ZOOM)
-        zoom.animateTo(UniverseMath.START_ZOOM, tween(760, easing = FastOutSlowInEasing))
+        target = UniverseMath.START_ZOOM
+        // The two run together: the map falls away as the dimension comes up.
+        enterStar.snapTo(0f)
+        scope.launch { enterStar.animateTo(1f, tween(900, easing = FastOutSlowInEasing)) }
+        zoom.animateTo(UniverseMath.START_ZOOM, tween(900, easing = FastOutSlowInEasing))
         settled = true
     }
 
@@ -156,8 +192,11 @@ fun OrbUniverse(
     // not once per frame. Generating them inside the draw would allocate a list
     // of satellites sixty times a second for something that changes once every
     // few seconds, which is the allocation mistake OrbDetail exists to remember.
-    val shells = remember(depth) {
-        UniverseMath.SHELLS.associateWith { UniverseMath.shellAt(UniverseMath.seedFor(depth, it)) }
+    val branch = chosen?.branch ?: UniverseMath.NO_BRANCH
+    val shells = remember(depth, branch) {
+        UniverseMath.SHELLS.associateWith {
+            UniverseMath.shellAt(UniverseMath.seedFor(branch, depth, it))
+        }
     }
 
     val amp = amplitude.coerceIn(0f, 1f)
@@ -178,12 +217,27 @@ fun OrbUniverse(
             // deciding while a pinch is already under way.
             .pointerInput(Unit) {
                 detectTapGestures(
+                    // On the map a single tap PICKS a star. Inside a dimension a
+                    // single tap means nothing, so it stays inert there rather
+                    // than doing something arbitrary.
+                    onTap = { at ->
+                        if (chosen == null) {
+                            val hit = UniverseMath.starAt(
+                                stars,
+                                at.x / size.width,
+                                at.y / size.height,
+                            )
+                            if (hit != null) chosen = hit
+                        }
+                    },
                     // A dive per double-tap, because a phone held one-handed
                     // cannot pinch, and this is the whole feature.
                     onDoubleTap = {
-                        target = floor(zoom.value) + 1f
-                        scope.launch {
-                            zoom.animateTo(target, tween(900, easing = FastOutSlowInEasing))
+                        if (chosen != null) {
+                            target = floor(zoom.value) + 1f
+                            scope.launch {
+                                zoom.animateTo(target, tween(900, easing = FastOutSlowInEasing))
+                            }
                         }
                     },
                 )
@@ -202,7 +256,19 @@ fun OrbUniverse(
                         val from = if (zoom.isRunning) zoom.value else target
                         target = from + ln(gestureZoom) / LN_SCALE
                         scope.launch { zoom.snapTo(target) }
-                        if (settled && UniverseMath.shouldClose(target)) close()
+                        if (settled && UniverseMath.shouldClose(target)) {
+                            // Surfacing out of a dimension goes back to the MAP,
+                            // not out of the universe altogether. Dropping the
+                            // user onto the home screen from six levels down
+                            // would throw away the choice they made to get there.
+                            if (chosen != null) {
+                                chosen = null
+                                target = UniverseMath.START_ZOOM
+                                scope.launch { zoom.snapTo(UniverseMath.START_ZOOM) }
+                            } else {
+                                close()
+                            }
+                        }
                     }
                     val limit = minOf(size.width, size.height) * 0.45f
                     pan = Offset(
@@ -218,6 +284,27 @@ fun OrbUniverse(
 
             drawDeepField(clock, palette.accent)
 
+            // THE MAP. Drawn while no star is chosen, and kept drawing while the
+            // flight into one is under way — receding and dimming, so the star you
+            // touched is visibly the thing you are travelling into rather than a
+            // menu that closed and a scene that opened.
+            val flight = enterStar.value
+            if (flight < 0.999f) {
+                val focus = chosen
+                drawStarMap(
+                    stars = stars,
+                    clock = clock,
+                    flight = flight,
+                    focus = focus,
+                    accent = palette.accent,
+                    highlight = palette.highlight,
+                    secondary = palette.secondary,
+                )
+            }
+
+            // No dimension entered yet — nothing below this is drawn.
+            if (chosen == null) return@Canvas
+
             // Far to near, so a nearer shell overlays the one behind it. The
             // range runs parent-first, so it is walked backwards.
             for (j in UniverseMath.SHELLS.reversed()) {
@@ -230,7 +317,7 @@ fun OrbUniverse(
                     style = palette.orbStyle,
                     at = eye,
                     radius = base * UniverseMath.shellScale(level) * (1f + breathe * 0.012f + amp * 0.04f),
-                    alpha = alpha,
+                    alpha = alpha * flight,
                     core = UniverseMath.coreGlow(level),
                     clock = clock,
                     accent = palette.accent,
@@ -270,14 +357,20 @@ fun OrbUniverse(
         // overlay stuck on top of the animation rather than as part of the place.
         val readout = ((entry - 0.55f) / 0.45f).coerceIn(0f, 1f)
         if (readout > 0.01f) {
-            UniverseHud(
-                depth = depth,
-                fraction = fraction,
-                here = shells[0],
-                palette = palette,
-                alpha = readout,
-                modifier = Modifier.fillMaxSize(),
-            )
+            val star = chosen
+            if (star == null) {
+                StarMapHud(palette = palette, alpha = readout, modifier = Modifier.fillMaxSize())
+            } else {
+                UniverseHud(
+                    depth = depth,
+                    fraction = fraction,
+                    here = shells[0],
+                    star = star,
+                    palette = palette,
+                    alpha = readout * enterStar.value,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }
@@ -292,6 +385,7 @@ private fun UniverseHud(
     depth: Int,
     fraction: Float,
     here: ShellSpec?,
+    star: StarSpec,
     palette: JarvisPalette,
     alpha: Float = 1f,
     modifier: Modifier = Modifier,
@@ -302,6 +396,15 @@ private fun UniverseHud(
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // Which dimension. Above the tier, because it does not change as you
+            // descend and the tier does — the thing that stays put belongs on top.
+            Text(
+                text = "${star.kind.label}  ·  ${star.designation}",
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 3.sp),
+                color = palette.secondary.copy(alpha = 0.85f * alpha),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            )
             Text(
                 text = UniverseMath.labelFor(depth),
                 style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 6.sp),
@@ -338,7 +441,52 @@ private fun UniverseHud(
             )
         }
         Text(
-            text = "PINCH TO DIVE  ·  DOUBLE-TAP TO FALL  ·  PINCH BACK TO SURFACE",
+            text = "PINCH TO DIVE  ·  DOUBLE-TAP TO FALL  ·  PINCH BACK TO LEAVE",
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
+            color = palette.accent.copy(alpha = 0.45f * alpha),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * The readout over the star map.
+ *
+ * Separate from [UniverseHud] rather than the same one with fields blanked out,
+ * because it is answering a different question: the map asks "which of these?"
+ * and a dimension reports "here is where you are". Sharing a layout between the
+ * two would mean a row of empty labels on whichever screen did not use them.
+ */
+@Composable
+private fun StarMapHud(
+    palette: JarvisPalette,
+    alpha: Float = 1f,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.systemBarsPadding().padding(horizontal = 24.dp, vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "CHART",
+                style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 6.sp),
+                color = palette.highlight.copy(alpha = alpha),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                text = "${UniverseMath.STAR_COUNT} STARS  ·  ${StarKind.entries.size} KINDS",
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 3.sp),
+                color = palette.accent.copy(alpha = 0.60f * alpha),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            )
+        }
+        Text(
+            text = "TOUCH A STAR TO ENTER ITS DIMENSION  ·  PINCH BACK TO LEAVE",
             style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
             color = palette.accent.copy(alpha = 0.45f * alpha),
             textAlign = TextAlign.Center,
@@ -420,6 +568,159 @@ private fun DrawScope.drawShell(
     if (core > 0.004f) {
         drawCore(at, radius * spec.coreSize, alpha * core, highlight, accent)
     }
+}
+
+/**
+ * The chart you arrive on: nine stars, six kinds, each drawn as itself.
+ *
+ * A chooser is only a chooser if the options look different. Nine identical dots
+ * with different captions would be a list wearing a sky costume — so a blue giant
+ * is genuinely huge and hot-white, a red dwarf is small and dim, a binary is
+ * visibly two bodies turning about each other, a pulsar sweeps a beam, a
+ * protostar sits inside the cloud it is condensing out of, and a white dwarf is a
+ * hard little point with almost nothing around it.
+ *
+ * [flight] runs 0..1 as the touched star is entered. The whole map recedes and
+ * dims while the chosen one rushes toward the camera, so the dimension is
+ * visibly BEHIND the star you picked rather than replacing the screen it was on.
+ */
+private fun DrawScope.drawStarMap(
+    stars: List<StarSpec>,
+    clock: Float,
+    flight: Float,
+    focus: StarSpec?,
+    accent: Color,
+    highlight: Color,
+    secondary: Color,
+) {
+    val fade = 1f - flight
+    stars.forEach { star ->
+        val picked = focus != null && focus.branch == star.branch
+        // Everything not chosen falls away from the centre and dims out. The
+        // chosen one instead grows and slides to the middle — it is what the
+        // camera is flying at.
+        val home = Offset(star.x * size.width, star.y * size.height)
+        val at: Offset
+        val grow: Float
+        val alpha: Float
+        if (picked) {
+            at = Offset(
+                home.x + (center.x - home.x) * flight,
+                home.y + (center.y - home.y) * flight,
+            )
+            grow = 1f + flight * 7f
+            // Bright until the dimension has come up behind it, then out of the
+            // way — the same handover the shell cores make.
+            alpha = (1f - flight * flight).coerceAtLeast(0f)
+        } else {
+            val push = 1f + flight * 0.55f
+            at = Offset(
+                center.x + (home.x - center.x) * push,
+                center.y + (home.y - center.y) * push,
+            )
+            grow = 1f
+            alpha = fade * fade
+        }
+        if (alpha <= 0.01f) return@forEach
+
+        val r = size.minDimension * 0.028f * star.size * star.kind.scale * grow
+        val colour = lerpColour(accent, highlight, star.kind.heat)
+        val pulse = 0.85f + 0.15f * sin(clock * 1.7f + star.phase)
+
+        when (star.kind) {
+            StarKind.BlueGiant -> {
+                // A huge halo, and far more of it than body — that ratio is the
+                // whole read of "too bright for what surrounds it".
+                drawGlow(at, r * 4.2f, Color.White, colour, alpha * 0.55f * pulse)
+                drawCircle(Color.White.copy(alpha = alpha * 0.95f), r * 0.85f, at, blendMode = BlendMode.Plus)
+                flare(at, r * 2.4f, Color.White, alpha * 0.45f)
+            }
+            StarKind.RedDwarf -> {
+                // Small, cool, and almost no halo. The quiet one.
+                drawGlow(at, r * 1.9f, colour, colour, alpha * 0.40f * pulse)
+                drawCircle(colour.copy(alpha = alpha * 0.85f), r * 0.55f, at, blendMode = BlendMode.Plus)
+            }
+            StarKind.Binary -> {
+                // Two bodies about a shared centre, turning slowly enough to see.
+                val a = clock * 0.55f + star.phase
+                val sep = r * 1.5f
+                listOf(0f, OrbMath.PI_F).forEachIndexed { i, off ->
+                    val p = Offset(at.x + cos(a + off) * sep, at.y + sin(a + off) * sep * 0.6f)
+                    val c = if (i == 0) highlight else accent
+                    drawGlow(p, r * 1.5f, Color.White, c, alpha * 0.60f)
+                    drawCircle(Color.White.copy(alpha = alpha * 0.80f), r * 0.40f, p, blendMode = BlendMode.Plus)
+                }
+            }
+            StarKind.Pulsar -> {
+                // The beam is the identity. Two lobes sweeping opposite ways off a
+                // small, very hard core.
+                val sweep = clock * 3.1f + star.phase
+                for (dir in listOf(1f, -1f)) {
+                    val len = r * 5.5f * dir
+                    drawLine(
+                        brush = Brush.linearGradient(
+                            listOf(colour.copy(alpha = alpha * 0.55f), Color.Transparent),
+                            start = at,
+                            end = Offset(at.x + cos(sweep) * len, at.y + sin(sweep) * len),
+                        ),
+                        start = at,
+                        end = Offset(at.x + cos(sweep) * len, at.y + sin(sweep) * len),
+                        strokeWidth = px(2.2f),
+                        cap = StrokeCap.Round,
+                        blendMode = BlendMode.Plus,
+                    )
+                }
+                drawCircle(Color.White.copy(alpha = alpha), r * 0.42f, at, blendMode = BlendMode.Plus)
+            }
+            StarKind.Protostar -> {
+                // Wrapped in the cloud it is forming out of: several offset veils,
+                // and only a soft knot at the middle.
+                for (i in 0 until 4) {
+                    val drift = clock * 0.20f + i * 1.6f + star.phase
+                    val off = r * OrbMath.range(star.branch * 31 + i, 0.20f, 0.85f)
+                    val p = Offset(at.x + cos(drift) * off, at.y + sin(drift * 1.3f) * off * 0.8f)
+                    drawGlow(p, r * OrbMath.range(star.branch * 17 + i, 1.6f, 2.9f), colour, secondary, alpha * 0.22f)
+                }
+                drawCircle(Color.White.copy(alpha = alpha * 0.55f), r * 0.45f, at, blendMode = BlendMode.Plus)
+            }
+            StarKind.WhiteDwarf -> {
+                // Dense and dim: a hard point with a tight halo and nothing else.
+                drawGlow(at, r * 1.4f, Color.White, colour, alpha * 0.35f)
+                drawCircle(Color.White.copy(alpha = alpha * 0.90f), r * 0.34f, at, blendMode = BlendMode.Plus)
+            }
+        }
+
+        // The catalogue name under each, so a star is a place with an identity
+        // before you commit to going there. Dropped once the flight starts —
+        // labels sliding around during a camera move read as debris.
+        if (!picked && fade > 0.6f) {
+            drawCircle(
+                color = colour.copy(alpha = fade * 0.14f),
+                radius = r * 2.6f,
+                center = at,
+                style = Stroke(px(0.9f)),
+            )
+        }
+    }
+}
+
+/** A soft two-stop halo — every star kind wants one, at different weights. */
+private fun DrawScope.drawGlow(at: Offset, radius: Float, inner: Color, outer: Color, alpha: Float) {
+    if (radius <= 0f || alpha <= 0f) return
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(
+                inner.copy(alpha = alpha),
+                outer.copy(alpha = alpha * 0.45f),
+                Color.Transparent,
+            ),
+            center = at,
+            radius = radius,
+        ),
+        radius = radius,
+        center = at,
+        blendMode = BlendMode.Plus,
+    )
 }
 
 /**

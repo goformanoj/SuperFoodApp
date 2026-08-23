@@ -46,6 +46,7 @@ val PURE_UI_SOURCES = setOf(
     "Orb3D.kt",
     "Orb3DSpecs.kt",
     "OrbStyle.kt",
+    "BackdropStyle.kt",
 )
 val PURE_UI_TESTS = setOf(
     "UniverseMathTest.kt",
@@ -53,6 +54,7 @@ val PURE_UI_TESTS = setOf(
     "OrbFitTest.kt",
     "Orb3DTest.kt",
     "OrbMathTest.kt",
+    "BackdropStyleTest.kt",
 )
 
 fun isNonPureUi(element: FileTreeElement, keep: Set<String>): Boolean =

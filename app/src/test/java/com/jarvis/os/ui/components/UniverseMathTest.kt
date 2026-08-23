@@ -325,6 +325,132 @@ class UniverseMathTest {
             }
     }
 
+    // ---- the star map ----------------------------------------------------
+
+    @Test
+    fun `no two stars overlap`() {
+        // A plain hash scatter clumps, and two stars on top of each other are
+        // both ugly and untappable — nearest-wins hit testing would give one of
+        // them to the other forever. The relaxation pass exists for this and
+        // nothing else, so it gets a test.
+        val stars = UniverseMath.starMap()
+        stars.forEachIndexed { i, a ->
+            stars.drop(i + 1).forEach { b ->
+                val dx = a.x - b.x
+                val dy = (a.y - b.y) * 2f
+                val d = kotlin.math.sqrt(dx * dx + dy * dy)
+                assertTrue(
+                    "${a.designation} and ${b.designation} are $d apart, closer than they may be",
+                    d > UniverseMath.MIN_STAR_GAP * 0.75f,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `every star is on screen and reachable`() {
+        UniverseMath.starMap().forEach { star ->
+            assertTrue("${star.designation} is off the left/right edge", star.x in 0.05f..0.95f)
+            assertTrue("${star.designation} is off the top/bottom", star.y in 0.10f..0.90f)
+            assertEquals(
+                "touching ${star.designation} does not select it",
+                star.branch,
+                UniverseMath.starAt(UniverseMath.starMap(), star.x, star.y)?.branch,
+            )
+        }
+    }
+
+    @Test
+    fun `a touch in empty space selects nothing`() {
+        val stars = UniverseMath.starMap()
+        // Somewhere far outside the laid-out region.
+        assertEquals(null, UniverseMath.starAt(stars, -5f, -5f))
+    }
+
+    @Test
+    fun `a touch between two stars goes to the nearer one`() {
+        val stars = UniverseMath.starMap()
+        val a = stars[0]
+        val b = stars.drop(1).minByOrNull {
+            val dx = it.x - a.x
+            val dy = (it.y - a.y) * 2f
+            dx * dx + dy * dy
+        }!!
+        // Nudged toward `a` from the midpoint.
+        val x = a.x + (b.x - a.x) * 0.35f
+        val y = a.y + (b.y - a.y) * 0.35f
+        assertEquals(
+            "a touch closer to ${a.designation} chose ${UniverseMath.starAt(stars, x, y)?.designation}",
+            a.branch,
+            UniverseMath.starAt(stars, x, y)?.branch,
+        )
+    }
+
+    @Test
+    fun `no star claims the branch that means no star`() {
+        // Branch 0 is "nothing chosen". A star holding it would generate the same
+        // universe as not having picked one, which is the sort of collision that
+        // looks like the chooser doing nothing at all.
+        UniverseMath.starMap().forEach {
+            assertNotEquals(UniverseMath.NO_BRANCH, it.branch)
+        }
+    }
+
+    @Test
+    fun `every kind of star appears on the map`() {
+        val kinds = UniverseMath.starMap().map { it.kind }.toSet()
+        assertEquals("some kinds of star are unreachable", StarKind.entries.toSet(), kinds)
+    }
+
+    // ---- the dimensions behind them --------------------------------------
+
+    @Test
+    fun `two stars lead to genuinely different universes`() {
+        // The whole promise of the chooser. If two branches produced the same
+        // shells the second star anyone tried would give it away immediately.
+        val stars = UniverseMath.starMap()
+        stars.forEachIndexed { i, a ->
+            stars.drop(i + 1).forEach { b ->
+                val here = (0..3).map { UniverseMath.shellAt(UniverseMath.seedFor(a.branch, it, 0)) }
+                val there = (0..3).map { UniverseMath.shellAt(UniverseMath.seedFor(b.branch, it, 0)) }
+                assertNotEquals(
+                    "${a.designation} and ${b.designation} lead to the same place",
+                    here,
+                    there,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a dimension is the same place every time you enter it`() {
+        val star = UniverseMath.starMap()[3]
+        val first = (0..5).map { UniverseMath.shellAt(UniverseMath.seedFor(star.branch, it, 0)) }
+        val again = (0..5).map { UniverseMath.shellAt(UniverseMath.seedFor(star.branch, it, 0)) }
+        assertEquals("a dimension was rebuilt differently on a second visit", first, again)
+    }
+
+    @Test
+    fun `the seam still holds inside a dimension`() {
+        // The endless-zoom identity is what everything rests on, and adding a
+        // branch multiplier to the seed is exactly the kind of change that could
+        // break it without anyone noticing until they were ten levels down.
+        val branch = UniverseMath.starMap()[5].branch
+        for (crossing in 0..8) {
+            val before = UniverseMath.seedFor(branch, UniverseMath.depthOf(crossing - 0.0005f), 0)
+            val after = UniverseMath.seedFor(branch, UniverseMath.depthOf(crossing + 0.0005f), -1)
+            assertEquals("the shell identity changes across a seam at depth $crossing", before, after)
+        }
+    }
+
+    @Test
+    fun `the unbranched seed is what it always was`() {
+        // Anything not inside a dimension must be unaffected by the branch
+        // machinery existing at all.
+        assertEquals(UniverseMath.seedFor(depth = 7, j = 2), UniverseMath.seedFor(UniverseMath.NO_BRANCH, 7, 2))
+        assertEquals(9, UniverseMath.seedFor(depth = 7, j = 2))
+    }
+
     // ---- gestures --------------------------------------------------------
 
     @Test

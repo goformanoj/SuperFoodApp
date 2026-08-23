@@ -87,16 +87,25 @@ class OrbitThemeTest {
     }
 
     @Test
-    fun `Orbit is the liveliest theme, which is the whole point of it`() {
-        // Stated as a comparison rather than a magic number, so it stays true if
-        // the other themes are ever retuned.
+    fun `Orbit is a scene in space, not a ring assembly`() {
+        // This used to assert Orbit carried more dust than any other theme, and
+        // that was the wrong property to pin. Mote count is not motion, and it
+        // stopped being true the moment Nebula was retuned into a star-forming
+        // cloud — which is a correct design decision that a test about ORBIT had
+        // no business blocking. What actually distinguishes this theme is the
+        // proportions: the biggest body of the four, an orbit that plainly clears
+        // it, and a heavy enough dust field to make the space around it occupied.
         val others = OrbStyle.entries.filter { it != OrbStyle.Orbit }.map { specFor(it) }
-        val fastest = orbit.rings.maxOf { abs(it.spin) }
         assertTrue(
-            "Orbit should carry the most dust of any theme",
-            others.all { orbit.motes >= it.motes },
+            "Orbit should have the largest body of any theme — it is a world, not a spark",
+            others.all { orbit.coreSize > it.coreSize },
         )
-        assertTrue("Orbit's fastest ring should actually be quick", fastest > 2.0f)
+        assertTrue(
+            "Orbit's widest orbit should be the widest of any theme",
+            others.all { orbit.rings.maxOf { r -> r.radius } > it.rings.maxOf { r -> r.radius } },
+        )
+        assertTrue("Orbit's dust field is too thin to fill the scene", orbit.motes >= 100)
+        assertTrue("Orbit's fastest ring should actually be quick", orbit.rings.maxOf { abs(it.spin) } > 2.0f)
     }
 
     @Test

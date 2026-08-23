@@ -43,6 +43,10 @@ class MainActivity : ComponentActivity() {
             // Held above the theme so a change repaints the whole app immediately,
             // background and surfaces included — not only the accent.
             var palette by remember { mutableStateOf(JarvisPalette.fromId(engine.themeId())) }
+            // Held here for the same reason the palette is: a background change
+            // has to repaint every destination at once, and the backdrop is drawn
+            // by the host behind all of them.
+            var backdropId by remember { mutableStateOf(engine.backdropId()) }
             JarvisTheme(palette) {
                 Surface(modifier = Modifier.fillMaxSize(), color = palette.background) {
                     val state by engine.state
@@ -68,9 +72,22 @@ class MainActivity : ComponentActivity() {
                         onSetFloatingOrb = { engine.setFloatingOrb(it) },
                         onOpenAssistantSettings = { engine.openAssistantSettings() },
                         palette = palette,
+                        backdropId = backdropId,
+                        onSelectBackdrop = {
+                            backdropId = it
+                            engine.saveBackdropId(it)
+                        },
                         onSelectPalette = {
                             palette = it
                             engine.saveThemeId(it.id)
+                            // Choosing a theme hands back its own background —
+                            // "when u select a theme u get the default background
+                            // which comes with it". Clearing the id rather than
+                            // storing the new theme's backdrop keeps the setting
+                            // meaning "follow the theme", so the next theme change
+                            // follows too.
+                            backdropId = ""
+                            engine.saveBackdropId("")
                         },
                     )
                 }

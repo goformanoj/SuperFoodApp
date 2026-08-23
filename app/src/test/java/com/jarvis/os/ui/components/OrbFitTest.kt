@@ -34,12 +34,16 @@ class OrbFitTest {
     }
 
     @Test
-    fun `the fix did not quietly shrink every orb`() {
-        // fitFor could satisfy the test above by making everything tiny. The
-        // point is that a design which already fits keeps its full size, and only
-        // one that would genuinely clip is pulled in. As the four specs stand,
-        // none should be shrunk at all.
-        OrbStyle.entries.forEach { style ->
+    fun `only a theme that would genuinely clip is shrunk`() {
+        // fitFor could satisfy the test above by making everything tiny. Three of
+        // the four fit at full size and must keep it.
+        //
+        // Orbit is the deliberate exception. Its widest ring is 1.55 orb radii,
+        // and 1.55 x 0.86 = 1.33 against a frame 1.0 across — it cannot fit at
+        // full fill whatever the tilts do, and pulling the ring in to 1.22 to
+        // make it fit changed the proportions the user asked to have back. So it
+        // is drawn smaller instead, which is what this mechanism is for.
+        OrbStyle.entries.filter { it != OrbStyle.Orbit }.forEach { style ->
             assertEquals(
                 "$style is being shrunk to fit — retune its rings instead of " +
                     "accepting a smaller orb",
@@ -48,13 +52,18 @@ class OrbFitTest {
                 1e-4f,
             )
         }
+        assertTrue(
+            "Orbit should be pulled in to fit its disc",
+            fitFor(OrbStyle.Orbit) < PREFERRED_FILL,
+        )
     }
 
     @Test
     fun `every orb still uses most of the room it has`() {
         // The other failure direction: a theme so conservative it floats in the
         // middle of a large empty frame. Anything under about two thirds of the
-        // half-frame reads as an orb that failed to load.
+        // half-frame reads as an orb that failed to load — and a shrunk theme is
+        // exactly where that could happen without anyone noticing.
         OrbStyle.entries.forEach { style ->
             val reach = extentFor(style) * fitFor(style)
             assertTrue("$style only reaches $reach of its frame — it will look lost", reach > 0.66f)
@@ -62,16 +71,30 @@ class OrbFitTest {
     }
 
     @Test
-    fun `Orbit is the specific case this exists for`() {
-        // Pinned as a regression: the shipped value was 1.55, which does not fit.
+    fun `a shrunk orb is not shrunk so far it looks broken`() {
+        // Orbit trades size for keeping its disc. Below about two thirds of the
+        // usual fill that stops reading as a design choice and starts reading as
+        // a rendering fault.
+        OrbStyle.entries.forEach { style ->
+            assertTrue(
+                "$style is drawn at ${fitFor(style)}, far under the usual $PREFERRED_FILL",
+                fitFor(style) > PREFERRED_FILL * 0.7f,
+            )
+        }
+    }
+
+    @Test
+    fun `Orbit keeps the proportions that were asked for`() {
+        // The broad disc well outside the body IS the design — "get back the
+        // previous version of the orbit theme, it was better". Pinned so a future
+        // attempt to make it fit by narrowing the ring fails here rather than on
+        // a phone.
         val widest = specFor(OrbStyle.Orbit).rings.maxOf { it.radius }
+        assertTrue("Orbit's disc has been narrowed again ($widest)", widest > 1.45f)
         assertTrue(
-            "Orbit's widest ring is back above the width that shipped clipped ($widest)",
-            widest < 1.40f,
-        )
-        assertTrue(
-            "Orbit should still have an orbit outside the body — that is the design",
-            widest > 1.0f,
+            "Orbit's body should stay the largest of the four",
+            OrbStyle.entries.filter { it != OrbStyle.Orbit }
+                .all { specFor(OrbStyle.Orbit).coreSize > specFor(it).coreSize },
         )
     }
 

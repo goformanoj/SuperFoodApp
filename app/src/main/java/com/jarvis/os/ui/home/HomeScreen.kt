@@ -94,6 +94,7 @@ import com.jarvis.os.ui.files.FilesScreen
 import com.jarvis.os.ui.settings.InstructionsScreen
 import com.jarvis.os.ui.settings.SettingsScreen
 import com.jarvis.os.ui.speech.VOICE_SAMPLE
+import com.jarvis.os.ui.theme.BackdropStyle
 import com.jarvis.os.ui.theme.ErrorRed
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.JarvisPalette
@@ -174,6 +175,9 @@ fun JarvisApp(
     onOpenAssistantSettings: () -> Unit = {},
     palette: JarvisPalette = JarvisPalette.Default,
     onSelectPalette: (JarvisPalette) -> Unit = {},
+    /** Empty means "follow the theme" — see [BackdropStyle.resolve]. */
+    backdropId: String = "",
+    onSelectBackdrop: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -292,7 +296,14 @@ fun JarvisApp(
                 // One instance here also costs less than one per screen: the starfield
                 // stays put while destinations change over it, so switching tabs no
                 // longer re-randomises the sky.
-                ThemeBackdrop()
+                // Resolved here, once, for every destination. `resolve` falls back
+                // to the theme's own backdrop for an empty id AND for an id from a
+                // build where that background existed and no longer does — an id
+                // outlives an uninstall, so that second case is real.
+                ThemeBackdrop(
+                    palette = palette,
+                    backdrop = BackdropStyle.resolve(backdropId, palette.orbStyle),
+                )
 
                 when (current) {
                     Dest.Home -> HomeContent(
@@ -313,6 +324,8 @@ fun JarvisApp(
                         onVoiceDownloadOffered = onVoiceDownloadOffered,
                         palette = palette,
                         onSelectPalette = onSelectPalette,
+                        backdropId = backdropId,
+                        onSelectBackdrop = onSelectBackdrop,
                         backgroundWakeEnabled = backgroundWakeEnabled(),
                         onSetBackgroundWake = onSetBackgroundWake,
                         floatingOrbEnabled = floatingOrbEnabled(),

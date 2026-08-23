@@ -77,7 +77,23 @@ object UniverseMath {
      * pinch back out and you arrive in the same system you left, rather than a
      * freshly rolled one.
      */
-    fun seedFor(depth: Int, j: Int): Int = depth + j
+    fun seedFor(depth: Int, j: Int): Int = seedFor(NO_BRANCH, depth, j)
+
+    /**
+     * The same, inside a chosen dimension.
+     *
+     * A dive begins by picking a star, and every star has to lead somewhere
+     * genuinely different — otherwise the choice is decoration and the second
+     * star you try tells you so. Mixing the branch into the seed by a large odd
+     * multiplier puts each dimension in a region of the hash far from its
+     * neighbours, so two stars share no structure at any depth. It is still only
+     * arithmetic: nothing about a dimension is stored, and re-entering the same
+     * star rebuilds the same universe.
+     */
+    fun seedFor(branch: Int, depth: Int, j: Int): Int = branch * 1_000_003 + depth + j
+
+    /** The branch used before a star is chosen, and by anything not in a dimension. */
+    const val NO_BRANCH = 0
 
     /**
      * Fade in from far away, fade out on the way past the camera.
@@ -235,6 +251,81 @@ object UniverseMath {
         return "$shape · $bodies"
     }
 
+    /**
+     * The stars on the map, laid out before any dive begins.
+     *
+     * *"begin with different kinds of stars on the screen, and depending on which
+     * star the user clicks it goes into that dimension"*. So the universe now
+     * opens on a CHOICE rather than on a structure, and the star you touch
+     * decides the branch every shell below it is generated from.
+     *
+     * Positions are in fractions of the frame so the layout is resolution-free,
+     * and they are pushed apart by a few rounds of relaxation — a plain hash
+     * scatter clumps, and two stars overlapping is both ugly and untappable. The
+     * relaxation is deterministic, so the map is the same map every time.
+     */
+    fun starMap(count: Int = STAR_COUNT): List<StarSpec> {
+        val xs = FloatArray(count)
+        val ys = FloatArray(count)
+        for (i in 0 until count) {
+            xs[i] = OrbMath.range(i * 7919 + 13, 0.12f, 0.88f)
+            ys[i] = OrbMath.range(i * 6337 + 29, 0.16f, 0.84f)
+        }
+        // Push apart. Four passes is enough to clear the overlaps a hash leaves
+        // without dragging everything to the edges, which more passes would.
+        repeat(4) {
+            for (a in 0 until count) {
+                for (b in a + 1 until count) {
+                    val dx = xs[b] - xs[a]
+                    val dy = (ys[b] - ys[a]) * ASPECT
+                    val d = kotlin.math.sqrt(dx * dx + dy * dy)
+                    if (d in 0.0001f..MIN_STAR_GAP) {
+                        val push = (MIN_STAR_GAP - d) * 0.5f
+                        xs[a] -= dx / d * push
+                        xs[b] += dx / d * push
+                        ys[a] -= dy / d * push / ASPECT
+                        ys[b] += dy / d * push / ASPECT
+                    }
+                }
+            }
+        }
+        return (0 until count).map { i ->
+            StarSpec(
+                branch = i + 1,
+                kind = StarKind.entries[i % StarKind.entries.size],
+                x = xs[i].coerceIn(0.10f, 0.90f),
+                y = ys[i].coerceIn(0.14f, 0.86f),
+                size = OrbMath.range(i * 5171 + 7, 0.7f, 1.35f),
+                phase = OrbMath.unitRandom(i * 4093 + 3) * OrbMath.TAU,
+                designation = designationFor(i * 1_000_003),
+            )
+        }
+    }
+
+    /**
+     * Which star a touch at [x], [y] (in frame fractions) lands on, or null.
+     *
+     * The radius is generous and deliberately larger than the drawn star: these
+     * are small bright points on a dark screen and a finger is not, so hit-testing
+     * to the visible size would make half the map feel broken. Nearest-wins rather
+     * than first-match, so a touch between two neighbours goes to the closer one
+     * instead of to whichever happens to come first in the list.
+     */
+    fun starAt(stars: List<StarSpec>, x: Float, y: Float): StarSpec? {
+        var best: StarSpec? = null
+        var bestDistance = STAR_TOUCH_RADIUS
+        stars.forEach { star ->
+            val dx = star.x - x
+            val dy = (star.y - y) * ASPECT
+            val d = kotlin.math.sqrt(dx * dx + dy * dy)
+            if (d < bestDistance) {
+                bestDistance = d
+                best = star
+            }
+        }
+        return best
+    }
+
     /** True once the pinch has been dragged back past the top of the ladder. */
     fun shouldClose(zoom: Float): Boolean = zoom <= CLOSE_AT
 
@@ -288,6 +379,23 @@ object UniverseMath {
     private const val NEAR_FADE = 1.00f
     private const val FAR_FADE = -1.55f
     private const val FAR_GONE = -1.90f
+
+    /** How many stars the map opens with. */
+    const val STAR_COUNT = 9
+
+    /** Closest two stars may sit, in frame fractions. Below this they overlap. */
+    const val MIN_STAR_GAP = 0.19f
+
+    /** How near a touch must be to count. Larger than the drawn star, on purpose. */
+    const val STAR_TOUCH_RADIUS = 0.12f
+
+    /**
+     * Roughly a phone's height over its width. The map is laid out in FRACTIONS
+     * of the frame, so a gap of 0.19 across is a much bigger gap than 0.19 down —
+     * without this correction the relaxation spaces stars generously left-to-right
+     * and leaves them touching vertically.
+     */
+    private const val ASPECT = 2.0f
 
     /** No I or O: they read as 1 and 0 in a catalogue number. */
     private const val LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"
@@ -350,4 +458,46 @@ data class ShellSpec(
     val haze: Float,
     /** Dark dust lanes cutting across the structure. */
     val lanes: Int,
+)
+
+/**
+ * A kind of star on the opening map.
+ *
+ * Nine stars, six kinds, each drawn differently and each described differently —
+ * the point of a chooser is that the options are visibly not the same, and a map
+ * of nine identical dots with different names would be a list pretending to be a
+ * sky.
+ */
+enum class StarKind(
+    val label: String,
+    /** What you are told about it before you commit to going there. */
+    val summary: String,
+    /** 0 = cool and toward the accent, 1 = hot and toward the highlight. */
+    val heat: Float,
+    /** How large it draws, relative to the others. */
+    val scale: Float,
+) {
+    BlueGiant("BLUE GIANT", "Enormous, short-lived, and far too bright for what surrounds it.", 1f, 1.6f),
+    RedDwarf("RED DWARF", "Small, cool and patient. The most common thing in any sky.", 0f, 0.75f),
+    Binary("BINARY", "Two suns locked around a shared centre, each pulling on the other.", 0.6f, 1.15f),
+    Pulsar("PULSAR", "A collapsed core sweeping a beam past you, several times a second.", 0.85f, 0.9f),
+    Protostar("PROTOSTAR", "Still gathering. Wrapped in the cloud it is condensing out of.", 0.35f, 1.25f),
+    WhiteDwarf("WHITE DWARF", "What is left when a star has finished. Dense, dim, and cooling.", 0.95f, 0.6f),
+}
+
+/** One star on the opening map, and the dimension behind it. */
+data class StarSpec(
+    /**
+     * The dimension this star leads to. Never zero — [UniverseMath.NO_BRANCH] is
+     * reserved for "no star chosen", so a branch of 0 would make the first star
+     * indistinguishable from having chosen nothing.
+     */
+    val branch: Int,
+    val kind: StarKind,
+    /** Position as a fraction of the frame. */
+    val x: Float,
+    val y: Float,
+    val size: Float,
+    val phase: Float,
+    val designation: String,
 )

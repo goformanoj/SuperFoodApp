@@ -116,6 +116,12 @@ fun DrawScope.drawOrb3D(
     if (spec.embers > 0) {
         drawEmbers(spec.embers, r, spec.coreSize, t, highlight, accent)
     }
+
+    // Beads last, over their own rings: they are the brightest thing on the
+    // filigree and being occluded by the wire they run along would be wrong.
+    if (spec.beads > 0) {
+        drawBeads(spec, r * breathe, camera, focal, t, accent, highlight, f.amp)
+    }
 }
 
 /**
@@ -310,6 +316,68 @@ private fun DrawScope.drawSparkCore(
         blendMode = BlendMode.Plus,
     )
     flare(center, cr * 1.5f, Color.White, 0.35f + f.amp * 0.35f)
+}
+
+/**
+ * Points of light running along the rings.
+ *
+ * A filigree is fine metal with light caught in it. The six rings had the metal
+ * and none of the light: thin, evenly lit circles that read as *drawn* rather
+ * than as *made*. Each bead runs its own ring at its own rate, so the assembly
+ * glitters continuously instead of pulsing in step, and each is depth-shaded
+ * from the same projection the ring uses — so a bead visibly goes round the back
+ * and comes out the other side rather than sliding along a flat ellipse.
+ */
+private fun DrawScope.drawBeads(
+    spec: Orb3DSpec,
+    radius: Float,
+    camera: Float,
+    focal: Float,
+    t: Float,
+    accent: Color,
+    highlight: Color,
+    amp: Float,
+) {
+    if (spec.rings.isEmpty()) return
+    for (i in 0 until spec.beads) {
+        val ring = spec.rings[i % spec.rings.size]
+        val rr = radius * ring.radius
+        // Its own offset round the ring, and its own rate, so no two beads on a
+        // ring are ever level with each other.
+        val a = OrbMath.unitRandom(i * 37 + 5) * Orb3D.TAU +
+            t * ring.spin * OrbMath.range(i * 11 + 3, 0.75f, 1.45f)
+        val tiltX = ring.tiltX + sin(t * ring.precession) * PRECESS_SWING_X
+        val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * PRECESS_SWING_Y
+        val p = Orb3D.project(
+            Orb3D.rotateY(
+                Orb3D.rotateX(Vec3(cos(a) * rr, sin(a) * rr, 0f), tiltX),
+                tiltY,
+            ),
+            camera, focal,
+        )
+        val depth = Orb3D.depthFactor(p.depth, rr)
+        // Behind the orb they dim rather than disappear, which is what keeps the
+        // ring reading as a continuous loop.
+        val bright = (0.12f + depth * 0.78f) * (0.7f + amp * 0.3f)
+        val at = Offset(center.x + p.x, center.y + p.y)
+        val colour = lerpColor(accent, highlight, ring.warmth)
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(colour.copy(alpha = bright * 0.55f), Color.Transparent),
+                center = at,
+                radius = px(2.6f) * (0.5f + depth),
+            ),
+            radius = px(2.6f) * (0.5f + depth),
+            center = at,
+            blendMode = BlendMode.Plus,
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = bright),
+            radius = px(0.7f + depth * 0.9f),
+            center = at,
+            blendMode = BlendMode.Plus,
+        )
+    }
 }
 
 /**

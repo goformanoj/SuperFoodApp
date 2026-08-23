@@ -763,6 +763,13 @@ class AssistantEngine(context: Context) {
 
     fun themeId(): String = userPrefs.themeId
 
+    /** Empty means "follow whatever backdrop the current theme ships with". */
+    fun backdropId(): String = userPrefs.backdropId
+
+    fun saveBackdropId(id: String) {
+        userPrefs.backdropId = id
+    }
+
     fun saveThemeId(id: String) {
         userPrefs.themeId = id
         // The floating orb draws itself from a plain-int copy of the palette and

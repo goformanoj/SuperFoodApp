@@ -146,7 +146,16 @@ fun HudOrb(
         }
 
         if (showLabel) {
-            JarvisWordmark(palette = palette, scale = (size / 280.dp).coerceIn(0.30f, 1.15f))
+            // Scaled by the orb's FIT as well as its box, so a theme drawn
+            // smaller to fit its rings keeps the wordmark in proportion to its
+            // body. Orbit is drawn at 0.657 against everyone else's 0.86; a
+            // wordmark sized only by the box would overhang a body it used to
+            // sit inside.
+            val fit = fitFor(palette.orbStyle) / PREFERRED_FILL
+            JarvisWordmark(
+                palette = palette,
+                scale = ((size / 280.dp) * fit).coerceIn(0.30f, 1.15f),
+            )
         }
     }
 }
