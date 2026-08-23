@@ -243,6 +243,136 @@ class CosmosTest {
         }
     }
 
+    // ---- systems ---------------------------------------------------------
+
+    @Test
+    fun `orbits are spaced the way a real system is`() {
+        // Evenly spaced orbits read as a target. The crowding toward the star is
+        // most of what makes a system look like one, so each orbit must be a
+        // clear step outside the last rather than a fixed distance from it.
+        galaxiesFor(4).flatMap { starsIn(it) }.forEach { star ->
+            val worlds = systemFor(star).worlds
+            assertTrue("${star.designation} has no worlds", worlds.size >= 3)
+            worlds.zipWithNext().forEach { (inner, outer) ->
+                assertTrue(
+                    "${star.designation}: ${outer.orbit} is not clear of ${inner.orbit}",
+                    outer.orbit > inner.orbit * 1.25f,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `inner worlds go round faster, as they do`() {
+        // The single cue that makes a system read as mechanism rather than as a
+        // set of concentric rings.
+        galaxiesFor(3).flatMap { starsIn(it) }.forEach { star ->
+            val worlds = systemFor(star).worlds
+            worlds.zipWithNext().forEach { (inner, outer) ->
+                assertTrue(
+                    "${star.designation}: the outer world is not slower",
+                    abs(inner.speed) > abs(outer.speed),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `no world is inside the star or off past the edge`() {
+        galaxiesFor(4).flatMap { starsIn(it) }.forEach { star ->
+            systemFor(star).worlds.forEach {
+                assertTrue("${star.designation}: a world is inside its sun", it.orbit > 0.15f)
+                assertTrue("${star.designation}: a world orbits off the frame", it.orbit < 6f)
+            }
+        }
+    }
+
+    @Test
+    fun `a belt sits between orbits, never on top of one`() {
+        galaxiesFor(4).flatMap { starsIn(it) }.forEach { star ->
+            val sys = systemFor(star)
+            if (sys.belt <= 0f) return@forEach
+            assertTrue("${star.designation}: an empty belt has density", sys.beltDensity > 0)
+            sys.worlds.forEach {
+                assertTrue(
+                    "${star.designation}: the belt at ${sys.belt} sits on a world at ${it.orbit}",
+                    abs(sys.belt - it.orbit) > 0.02f,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a system is the same system every visit`() {
+        val star = starsIn(galaxiesFor(3)[1]).first()
+        assertEquals(systemFor(star), systemFor(star))
+    }
+
+    @Test
+    fun `no two stars hold the same system`() {
+        val systems = galaxiesFor(4).flatMap { starsIn(it) }.map { systemFor(it) }
+        assertEquals(
+            "two stars lead to an identical system",
+            systems.size,
+            systems.toSet().size,
+        )
+    }
+
+    // ---- things to find --------------------------------------------------
+
+    @Test
+    fun `every world has something on it`() {
+        (0..60).forEach { seed ->
+            StarKind.entries.forEach { star ->
+                val planet = planetFor(seed, star)
+                val found = landmarksOn(planet)
+                assertTrue("a ${planet.kind} has nothing to find", found.isNotEmpty())
+                found.forEach {
+                    assertTrue(
+                        "a ${it.kind} does not belong on a ${planet.kind}",
+                        it.kind in LandmarkKind.on(planet.kind),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `nothing floats off the side of the world it is on`() {
+        // Two independent coordinates put a "surface feature" outside the disc
+        // about a fifth of the time — obvious on a screen, invisible in a diff.
+        (0..80).forEach { seed ->
+            StarKind.entries.forEach { star ->
+                landmarksOn(planetFor(seed, star)).forEach {
+                    val d = kotlin.math.sqrt(it.u * it.u + it.v * it.v)
+                    assertTrue("a ${it.kind} sits $d from the centre, off the disc", d <= 0.9f)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `what you find is the same every time you go back`() {
+        val planet = planetFor(9, StarKind.RedDwarf)
+        assertEquals(landmarksOn(planet), landmarksOn(planet))
+    }
+
+    @Test
+    fun `every kind of thing is findable somewhere`() {
+        val found = (0..200).flatMap { seed ->
+            StarKind.entries.flatMap { landmarksOn(planetFor(seed, it)).map { l -> l.kind } }
+        }.toSet()
+        assertEquals("some landmarks can never be found", LandmarkKind.entries.toSet(), found)
+    }
+
+    @Test
+    fun `everything found is named and described`() {
+        LandmarkKind.entries.forEach {
+            assertTrue("${it.name} has no label", it.label.isNotBlank())
+            assertTrue("${it.name} has no note", it.note.length > 20)
+        }
+    }
+
     // ---- helpers ---------------------------------------------------------
 
     /** Distance round the wheel, which is never more than half a turn. */

@@ -26,6 +26,16 @@ data class OrbFrame(
     val breathe: Float,
     /** 0..1, live microphone level. */
     val amp: Float,
+    /**
+     * How far the viewer has turned the whole assembly, in radians.
+     *
+     * Added to every ring's tilt rather than applied as a screen rotation, so a
+     * drag genuinely turns the orb in space — rings swing through one another and
+     * anything riding them goes round the back. A 2D rotation of the finished
+     * picture would spin a flat image and fool nobody.
+     */
+    val yaw: Float = 0f,
+    val pitch: Float = 0f,
 )
 
 /**
@@ -88,7 +98,7 @@ fun DrawScope.drawOrb3D(
     val breathe = 1f + f.breathe * 0.02f + f.amp * 0.05f
 
     spec.rings.forEach { ring ->
-        drawRing(style, ring, r * breathe, camera, focal, t, detail, accent, highlight, f.amp)
+        drawRing(style, ring, f.yaw, f.pitch, r * breathe, camera, focal, t, detail, accent, highlight, f.amp)
     }
 
     drawMotes((spec.motes * detail.moteScale).toInt(), r * breathe, camera, focal, t, accent, highlight)
@@ -120,7 +130,7 @@ fun DrawScope.drawOrb3D(
     // Beads last, over their own rings: they are the brightest thing on the
     // filigree and being occluded by the wire they run along would be wrong.
     if (spec.beads > 0) {
-        drawBeads(spec, r * breathe, camera, focal, t, accent, highlight, f.amp)
+        drawBeads(spec, f.yaw, f.pitch, r * breathe, camera, focal, t, accent, highlight, f.amp)
     }
 }
 
@@ -137,6 +147,8 @@ fun DrawScope.drawOrb3D(
 private fun DrawScope.drawRing(
     style: OrbStyle,
     ring: Ring3D,
+    yaw: Float,
+    pitch: Float,
     radius: Float,
     camera: Float,
     focal: Float,
@@ -154,8 +166,8 @@ private fun DrawScope.drawRing(
     val half = rr * ring.band
     // Precession: the tilt itself turns, which is what makes a ring read as a
     // gyroscope rather than a fixed ellipse with something sliding round it.
-    val tiltX = ring.tiltX + sin(t * ring.precession) * PRECESS_SWING_X
-    val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * PRECESS_SWING_Y
+    val tiltX = ring.tiltX + sin(t * ring.precession) * PRECESS_SWING_X + pitch
+    val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * PRECESS_SWING_Y + yaw
     val spin = t * ring.spin
 
     val seg = detail.segments
@@ -330,6 +342,8 @@ private fun DrawScope.drawSparkCore(
  */
 private fun DrawScope.drawBeads(
     spec: Orb3DSpec,
+    yaw: Float,
+    pitch: Float,
     radius: Float,
     camera: Float,
     focal: Float,
@@ -346,8 +360,8 @@ private fun DrawScope.drawBeads(
         // ring are ever level with each other.
         val a = OrbMath.unitRandom(i * 37 + 5) * Orb3D.TAU +
             t * ring.spin * OrbMath.range(i * 11 + 3, 0.75f, 1.45f)
-        val tiltX = ring.tiltX + sin(t * ring.precession) * PRECESS_SWING_X
-        val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * PRECESS_SWING_Y
+        val tiltX = ring.tiltX + sin(t * ring.precession) * PRECESS_SWING_X + yaw
+        val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * PRECESS_SWING_Y + pitch
         val p = Orb3D.project(
             Orb3D.rotateY(
                 Orb3D.rotateX(Vec3(cos(a) * rr, sin(a) * rr, 0f), tiltX),

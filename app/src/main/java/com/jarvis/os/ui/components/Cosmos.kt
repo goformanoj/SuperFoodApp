@@ -363,3 +363,175 @@ private fun spaceApart(stars: List<StarSpec>): List<StarSpec> {
 
 /** A phone is about twice as tall as it is wide; the gap has to know that. */
 private const val ASPECT = 2f
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  LAYER 3 — A STAR SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One world on its orbit, with everything needed to place it in time. */
+data class WorldOrbit(
+    val planet: PlanetSpec,
+    /** Fraction of the system's radius. */
+    val orbit: Float,
+    /** Signed: some systems have a world going the wrong way round. */
+    val speed: Float,
+    val phase: Float,
+    /** How far the orbit is tipped out of the plane. */
+    val tilt: Float,
+)
+
+/**
+ * What is actually inside a star.
+ *
+ * Layer three of four: *"any one star, the actual content, the planets and
+ * everything"*. Not the endless self-similar shells that used to be here — those
+ * were the same structure at every scale, which is elegant and tells you nothing.
+ * A system is a place with a fixed cast: a sun, some worlds, a belt of rubble,
+ * and the gaps between them.
+ *
+ * Orbits are spaced GEOMETRICALLY rather than evenly, the way real systems are —
+ * each about 1.4x the one inside it. Evenly spaced orbits read as a target, and
+ * the crowding toward the star is most of what makes a system look like one.
+ */
+data class SystemSpec(
+    val designation: String,
+    val worlds: List<WorldOrbit>,
+    /** Where the asteroid belt sits, or 0 for a system without one. */
+    val belt: Float,
+    val beltDensity: Int,
+)
+
+/** The system inside [star]. */
+fun systemFor(star: StarSpec): SystemSpec {
+    val seed = star.branch * 7919
+    // A blue giant burns its inner system away; a red dwarf holds many close in.
+    val count = when (star.kind) {
+        StarKind.BlueGiant -> 3
+        StarKind.RedDwarf -> 6
+        StarKind.Binary -> 4
+        StarKind.Pulsar -> 3
+        StarKind.Protostar -> 5
+        StarKind.WhiteDwarf -> 3
+    } + (OrbMath.unitRandom(seed + 3) * 3).toInt()
+
+    var radius = OrbMath.range(seed + 5, 0.20f, 0.30f)
+    val worlds = (0 until count).map { i ->
+        val w = WorldOrbit(
+            planet = planetFor(seed + i * 101, star.kind),
+            orbit = radius,
+            // Inner worlds run faster, as they do. This is what makes a system
+            // read as mechanism rather than as a set of rings.
+            speed = (0.55f / (radius + 0.18f)) *
+                (if (OrbMath.unitRandom(seed + i * 13) > 0.88f) -1f else 1f),
+            phase = OrbMath.unitRandom(seed + i * 17) * OrbMath.TAU,
+            tilt = OrbMath.range(seed + i * 23, -0.22f, 0.22f),
+        )
+        radius *= OrbMath.range(seed + i * 29, 1.30f, 1.52f)
+        w
+    }
+    val hasBelt = OrbMath.unitRandom(seed + 41) > 0.35f
+    return SystemSpec(
+        designation = star.designation,
+        worlds = worlds,
+        belt = if (hasBelt && worlds.size > 2) {
+            // Between two of the outer worlds, which is where one goes.
+            val a = worlds[worlds.size - 2].orbit
+            val b = worlds[worlds.size - 1].orbit
+            (a + b) / 2f
+        } else {
+            0f
+        },
+        beltDensity = if (hasBelt) 90 + (OrbMath.unitRandom(seed + 43) * 140).toInt() else 0,
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  LAYER 4 — THINGS ON A WORLD
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Something you find by going close enough.
+ *
+ * Layer four: *"zooming in on the planets i should find things"*. A planet that
+ * is only a shaded sphere is a texture — going closer shows you the same thing
+ * larger, which is the definition of an anticlimax. These are the reward for
+ * travelling: named, described, and specific to the kind of world they are on, so
+ * finding a derelict station above a shattered world tells you what happened
+ * there.
+ */
+enum class LandmarkKind(
+    val label: String,
+    val note: String,
+    /** Drawn as a point of light, a ring on the surface, or a scar across it. */
+    val shape: LandmarkShape,
+) {
+    Station("ORBITAL STATION", "Still under power. Nobody has answered in a long time.", LandmarkShape.Beacon),
+    Wreck("WRECK", "Something came apart here, and the pieces stayed in formation.", LandmarkShape.Beacon),
+    Monolith("MONOLITH", "Too regular to be geology. No inscription anywhere on it.", LandmarkShape.Beacon),
+    Settlement("SETTLEMENT", "Lights in a grid, on the night side. Somebody is home.", LandmarkShape.Cluster),
+    Ruin("RUIN FIELD", "Foundations in rows, under a few metres of dust.", LandmarkShape.Cluster),
+    StormEye("STORM EYE", "A cyclone older than the survey that named it.", LandmarkShape.Eye),
+    Caldera("CALDERA", "A crater rim you could put a small sea inside.", LandmarkShape.Eye),
+    Canyon("CANYON", "A single fracture, most of the way round the world.", LandmarkShape.Scar),
+    Rift("RIFT", "The crust here is still moving apart.", LandmarkShape.Scar),
+    Aurora("AURORA", "The magnetic field, made visible over the pole.", LandmarkShape.Veil),
+    ;
+
+    companion object {
+        /** What can be found on a world of this kind. */
+        fun on(planet: PlanetKind): List<LandmarkKind> = when (planet) {
+            PlanetKind.GasGiant -> listOf(StormEye, Aurora, Station, Wreck)
+            PlanetKind.Rocky -> listOf(Caldera, Canyon, Ruin, Settlement, Monolith)
+            PlanetKind.Ocean -> listOf(StormEye, Settlement, Station, Aurora)
+            PlanetKind.Lava -> listOf(Caldera, Rift, Canyon)
+            PlanetKind.Ice -> listOf(Rift, Canyon, Station, Aurora)
+            PlanetKind.Ringed -> listOf(Station, Wreck, StormEye)
+            PlanetKind.Barren -> listOf(Caldera, Ruin, Monolith, Wreck)
+            PlanetKind.Shattered -> listOf(Wreck, Rift, Monolith, Ruin)
+        }
+    }
+}
+
+/** How a landmark is drawn on the surface. */
+enum class LandmarkShape { Beacon, Cluster, Eye, Scar, Veil }
+
+/** One thing, somewhere on a world. */
+data class LandmarkSpec(
+    val kind: LandmarkKind,
+    val designation: String,
+    /** Position on the visible disc, as fractions of its radius from the centre. */
+    val u: Float,
+    val v: Float,
+    val size: Float,
+    val angle: Float,
+)
+
+/**
+ * What is on [planet], and where.
+ *
+ * Positions are inside the unit disc by construction — a landmark placed by two
+ * independent coordinates lands outside the sphere about a fifth of the time, and
+ * a "surface feature" floating beside the planet is the sort of thing that is
+ * obvious on a screen and invisible in a diff.
+ */
+fun landmarksOn(planet: PlanetSpec): List<LandmarkSpec> {
+    val choices = LandmarkKind.on(planet.kind)
+    val seed = planet.designation.hashCode()
+    val count = 2 + (OrbMath.unitRandom(seed * 13 + 7) * 4).toInt()
+    return (0 until count).map { i ->
+        val s = seed * 71 + i * 137
+        // Polar placement keeps everything on the disc. sqrt spreads them evenly
+        // over the AREA rather than bunching them at the middle.
+        val radius = kotlin.math.sqrt(OrbMath.unitRandom(s + 1)) * 0.82f
+        val theta = OrbMath.unitRandom(s + 2) * OrbMath.TAU
+        LandmarkSpec(
+            kind = choices[(OrbMath.unitRandom(s + 3) * choices.size).toInt()
+                .coerceAtMost(choices.size - 1)],
+            designation = UniverseMath.designationFor(s),
+            u = kotlin.math.cos(theta) * radius,
+            v = kotlin.math.sin(theta) * radius,
+            size = OrbMath.range(s + 5, 0.08f, 0.22f),
+            angle = OrbMath.unitRandom(s + 7) * OrbMath.TAU,
+        )
+    }
+}

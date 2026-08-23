@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -134,6 +135,8 @@ fun OrbUniverse(
     // Null at each level means "still choosing at this one".
     var galaxy by remember { mutableStateOf<GalaxySpec?>(null) }
     var chosen by remember { mutableStateOf<StarSpec?>(null) }
+    // Layer four: which world you are standing off, if any.
+    var world by remember { mutableStateOf<WorldOrbit?>(null) }
 
     // ONE GALAXY PER RING OF THE ORB. Not a number I picked: "count the number
     // of moving orbs on the Jarvis (main orb) and build galaxies according to
@@ -141,6 +144,17 @@ fun OrbUniverse(
     val orbSpec = remember(palette.orbStyle) { specFor(palette.orbStyle) }
     val galaxies = remember(orbSpec.rings.size) { galaxiesFor(orbSpec.rings.size) }
     val stars = remember(galaxy) { galaxy?.let { starsIn(it) } ?: emptyList() }
+    val system = remember(chosen) { chosen?.let { systemFor(it) } }
+    val marks = remember(world) { world?.let { landmarksOn(it.planet) } ?: emptyList() }
+
+    // Where the worlds were last drawn, so a tap is tested against exactly what
+    // is on screen — the same one-source-of-position rule the galaxies follow.
+    //
+    // DELIBERATELY NOT COMPOSE STATE. The draw phase writes this every frame; a
+    // MutableState written during draw and read during composition is an endless
+    // recomposition loop, and the gesture lambda reading it is a composition
+    // read. A plain holder has no observers and cannot loop.
+    val placedWorlds = remember { WorldPlacements() }
     // How far through the flight into the chosen star, 0..1. Held separately from
     // the zoom because the map has to keep drawing, receding, while the first
     // shell of the new dimension grows out of the star that was touched.
@@ -156,6 +170,10 @@ fun OrbUniverse(
     /** Up one stage: dimension → galaxy → orb → gone. */
     fun surface() {
         when {
+            world != null -> {
+                world = null
+                pan = Offset.Zero
+            }
             chosen != null -> {
                 chosen = null
                 target = UniverseMath.START_ZOOM
@@ -231,6 +249,28 @@ fun OrbUniverse(
     // fault OrbDetail exists to remember.
     val orbDetail = remember { OrbDetail(OrbQuality.High) }
 
+    // LIVE HANDLES FOR THE GESTURE LAMBDAS.
+    //
+    // `pointerInput(Unit)` is created once and never restarted, so its lambda
+    // captures plain vals BY VALUE from the composition that made it. `stars`
+    // comes from `remember(galaxy) { … }` and changes every time a galaxy is
+    // opened — so the gesture kept hit-testing the empty list from the first
+    // frame, when no galaxy was open yet. `galaxy != null` read true (that one
+    // goes through a MutableState) and the branch ran against nothing.
+    //
+    // That is exactly "it's not letting me go inside the stars": the tap was
+    // landing, the code was running, and it was asking an empty list.
+    val liveStars by rememberUpdatedState(stars)
+    val liveGalaxies by rememberUpdatedState(galaxies)
+    val liveSpec by rememberUpdatedState(orbSpec)
+
+    // How far the view is zoomed at THIS stage, and how far the orb has been
+    // turned. Reset per stage, because a zoom you set inside one galaxy means
+    // nothing in the next one.
+    var view by remember(galaxy, chosen, world) { mutableFloatStateOf(1f) }
+    var yaw by remember(galaxy, chosen, world) { mutableFloatStateOf(0f) }
+    var pitch by remember(galaxy, chosen, world) { mutableFloatStateOf(0f) }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -252,25 +292,43 @@ fun OrbUniverse(
                     // than doing something arbitrary.
                     onTap = { at ->
                         when {
-                            // Inside a dimension: a tap means nothing, so it does
-                            // nothing rather than something arbitrary.
-                            chosen != null -> Unit
+                            // On a world: a tap does nothing — the things on the
+                            // surface are found by looking, not by hunting.
+                            world != null -> Unit
+                            // In a system: touch a world to go and stand off it.
+                            chosen != null -> {
+                                var best: WorldOrbit? = null
+                                var bestD = size.minDimension * 0.12f
+                                placedWorlds.at.forEach { (w, p) ->
+                                    val d = (p - at).getDistance()
+                                    if (d < bestD) {
+                                        bestD = d
+                                        best = w
+                                    }
+                                }
+                                if (best != null) {
+                                    world = best
+                                    pan = Offset.Zero
+                                }
+                            }
                             // Inside a galaxy: pick a star.
                             galaxy != null -> UniverseMath.starAt(
-                                stars,
+                                liveStars,
                                 at.x / size.width,
                                 at.y / size.height,
                             )?.let { chosen = it }
                             // On the orb: pick one of the bodies riding its rings.
                             else -> {
                                 val hit = galaxyAt(
-                                    galaxies = galaxies,
-                                    spec = orbSpec,
+                                    galaxies = liveGalaxies,
+                                    spec = liveSpec,
                                     clock = clock,
+                                    yaw = yaw,
+                                    pitch = pitch,
                                     at = at,
                                     centre = Offset(size.width / 2f, size.height / 2f),
                                     radius = minOf(size.width, size.height) / 2f *
-                                        fitFor(palette.orbStyle) * ORB_STAGE_ZOOM,
+                                        fitFor(palette.orbStyle) * ORB_STAGE_ZOOM * view,
                                 )
                                 if (hit != null) galaxy = hit
                             }
@@ -290,31 +348,42 @@ fun OrbUniverse(
             }
             .pointerInput(Unit) {
                 detectTransformGestures { _, panChange, gestureZoom, _ ->
-                    // A pinch reports a MULTIPLIER, and depth is measured in
-                    // powers of SCALE, so the conversion is a logarithm. Adding
-                    // the raw multiplier instead would make one pinch mean
-                    // wildly different amounts of travel depending on how deep
-                    // you already were.
-                    if (gestureZoom > 0f) {
-                        // Taking the live value while a double-tap dive is still
-                        // flying means grabbing hold of it wherever it has got
-                        // to, rather than snapping to where it was going to end.
-                        val from = if (zoom.isRunning) zoom.value else target
-                        target = from + ln(gestureZoom) / LN_SCALE
-                        scope.launch { zoom.snapTo(target) }
-                        // Surfacing walks back UP the hierarchy one stage at a
-                        // time rather than dropping to the home screen. Six
-                        // levels down inside a star inside a galaxy is a place
-                        // the user navigated to deliberately; throwing all of it
-                        // away on one pinch would be the worst possible reading
-                        // of the gesture.
-                        if (settled && UniverseMath.shouldClose(target)) surface()
+                    // EVERY STAGE RESPONDS. It used to be only the dimension —
+                    // the orb and the galaxy were pictures you could look at and
+                    // nothing else, which is why they felt like screens rather
+                    // than places.
+                    run {
+                        // EVERY stage scales the same way. There is one gesture
+                        // vocabulary across all four layers now — pinch to zoom,
+                        // drag to move or turn, tap to go in, pinch out to leave —
+                        // rather than the dive meaning something different from
+                        // everything above it.
+                        if (gestureZoom > 0f) {
+                            view = (view * gestureZoom).coerceIn(MIN_VIEW, MAX_VIEW)
+                            // Pinching well past the minimum is how you leave —
+                            // the same gesture that surfaces out of a dive, so
+                            // there is one way back up rather than two.
+                            if (view <= MIN_VIEW + 0.001f && gestureZoom < 1f) surface()
+                        }
+                        if (galaxy == null) {
+                            // TURNING THE ORB. "i should be able to turn the main
+                            // orb around after pinching" — a drag is a real
+                            // rotation of the whole assembly, not a pan of a flat
+                            // picture, so the rings swing through each other and
+                            // the galaxies riding them go round the back.
+                            yaw -= panChange.x / size.width * TURN_PER_WIDTH
+                            pitch = (pitch - panChange.y / size.height * TURN_PER_WIDTH)
+                                // Clamped, or the orb tumbles past its poles and
+                                // there is no way to tell which way up it was.
+                                .coerceIn(-1.2f, 1.2f)
+                        } else {
+                            val limit = minOf(size.width, size.height) * 0.45f
+                            pan = Offset(
+                                UniverseMath.clampPan(pan.x + panChange.x, limit),
+                                UniverseMath.clampPan(pan.y + panChange.y, limit),
+                            )
+                        }
                     }
-                    val limit = minOf(size.width, size.height) * 0.45f
-                    pan = Offset(
-                        UniverseMath.clampPan(pan.x + panChange.x, limit),
-                        UniverseMath.clampPan(pan.y + panChange.y, limit),
-                    )
                 }
             },
     ) {
@@ -350,6 +419,9 @@ fun OrbUniverse(
                 drawOrbStage(
                     spec = orbSpec,
                     galaxies = galaxies,
+                    view = view,
+                    yaw = yaw,
+                    pitch = pitch,
                     style = palette.orbStyle,
                     detail = orbDetail,
                     clock = clock,
@@ -371,33 +443,41 @@ fun OrbUniverse(
                     clock = clock,
                     flight = flight,
                     focus = chosen,
+                    view = view,
+                    pan = pan,
                 )
             }
 
             // No star entered yet — nothing below this is drawn.
-            if (chosen == null) return@Canvas
+            if (chosen == null) {
+                placedWorlds.at = emptyList()
+                return@Canvas
+            }
 
-            // Far to near, so a nearer shell overlays the one behind it. The
-            // range runs parent-first, so it is walked backwards.
-            for (j in UniverseMath.SHELLS.reversed()) {
-                val level = UniverseMath.levelOf(j, fraction)
-                val alpha = UniverseMath.shellAlpha(level)
-                if (alpha <= 0.004f) continue
-                val spec = shells[j] ?: continue
-                drawShell(
-                    spec = spec,
-                    style = palette.orbStyle,
-                    heat = chosen?.kind?.heat ?: 0.5f,
-                    at = eye,
-                    radius = base * UniverseMath.shellScale(level) * (1f + breathe * 0.012f + amp * 0.04f),
-                    alpha = alpha * flight,
-                    core = UniverseMath.coreGlow(level),
+            val ink = here ?: galaxy!!.palette
+            val standing = world
+
+            if (standing == null) {
+                // ── STAGE 3: THE SYSTEM ─────────────────────────────────────
+                placedWorlds.at = drawSystemStage(
+                    system = system!!,
+                    ink = ink,
                     clock = clock,
-                    coolAccent = here?.arm?.toColor() ?: palette.accent,
-                    hotHighlight = here?.spark?.toColor() ?: palette.highlight,
-                    secondary = here?.gas?.toColor() ?: palette.secondary,
-                    star = chosen?.kind,
-                    viewport = base,
+                    view = view,
+                    pan = pan,
+                    alpha = flight,
+                )
+            } else {
+                // ── STAGE 4: A WORLD, and what is on it ─────────────────────
+                placedWorlds.at = emptyList()
+                drawPlanetStage(
+                    world = standing,
+                    marks = marks,
+                    ink = ink,
+                    clock = clock,
+                    view = view,
+                    pan = pan,
+                    alpha = flight,
                 )
             }
 
@@ -449,12 +529,22 @@ fun OrbUniverse(
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                UniverseHud(
-                    depth = depth,
-                    fraction = fraction,
-                    here = shells[0],
-                    star = star,
-                    palette = palette,
+                val ink = chosen?.let { paletteFor(it.branch, it.kind) }
+                val standing = world
+                StageHud(
+                    title = standing?.planet?.designation ?: star.designation,
+                    subtitle = if (standing != null) {
+                        "${standing.planet.kind.label}  ·  ${marks.size} FEATURES"
+                    } else {
+                        "${star.kind.label}  ·  ${system?.worlds?.size ?: 0} WORLDS"
+                    },
+                    hint = if (standing != null) {
+                        standing.planet.kind.summary.uppercase()
+                    } else {
+                        "TOUCH A WORLD TO GO AND SEE IT  ·  PINCH BACK"
+                    },
+                    tint = ink?.spark?.toColor() ?: palette.highlight,
+                    accent = ink?.arm?.toColor() ?: palette.accent,
                     alpha = readout * enterStar.value,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -674,8 +764,26 @@ private fun DrawScope.drawShell(
     }
 }
 
+/**
+ * Where the worlds of a system were last drawn.
+ *
+ * A plain mutable holder, not Compose state, and that is the point: the draw
+ * phase writes it every frame and the gesture reads it, so making it observable
+ * would recompose on every frame and read-during-composition would loop.
+ */
+private class WorldPlacements {
+    var at: List<Pair<WorldOrbit, Offset>> = emptyList()
+}
+
 /** How much larger the orb is here than on the home screen. */
 private const val ORB_STAGE_ZOOM = 1.55f
+
+/** How far a stage may be zoomed. Below the minimum, the gesture leaves instead. */
+private const val MIN_VIEW = 0.55f
+private const val MAX_VIEW = 4.5f
+
+/** A full drag across the screen turns the orb by about this much, in radians. */
+private const val TURN_PER_WIDTH = 3.4f
 
 /** Ink is Compose-free so it can be tested; this is the only place it converts. */
 private fun Ink.toColor(): Color = Color(r.coerceIn(0f, 1f), g.coerceIn(0f, 1f), b.coerceIn(0f, 1f), 1f)
@@ -688,12 +796,20 @@ private fun Ink.toColor(): Color = Color(r.coerceIn(0f, 1f), g.coerceIn(0f, 1f),
  * the day someone retunes one of them, and the symptom would be taps that miss by
  * a few degrees with nothing visibly wrong.
  */
-private fun galaxyOn(spec: Orb3DSpec, i: Int, clock: Float, centre: Offset, radius: Float): Offset {
+private fun galaxyOn(
+    spec: Orb3DSpec,
+    i: Int,
+    clock: Float,
+    yaw: Float,
+    pitch: Float,
+    centre: Offset,
+    radius: Float,
+): Offset {
     val ring = spec.rings[i]
     val t = clock
     val rr = radius * ring.radius
-    val tiltX = ring.tiltX + sin(t * ring.precession) * PRECESS_SWING_X
-    val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * PRECESS_SWING_Y
+    val tiltX = ring.tiltX + sin(t * ring.precession) * PRECESS_SWING_X + pitch
+    val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * PRECESS_SWING_Y + yaw
     val a = t * ring.spin
     val p = Orb3D.project(
         Orb3D.rotateY(Orb3D.rotateX(Vec3(cos(a) * rr, sin(a) * rr, 0f), tiltX), tiltY),
@@ -708,6 +824,8 @@ private fun galaxyAt(
     galaxies: List<GalaxySpec>,
     spec: Orb3DSpec,
     clock: Float,
+    yaw: Float,
+    pitch: Float,
     at: Offset,
     centre: Offset,
     radius: Float,
@@ -716,7 +834,7 @@ private fun galaxyAt(
     var bestDistance = radius * 0.30f
     galaxies.forEachIndexed { i, g ->
         if (i >= spec.rings.size) return@forEachIndexed
-        val p = galaxyOn(spec, i, clock, centre, radius)
+        val p = galaxyOn(spec, i, clock, yaw, pitch, centre, radius)
         val d = (p - at).getDistance()
         if (d < bestDistance) {
             bestDistance = d
@@ -742,6 +860,9 @@ private fun galaxyAt(
 private fun DrawScope.drawOrbStage(
     spec: Orb3DSpec,
     galaxies: List<GalaxySpec>,
+    view: Float,
+    yaw: Float,
+    pitch: Float,
     style: OrbStyle,
     detail: OrbDetail,
     clock: Float,
@@ -752,7 +873,7 @@ private fun DrawScope.drawOrbStage(
     secondary: Color,
     fit: Float,
 ) {
-    val radius = size.minDimension / 2f * fit * ORB_STAGE_ZOOM
+    val radius = size.minDimension / 2f * fit * ORB_STAGE_ZOOM * view
     drawOrb3D(
         style = style,
         detail = detail,
@@ -766,6 +887,8 @@ private fun DrawScope.drawOrbStage(
             counter = -clock * 57.3f,
             breathe = breathe,
             amp = amp,
+            yaw = yaw,
+            pitch = pitch,
         ),
         accent = accent,
         highlight = highlight,
@@ -775,7 +898,7 @@ private fun DrawScope.drawOrbStage(
     // The galaxies, riding the rings.
     galaxies.forEachIndexed { i, g ->
         if (i >= spec.rings.size) return@forEachIndexed
-        val at = galaxyOn(spec, i, clock, center, radius)
+        val at = galaxyOn(spec, i, clock, yaw, pitch, center, radius)
         val ink = g.palette
         val pulse = 0.82f + 0.18f * sin(clock * 1.3f + i * 1.7f)
         val r = size.minDimension * 0.016f * pulse
@@ -801,6 +924,8 @@ private fun DrawScope.drawGalaxyStage(
     clock: Float,
     flight: Float,
     focus: StarSpec?,
+    view: Float,
+    pan: Offset,
 ) {
     val fade = (1f - flight).coerceIn(0f, 1f)
     if (fade <= 0.01f) return
@@ -808,8 +933,8 @@ private fun DrawScope.drawGalaxyStage(
     val arm = ink.arm.toColor()
     val gas = ink.gas.toColor()
     val spark = ink.spark.toColor()
-    val r = size.minDimension * 0.42f
-    val at = center
+    val r = size.minDimension * 0.42f * view
+    val at = center + pan
     val turn = clock * 0.06f
     val squash = galaxy.tilt
 
@@ -1448,6 +1573,225 @@ private fun DrawScope.drawSatellite(
         flare(p, body * 2.0f, Color.White, alpha * 0.30f)
     }
 }
+
+/**
+ * LAYER THREE — a star system.
+ *
+ * *"any one star, the actual content, the planets and everything"*. The sun at
+ * the middle, its worlds on real orbits at real relative speeds, and the belt of
+ * rubble most systems have. Orbits are drawn as thin ellipses so the mechanism is
+ * legible even when a world is round the far side.
+ *
+ * This replaced the endless self-similar shells that used to be layer three.
+ * Those were the same structure at every scale, which is elegant and tells you
+ * nothing: a place with a fixed cast — a sun, six worlds, a belt — is somewhere
+ * you can learn, and the previous version was somewhere you could only fall
+ * through.
+ */
+private fun DrawScope.drawSystemStage(
+    system: SystemSpec,
+    ink: DimensionPalette,
+    clock: Float,
+    view: Float,
+    pan: Offset,
+    alpha: Float,
+): List<Pair<WorldOrbit, Offset>> {
+    val at = center + pan
+    val unit = size.minDimension * 0.34f * view
+    val arm = ink.arm.toColor()
+    val spark = ink.spark.toColor()
+
+    // The sun.
+    val sunR = unit * 0.16f
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(
+                Color.White.copy(alpha = alpha),
+                ink.core.toColor().copy(alpha = alpha * 0.85f),
+                spark.copy(alpha = alpha * 0.30f),
+                Color.Transparent,
+            ),
+            center = at,
+            radius = sunR * 4.5f,
+        ),
+        radius = sunR * 4.5f,
+        center = at,
+        blendMode = BlendMode.Plus,
+    )
+    point(at, sunR, alpha)
+    spikes(at, sunR * 7f, Color.White, alpha * 0.45f, clock * 0.04f)
+
+    // The belt, before the worlds so they pass in front of it.
+    if (system.belt > 0f) {
+        for (i in 0 until system.beltDensity) {
+            val a = OrbMath.unitRandom(i * 7 + 3) * OrbMath.TAU + clock * 0.05f
+            val rr = unit * system.belt * OrbMath.range(i * 11 + 5, 0.94f, 1.07f)
+            drawCircle(
+                color = arm.copy(alpha = alpha * OrbMath.range(i * 3 + 1, 0.10f, 0.42f)),
+                radius = px(OrbMath.range(i * 5 + 9, 0.4f, 1.3f)),
+                center = Offset(at.x + cos(a) * rr, at.y + sin(a) * rr * 0.34f),
+                blendMode = BlendMode.Plus,
+            )
+        }
+    }
+
+    // Orbits and worlds. Returned so the caller can hit-test what was drawn —
+    // one source of position for both, as with the galaxies on the orb.
+    val placed = mutableListOf<Pair<WorldOrbit, Offset>>()
+    system.worlds.forEach { w ->
+        val rr = unit * w.orbit
+        val squash = 0.30f + abs(cos(w.tilt)) * 0.16f
+        drawOval(
+            color = arm.copy(alpha = alpha * 0.18f),
+            topLeft = Offset(at.x - rr, at.y - rr * squash),
+            size = Size(rr * 2f, rr * squash * 2f),
+            style = Stroke(px(0.8f)),
+        )
+        val a = w.phase + clock * w.speed * 0.5f
+        val p = Offset(at.x + cos(a) * rr, at.y + sin(a) * rr * squash)
+        placed += w to p
+
+        // Big enough to be a world, small enough to still be a system view.
+        val body = unit * 0.055f * w.planet.kind.bulk
+        drawPlanet(w.planet, p, body, alpha, arm, arm, spark)
+    }
+    return placed
+}
+
+/**
+ * LAYER FOUR — one world, and the things on it.
+ *
+ * *"zooming in on the planets i should find things"*. A planet that is only a
+ * shaded sphere gets no better by being drawn larger — going closer has to REVEAL
+ * something, or the journey ends in an anticlimax. So the surface carries named,
+ * described landmarks that suit the kind of world they are on, and they fade in
+ * as the view zooms rather than all being there from the first frame.
+ */
+private fun DrawScope.drawPlanetStage(
+    world: WorldOrbit,
+    marks: List<LandmarkSpec>,
+    ink: DimensionPalette,
+    clock: Float,
+    view: Float,
+    pan: Offset,
+    alpha: Float,
+): List<Pair<LandmarkSpec, Offset>> {
+    val at = center + pan
+    val r = size.minDimension * 0.34f * view
+    val arm = ink.arm.toColor()
+    val spark = ink.spark.toColor()
+
+    drawPlanet(world.planet, at, r, alpha, arm, arm, spark)
+
+    // Its moons, on their own orbits outside it.
+    for (m in 0 until world.planet.moons) {
+        val a = clock * (0.5f + m * 0.22f) + m * 2.1f
+        val rr = r * (1.45f + m * 0.32f)
+        val p = Offset(at.x + cos(a) * rr, at.y + sin(a) * rr * 0.42f)
+        drawCircle(
+            color = Color.White.copy(alpha = alpha * 0.75f),
+            radius = r * 0.055f,
+            center = p,
+        )
+        drawCircle(
+            color = Color.Black.copy(alpha = alpha * 0.5f),
+            radius = r * 0.055f,
+            center = Offset(p.x + r * 0.02f, p.y + r * 0.015f),
+        )
+    }
+
+    // The things. Held back until the view has actually closed in, so arriving
+    // and then finding something are two separate moments rather than one.
+    val reveal = ((view - LANDMARK_REVEAL) / 0.8f).coerceIn(0f, 1f)
+    if (reveal <= 0.01f) return emptyList()
+
+    val placed = mutableListOf<Pair<LandmarkSpec, Offset>>()
+    marks.forEach { mark ->
+        // Foreshortened toward the limb, so a landmark near the edge is squashed
+        // the way a real surface feature is. Without it they read as stickers on
+        // a flat circle.
+        val depth = kotlin.math.sqrt((1f - mark.u * mark.u - mark.v * mark.v).coerceAtLeast(0f))
+        val p = Offset(at.x + mark.u * r, at.y + mark.v * r)
+        placed += mark to p
+        val a = alpha * reveal * (0.35f + depth * 0.65f)
+        val ms = r * mark.size
+        val glow = lerpColour(spark, Color.White, 0.35f)
+
+        when (mark.kind.shape) {
+            LandmarkShape.Beacon -> {
+                // In orbit rather than on the ground: a hard point with a slow
+                // blink, which is what says "made" instead of "geology".
+                val blink = 0.45f + 0.55f * abs(sin(clock * 2.2f + mark.angle))
+                halo(p, ms * 1.6f, glow, a * 0.55f * blink)
+                point(p, ms * 0.16f, a * blink)
+            }
+            LandmarkShape.Cluster -> {
+                // Lights in a grid — a settlement reads by its regularity.
+                for (i in 0 until 9) {
+                    val gx = (i % 3 - 1) * ms * 0.36f
+                    val gy = (i / 3 - 1) * ms * 0.30f * depth
+                    drawCircle(
+                        color = glow.copy(alpha = a * OrbMath.range(i * 13 + 3, 0.35f, 0.95f)),
+                        radius = px(1.1f),
+                        center = Offset(p.x + gx, p.y + gy),
+                        blendMode = BlendMode.Plus,
+                    )
+                }
+                halo(p, ms * 1.3f, glow, a * 0.22f)
+            }
+            LandmarkShape.Eye -> {
+                // A ringed depression or a cyclone: concentric, with a bright pupil.
+                for (k in 3 downTo 1) {
+                    drawOval(
+                        color = arm.copy(alpha = a * 0.30f / k),
+                        topLeft = Offset(p.x - ms * k * 0.42f, p.y - ms * k * 0.42f * depth),
+                        size = Size(ms * k * 0.84f, ms * k * 0.84f * depth),
+                        style = Stroke(px(1.1f)),
+                    )
+                }
+                drawCircle(glow.copy(alpha = a * 0.75f), ms * 0.16f, p, blendMode = BlendMode.Plus)
+            }
+            LandmarkShape.Scar -> {
+                // A fracture: a long thin line following the curve of the body.
+                val len = ms * 3.2f
+                val dx = cos(mark.angle) * len
+                val dy = sin(mark.angle) * len * depth
+                drawLine(
+                    brush = Brush.linearGradient(
+                        listOf(Color.Transparent, glow.copy(alpha = a * 0.85f), Color.Transparent),
+                        start = Offset(p.x - dx, p.y - dy),
+                        end = Offset(p.x + dx, p.y + dy),
+                    ),
+                    start = Offset(p.x - dx, p.y - dy),
+                    end = Offset(p.x + dx, p.y + dy),
+                    strokeWidth = px(1.6f),
+                    cap = StrokeCap.Round,
+                    blendMode = BlendMode.Plus,
+                )
+            }
+            LandmarkShape.Veil -> {
+                // An aurora: curtains over the pole, drawn as nested arcs.
+                for (k in 0 until 5) {
+                    val rr = ms * (1.1f + k * 0.22f)
+                    drawArc(
+                        color = glow.copy(alpha = a * 0.30f * (1f - k / 5f)),
+                        startAngle = 200f + sin(clock * 0.7f + k) * 18f,
+                        sweepAngle = 140f,
+                        useCenter = false,
+                        topLeft = Offset(p.x - rr, p.y - rr * depth),
+                        size = Size(rr * 2f, rr * 2f * depth),
+                        style = Stroke(px(1.4f)),
+                        blendMode = BlendMode.Plus,
+                    )
+                }
+            }
+        }
+    }
+    return placed
+}
+
+/** How far in the view must be before the surface starts giving things up. */
+private const val LANDMARK_REVEAL = 1.15f
 
 /**
  * A WORLD, close enough to see what it is.
