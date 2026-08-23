@@ -333,7 +333,7 @@ class UniverseMathTest {
         // both ugly and untappable — nearest-wins hit testing would give one of
         // them to the other forever. The relaxation pass exists for this and
         // nothing else, so it gets a test.
-        val stars = UniverseMath.starMap()
+        val stars = sky()
         stars.forEachIndexed { i, a ->
             stars.drop(i + 1).forEach { b ->
                 val dx = a.x - b.x
@@ -349,27 +349,27 @@ class UniverseMathTest {
 
     @Test
     fun `every star is on screen and reachable`() {
-        UniverseMath.starMap().forEach { star ->
+        sky().forEach { star ->
             assertTrue("${star.designation} is off the left/right edge", star.x in 0.05f..0.95f)
             assertTrue("${star.designation} is off the top/bottom", star.y in 0.10f..0.90f)
             assertEquals(
                 "touching ${star.designation} does not select it",
                 star.branch,
-                UniverseMath.starAt(UniverseMath.starMap(), star.x, star.y)?.branch,
+                UniverseMath.starAt(sky(), star.x, star.y)?.branch,
             )
         }
     }
 
     @Test
     fun `a touch in empty space selects nothing`() {
-        val stars = UniverseMath.starMap()
+        val stars = sky()
         // Somewhere far outside the laid-out region.
         assertEquals(null, UniverseMath.starAt(stars, -5f, -5f))
     }
 
     @Test
     fun `a touch between two stars goes to the nearer one`() {
-        val stars = UniverseMath.starMap()
+        val stars = sky()
         val a = stars[0]
         val b = stars.drop(1).minByOrNull {
             val dx = it.x - a.x
@@ -391,14 +391,17 @@ class UniverseMathTest {
         // Branch 0 is "nothing chosen". A star holding it would generate the same
         // universe as not having picked one, which is the sort of collision that
         // looks like the chooser doing nothing at all.
-        UniverseMath.starMap().forEach {
+        sky().forEach {
             assertNotEquals(UniverseMath.NO_BRANCH, it.branch)
         }
     }
 
     @Test
-    fun `every kind of star appears on the map`() {
-        val kinds = UniverseMath.starMap().map { it.kind }.toSet()
+    fun `every kind of star is reachable somewhere`() {
+        // Across the whole orb, not within one galaxy: a galaxy of five stars
+        // cannot hold six kinds, and asserting that it does is a test written for
+        // the flat nine-star map that no longer exists.
+        val kinds = galaxiesFor(6).flatMap { starsIn(it) }.map { it.kind }.toSet()
         assertEquals("some kinds of star are unreachable", StarKind.entries.toSet(), kinds)
     }
 
@@ -408,7 +411,7 @@ class UniverseMathTest {
     fun `two stars lead to genuinely different universes`() {
         // The whole promise of the chooser. If two branches produced the same
         // shells the second star anyone tried would give it away immediately.
-        val stars = UniverseMath.starMap()
+        val stars = sky()
         stars.forEachIndexed { i, a ->
             stars.drop(i + 1).forEach { b ->
                 val here = (0..3).map { UniverseMath.shellAt(UniverseMath.seedFor(a.branch, it, 0)) }
@@ -424,7 +427,7 @@ class UniverseMathTest {
 
     @Test
     fun `a dimension is the same place every time you enter it`() {
-        val star = UniverseMath.starMap()[3]
+        val star = sky().first()
         val first = (0..5).map { UniverseMath.shellAt(UniverseMath.seedFor(star.branch, it, 0)) }
         val again = (0..5).map { UniverseMath.shellAt(UniverseMath.seedFor(star.branch, it, 0)) }
         assertEquals("a dimension was rebuilt differently on a second visit", first, again)
@@ -435,7 +438,7 @@ class UniverseMathTest {
         // The endless-zoom identity is what everything rests on, and adding a
         // branch multiplier to the seed is exactly the kind of change that could
         // break it without anyone noticing until they were ten levels down.
-        val branch = UniverseMath.starMap()[5].branch
+        val branch = sky().last().branch
         for (crossing in 0..8) {
             val before = UniverseMath.seedFor(branch, UniverseMath.depthOf(crossing - 0.0005f), 0)
             val after = UniverseMath.seedFor(branch, UniverseMath.depthOf(crossing + 0.0005f), -1)
@@ -601,6 +604,16 @@ class UniverseMathTest {
     }
 
     // ---- helpers ---------------------------------------------------------
+
+    /**
+     * The stars of a real galaxy.
+     *
+     * These used to test `UniverseMath.starMap()`, a flat scatter that nothing
+     * ships any more — stars now live on the arms of a galaxy. A test whose
+     * fixture is the only remaining caller of the code it tests is not testing
+     * anything: it keeps dead code alive and it stops covering the live path.
+     */
+    private fun sky() = starsIn(galaxiesFor(3)[0])
 
     private data class DrawnShell(val seed: Int, val scale: Float, val alpha: Float)
 

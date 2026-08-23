@@ -266,57 +266,6 @@ object UniverseMath {
     }
 
     /**
-     * The stars on the map, laid out before any dive begins.
-     *
-     * *"begin with different kinds of stars on the screen, and depending on which
-     * star the user clicks it goes into that dimension"*. So the universe now
-     * opens on a CHOICE rather than on a structure, and the star you touch
-     * decides the branch every shell below it is generated from.
-     *
-     * Positions are in fractions of the frame so the layout is resolution-free,
-     * and they are pushed apart by a few rounds of relaxation — a plain hash
-     * scatter clumps, and two stars overlapping is both ugly and untappable. The
-     * relaxation is deterministic, so the map is the same map every time.
-     */
-    fun starMap(count: Int = STAR_COUNT): List<StarSpec> {
-        val xs = FloatArray(count)
-        val ys = FloatArray(count)
-        for (i in 0 until count) {
-            xs[i] = OrbMath.range(i * 7919 + 13, 0.12f, 0.88f)
-            ys[i] = OrbMath.range(i * 6337 + 29, 0.16f, 0.84f)
-        }
-        // Push apart. Four passes is enough to clear the overlaps a hash leaves
-        // without dragging everything to the edges, which more passes would.
-        repeat(4) {
-            for (a in 0 until count) {
-                for (b in a + 1 until count) {
-                    val dx = xs[b] - xs[a]
-                    val dy = (ys[b] - ys[a]) * ASPECT
-                    val d = kotlin.math.sqrt(dx * dx + dy * dy)
-                    if (d in 0.0001f..MIN_STAR_GAP) {
-                        val push = (MIN_STAR_GAP - d) * 0.5f
-                        xs[a] -= dx / d * push
-                        xs[b] += dx / d * push
-                        ys[a] -= dy / d * push / ASPECT
-                        ys[b] += dy / d * push / ASPECT
-                    }
-                }
-            }
-        }
-        return (0 until count).map { i ->
-            StarSpec(
-                branch = i + 1,
-                kind = StarKind.entries[i % StarKind.entries.size],
-                x = xs[i].coerceIn(0.10f, 0.90f),
-                y = ys[i].coerceIn(0.14f, 0.86f),
-                size = OrbMath.range(i * 5171 + 7, 0.7f, 1.35f),
-                phase = OrbMath.unitRandom(i * 4093 + 3) * OrbMath.TAU,
-                designation = designationFor(i * 1_000_003),
-            )
-        }
-    }
-
-    /**
      * Which star a touch at [x], [y] (in frame fractions) lands on, or null.
      *
      * The radius is generous and deliberately larger than the drawn star: these
@@ -393,9 +342,6 @@ object UniverseMath {
     private const val NEAR_FADE = 1.00f
     private const val FAR_FADE = -1.55f
     private const val FAR_GONE = -1.90f
-
-    /** How many stars the map opens with. */
-    const val STAR_COUNT = 9
 
     /** Closest two stars may sit, in frame fractions. Below this they overlap. */
     const val MIN_STAR_GAP = 0.19f

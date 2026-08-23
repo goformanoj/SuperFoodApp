@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -122,8 +123,24 @@ fun OrbUniverse(
     // star the user clicks it goes into that dimension". Every star mixes its own
     // branch into every seed below it, so the six kinds are not six labels on the
     // same place — pick a different star and nothing at any depth repeats.
+    // THREE stages now, not two.
+    //
+    //   orb      the JARVIS orb itself, enlarged, its ring bodies revealed as
+    //            galaxies — "when I zoom in, i should only see the main screen
+    //            orb without Jarvis system written, and ofc a enlarged picture"
+    //   galaxy   one of those, opened: its arms, and the stars along them
+    //   dimension a star's own universe, and the endless dive through it
+    //
+    // Null at each level means "still choosing at this one".
+    var galaxy by remember { mutableStateOf<GalaxySpec?>(null) }
     var chosen by remember { mutableStateOf<StarSpec?>(null) }
-    val stars = remember { UniverseMath.starMap() }
+
+    // ONE GALAXY PER RING OF THE ORB. Not a number I picked: "count the number
+    // of moving orbs on the Jarvis (main orb) and build galaxies according to
+    // that". Arc's five rings really do open onto five galaxies.
+    val orbSpec = remember(palette.orbStyle) { specFor(palette.orbStyle) }
+    val galaxies = remember(orbSpec.rings.size) { galaxiesFor(orbSpec.rings.size) }
+    val stars = remember(galaxy) { galaxy?.let { starsIn(it) } ?: emptyList() }
     // How far through the flight into the chosen star, 0..1. Held separately from
     // the zoom because the map has to keep drawing, receding, while the first
     // shell of the new dimension grows out of the star that was touched.
@@ -136,16 +153,20 @@ fun OrbUniverse(
         }
     }
 
-    BackHandler(enabled = true) {
-        // Same two steps as pinching out, for the same reason.
-        if (chosen != null) {
-            chosen = null
-            target = UniverseMath.START_ZOOM
-            scope.launch { zoom.snapTo(UniverseMath.START_ZOOM) }
-        } else {
-            close()
+    /** Up one stage: dimension → galaxy → orb → gone. */
+    fun surface() {
+        when {
+            chosen != null -> {
+                chosen = null
+                target = UniverseMath.START_ZOOM
+                scope.launch { zoom.snapTo(UniverseMath.START_ZOOM) }
+            }
+            galaxy != null -> galaxy = null
+            else -> close()
         }
     }
+
+    BackHandler(enabled = true) { surface() }
 
     // The arrival, as MOVEMENT rather than as an appearance. The host grows this
     // page out of the orb; this flies the camera inward at the same time, so the
@@ -205,6 +226,10 @@ fun OrbUniverse(
     }
 
     val amp = amplitude.coerceIn(0f, 1f)
+    // The orb stage draws the real renderer, which needs its scratch buffers —
+    // rebuilding ring geometry into fresh lists every frame is the allocation
+    // fault OrbDetail exists to remember.
+    val orbDetail = remember { OrbDetail(OrbQuality.High) }
 
     Box(
         modifier = modifier
@@ -226,13 +251,29 @@ fun OrbUniverse(
                     // single tap means nothing, so it stays inert there rather
                     // than doing something arbitrary.
                     onTap = { at ->
-                        if (chosen == null) {
-                            val hit = UniverseMath.starAt(
+                        when {
+                            // Inside a dimension: a tap means nothing, so it does
+                            // nothing rather than something arbitrary.
+                            chosen != null -> Unit
+                            // Inside a galaxy: pick a star.
+                            galaxy != null -> UniverseMath.starAt(
                                 stars,
                                 at.x / size.width,
                                 at.y / size.height,
-                            )
-                            if (hit != null) chosen = hit
+                            )?.let { chosen = it }
+                            // On the orb: pick one of the bodies riding its rings.
+                            else -> {
+                                val hit = galaxyAt(
+                                    galaxies = galaxies,
+                                    spec = orbSpec,
+                                    clock = clock,
+                                    at = at,
+                                    centre = Offset(size.width / 2f, size.height / 2f),
+                                    radius = minOf(size.width, size.height) / 2f *
+                                        fitFor(palette.orbStyle) * ORB_STAGE_ZOOM,
+                                )
+                                if (hit != null) galaxy = hit
+                            }
                         }
                     },
                     // A dive per double-tap, because a phone held one-handed
@@ -261,19 +302,13 @@ fun OrbUniverse(
                         val from = if (zoom.isRunning) zoom.value else target
                         target = from + ln(gestureZoom) / LN_SCALE
                         scope.launch { zoom.snapTo(target) }
-                        if (settled && UniverseMath.shouldClose(target)) {
-                            // Surfacing out of a dimension goes back to the MAP,
-                            // not out of the universe altogether. Dropping the
-                            // user onto the home screen from six levels down
-                            // would throw away the choice they made to get there.
-                            if (chosen != null) {
-                                chosen = null
-                                target = UniverseMath.START_ZOOM
-                                scope.launch { zoom.snapTo(UniverseMath.START_ZOOM) }
-                            } else {
-                                close()
-                            }
-                        }
+                        // Surfacing walks back UP the hierarchy one stage at a
+                        // time rather than dropping to the home screen. Six
+                        // levels down inside a star inside a galaxy is a place
+                        // the user navigated to deliberately; throwing all of it
+                        // away on one pinch would be the worst possible reading
+                        // of the gesture.
+                        if (settled && UniverseMath.shouldClose(target)) surface()
                     }
                     val limit = minOf(size.width, size.height) * 0.45f
                     pan = Offset(
@@ -292,28 +327,54 @@ fun OrbUniverse(
             // identical dots on it. A real sky has depth (gas you are looking
             // THROUGH), a band where the galaxy is denser, and stars of visibly
             // different brightnesses.
-            drawSky(clock, palette.accent, palette.secondary, palette.highlight)
-            drawDeepField(clock, palette.accent, palette.highlight)
+            // THE SKY belongs to wherever you are, not to the app theme. On the
+            // orb it is the theme's, because the orb IS the theme; one level in
+            // it becomes the galaxy's own, and inside a star it becomes that
+            // dimension's. "a dimension of the forge not necessarily be it's
+            // theme colours" — so past the orb, the theme stops.
+            val here = chosen?.let { paletteFor(it.branch, it.kind) } ?: galaxy?.palette
+            val skyA = here?.gas?.toColor() ?: palette.accent
+            val skyB = here?.arm?.toColor() ?: palette.secondary
+            val skyC = here?.spark?.toColor() ?: palette.highlight
+            drawSky(clock, skyA, skyB, skyC)
+            drawDeepField(clock, skyA, skyC)
 
-            // THE MAP. Drawn while no star is chosen, and kept drawing while the
-            // flight into one is under way — receding and dimming, so the star you
-            // touched is visibly the thing you are travelling into rather than a
-            // menu that closed and a scene that opened.
             val flight = enterStar.value
-            if (flight < 0.999f) {
-                val focus = chosen
-                drawStarMap(
-                    stars = stars,
+
+            // ── STAGE 1: THE ORB ────────────────────────────────────────────
+            //
+            // Your actual orb, enlarged, with no wordmark across it — and the
+            // lights riding its rings turn out to be galaxies. Nothing else is
+            // drawn at this stage; the orb is the whole picture.
+            if (galaxy == null) {
+                drawOrbStage(
+                    spec = orbSpec,
+                    galaxies = galaxies,
+                    style = palette.orbStyle,
+                    detail = orbDetail,
                     clock = clock,
-                    flight = flight,
-                    focus = focus,
+                    breathe = breathe,
+                    amp = amp,
                     accent = palette.accent,
                     highlight = palette.highlight,
                     secondary = palette.secondary,
+                    fit = fitFor(palette.orbStyle),
+                )
+                return@Canvas
+            }
+
+            // ── STAGE 2: A GALAXY, and the stars along its arms ─────────────
+            if (flight < 0.999f) {
+                drawGalaxyStage(
+                    galaxy = galaxy!!,
+                    stars = stars,
+                    clock = clock,
+                    flight = flight,
+                    focus = chosen,
                 )
             }
 
-            // No dimension entered yet — nothing below this is drawn.
+            // No star entered yet — nothing below this is drawn.
             if (chosen == null) return@Canvas
 
             // Far to near, so a nearer shell overlays the one behind it. The
@@ -332,9 +393,10 @@ fun OrbUniverse(
                     alpha = alpha * flight,
                     core = UniverseMath.coreGlow(level),
                     clock = clock,
-                    coolAccent = palette.accent,
-                    hotHighlight = palette.highlight,
-                    secondary = palette.secondary,
+                    coolAccent = here?.arm?.toColor() ?: palette.accent,
+                    hotHighlight = here?.spark?.toColor() ?: palette.highlight,
+                    secondary = here?.gas?.toColor() ?: palette.secondary,
+                    star = chosen?.kind,
                     viewport = base,
                 )
             }
@@ -350,8 +412,8 @@ fun OrbUniverse(
                     brush = Brush.radialGradient(
                         listOf(
                             Color.White.copy(alpha = bloom * 0.55f),
-                            palette.highlight.copy(alpha = bloom * 0.35f),
-                            palette.accent.copy(alpha = bloom * 0.12f),
+                            skyC.copy(alpha = bloom * 0.35f),
+                            skyA.copy(alpha = bloom * 0.12f),
                             Color.Transparent,
                         ),
                         center = eye,
@@ -370,8 +432,22 @@ fun OrbUniverse(
         val readout = ((entry - 0.55f) / 0.45f).coerceIn(0f, 1f)
         if (readout > 0.01f) {
             val star = chosen
+            val inGalaxy = galaxy
             if (star == null) {
-                StarMapHud(palette = palette, alpha = readout, modifier = Modifier.fillMaxSize())
+                StageHud(
+                    title = inGalaxy?.designation ?: "JARVIS",
+                    subtitle = inGalaxy?.let { "${it.kind.label}  ·  ${it.stars} STARS" }
+                        ?: "${galaxies.size} GALAXIES ON ${galaxies.size} RINGS",
+                    hint = if (inGalaxy == null) {
+                        "TOUCH A LIGHT ON THE RINGS  ·  EACH ONE IS A GALAXY"
+                    } else {
+                        "TOUCH A STAR TO ENTER ITS DIMENSION  ·  PINCH BACK"
+                    },
+                    tint = inGalaxy?.palette?.spark?.toColor() ?: palette.highlight,
+                    accent = inGalaxy?.palette?.arm?.toColor() ?: palette.accent,
+                    alpha = readout,
+                    modifier = Modifier.fillMaxSize(),
+                )
             } else {
                 UniverseHud(
                     depth = depth,
@@ -471,8 +547,12 @@ private fun UniverseHud(
  * two would mean a row of empty labels on whichever screen did not use them.
  */
 @Composable
-private fun StarMapHud(
-    palette: JarvisPalette,
+private fun StageHud(
+    title: String,
+    subtitle: String,
+    hint: String,
+    tint: Color,
+    accent: Color,
     alpha: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
@@ -483,24 +563,24 @@ private fun StarMapHud(
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = "CHART",
+                text = title,
                 style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 6.sp),
-                color = palette.highlight.copy(alpha = alpha),
+                color = tint.copy(alpha = alpha),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                text = "${UniverseMath.STAR_COUNT} STARS  ·  ${StarKind.entries.size} KINDS",
+                text = subtitle,
                 style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 3.sp),
-                color = palette.accent.copy(alpha = 0.60f * alpha),
+                color = accent.copy(alpha = 0.60f * alpha),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             )
         }
         Text(
-            text = "TOUCH A STAR TO ENTER ITS DIMENSION  ·  PINCH BACK TO LEAVE",
+            text = hint,
             style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
-            color = palette.accent.copy(alpha = 0.45f * alpha),
+            color = accent.copy(alpha = 0.45f * alpha),
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -528,6 +608,8 @@ private fun DrawScope.drawShell(
     coolAccent: Color,
     hotHighlight: Color,
     secondary: Color,
+    /** Which dimension this is, so its bodies grow worlds that suit it. */
+    star: StarKind?,
     viewport: Float,
 ) {
     // Detail follows apparent size, not shell index. A shell can be anywhere from
@@ -580,13 +662,239 @@ private fun DrawScope.drawShell(
     }
 
     // Orbits and their bodies, on top of whatever the structure was.
-    spec.satellites.forEach { moon ->
-        drawSatellite(moon, at, radius, alpha, presence, clock, turn, accent, highlight)
+    spec.satellites.forEachIndexed { i, moon ->
+        drawSatellite(
+            moon, at, radius, alpha, presence, clock, turn, accent, highlight,
+            planet = planetFor(spec.seed * 131 + i, star),
+        )
     }
 
     if (core > 0.004f) {
         drawCore(at, radius * spec.coreSize, alpha * core, highlight, accent)
     }
+}
+
+/** How much larger the orb is here than on the home screen. */
+private const val ORB_STAGE_ZOOM = 1.55f
+
+/** Ink is Compose-free so it can be tested; this is the only place it converts. */
+private fun Ink.toColor(): Color = Color(r.coerceIn(0f, 1f), g.coerceIn(0f, 1f), b.coerceIn(0f, 1f), 1f)
+
+/**
+ * Where the galaxy riding ring [i] is, right now, on screen.
+ *
+ * Shared by the drawing and the hit test on purpose. Two copies of this — one to
+ * place the light and one to decide what a tap landed on — is a bug waiting for
+ * the day someone retunes one of them, and the symptom would be taps that miss by
+ * a few degrees with nothing visibly wrong.
+ */
+private fun galaxyOn(spec: Orb3DSpec, i: Int, clock: Float, centre: Offset, radius: Float): Offset {
+    val ring = spec.rings[i]
+    val t = clock
+    val rr = radius * ring.radius
+    val tiltX = ring.tiltX + sin(t * ring.precession) * PRECESS_SWING_X
+    val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * PRECESS_SWING_Y
+    val a = t * ring.spin
+    val p = Orb3D.project(
+        Orb3D.rotateY(Orb3D.rotateX(Vec3(cos(a) * rr, sin(a) * rr, 0f), tiltX), tiltY),
+        radius * CAMERA_DISTANCE,
+        radius * FOCAL,
+    )
+    return Offset(centre.x + p.x, centre.y + p.y)
+}
+
+/** Which galaxy a tap landed on, or null. Generous, because a finger is not a point. */
+private fun galaxyAt(
+    galaxies: List<GalaxySpec>,
+    spec: Orb3DSpec,
+    clock: Float,
+    at: Offset,
+    centre: Offset,
+    radius: Float,
+): GalaxySpec? {
+    var best: GalaxySpec? = null
+    var bestDistance = radius * 0.30f
+    galaxies.forEachIndexed { i, g ->
+        if (i >= spec.rings.size) return@forEachIndexed
+        val p = galaxyOn(spec, i, clock, centre, radius)
+        val d = (p - at).getDistance()
+        if (d < bestDistance) {
+            bestDistance = d
+            best = g
+        }
+    }
+    return best
+}
+
+/**
+ * STAGE ONE — the orb itself, enlarged.
+ *
+ * *"when I zoom in, i should only see the main screen orb without Jarvis system
+ * written, and ofc a enlarged picture"*. So this is the genuine renderer, the
+ * user's genuine theme, at 1.55x and with no wordmark — not a picture of the orb
+ * but the orb, which is the only version of this that survives changing theme.
+ *
+ * What is new is what rides it. Each ring carries one bright body, and each of
+ * those is a galaxy — larger and hotter than the ring's own travelling highlight
+ * so it reads as a destination rather than as decoration, with a halo that
+ * breathes on its own clock so the eye is drawn to it.
+ */
+private fun DrawScope.drawOrbStage(
+    spec: Orb3DSpec,
+    galaxies: List<GalaxySpec>,
+    style: OrbStyle,
+    detail: OrbDetail,
+    clock: Float,
+    breathe: Float,
+    amp: Float,
+    accent: Color,
+    highlight: Color,
+    secondary: Color,
+    fit: Float,
+) {
+    val radius = size.minDimension / 2f * fit * ORB_STAGE_ZOOM
+    drawOrb3D(
+        style = style,
+        detail = detail,
+        f = OrbFrame(
+            radius = radius,
+            accent = accent,
+            secondary = secondary,
+            highlight = highlight,
+            spin = clock * 57.3f,
+            drift = clock * 57.3f,
+            counter = -clock * 57.3f,
+            breathe = breathe,
+            amp = amp,
+        ),
+        accent = accent,
+        highlight = highlight,
+        secondary = secondary,
+    )
+
+    // The galaxies, riding the rings.
+    galaxies.forEachIndexed { i, g ->
+        if (i >= spec.rings.size) return@forEachIndexed
+        val at = galaxyOn(spec, i, clock, center, radius)
+        val ink = g.palette
+        val pulse = 0.82f + 0.18f * sin(clock * 1.3f + i * 1.7f)
+        val r = size.minDimension * 0.016f * pulse
+
+        halo(at, r * 6.5f, ink.gas.toColor(), 0.30f)
+        halo(at, r * 3.2f, ink.arm.toColor(), 0.55f)
+        spikes(at, r * 5.5f, Color.White, 0.40f, clock * 0.2f)
+        point(at, r * 0.9f, 0.95f)
+    }
+}
+
+/**
+ * STAGE TWO — one galaxy, and the stars strung along its arms.
+ *
+ * Drawn in the galaxy's OWN colours. Five shapes, and the shape is the first
+ * thing you see of one: a spiral winds, a barred spiral has a straight spine
+ * across the middle, an elliptical is a smooth swarm with no structure left, an
+ * irregular has had its structure destroyed, a ring has had its middle blown out.
+ */
+private fun DrawScope.drawGalaxyStage(
+    galaxy: GalaxySpec,
+    stars: List<StarSpec>,
+    clock: Float,
+    flight: Float,
+    focus: StarSpec?,
+) {
+    val fade = (1f - flight).coerceIn(0f, 1f)
+    if (fade <= 0.01f) return
+    val ink = galaxy.palette
+    val arm = ink.arm.toColor()
+    val gas = ink.gas.toColor()
+    val spark = ink.spark.toColor()
+    val r = size.minDimension * 0.42f
+    val at = center
+    val turn = clock * 0.06f
+    val squash = galaxy.tilt
+
+    // The hub.
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(
+                ink.core.toColor().copy(alpha = 0.75f * fade),
+                spark.copy(alpha = 0.35f * fade),
+                Color.Transparent,
+            ),
+            center = at,
+            radius = r * 0.34f,
+        ),
+        radius = r * 0.34f,
+        center = at,
+        blendMode = BlendMode.Plus,
+    )
+
+    // The body, by shape.
+    val motes = 900
+    for (i in 0 until motes) {
+        val seed = galaxy.ring * 3301 + i
+        val f: Float
+        val angle: Float
+        when (galaxy.kind) {
+            GalaxyKind.Spiral, GalaxyKind.Barred -> {
+                val armIdx = i % galaxy.arms
+                f = OrbMath.unitRandom(seed * 3 + 1).let { it * it }
+                val scatter = (OrbMath.unitRandom(seed * 7 + 5) - 0.5f) * 0.55f * (1f - f * 0.55f)
+                // A barred spiral holds its inner stars on a straight spine
+                // instead of letting them wind — that bar IS the difference.
+                val wind = if (galaxy.kind == GalaxyKind.Barred && f < 0.34f) 0f else f * galaxy.twist
+                angle = turn + armIdx * (OrbMath.TAU / galaxy.arms) + wind + scatter
+            }
+            GalaxyKind.Elliptical -> {
+                f = OrbMath.unitRandom(seed * 5 + 3) * OrbMath.unitRandom(seed * 11 + 7)
+                angle = OrbMath.unitRandom(seed * 13 + 2) * OrbMath.TAU + turn * (0.3f + f)
+            }
+            GalaxyKind.Irregular -> {
+                // Clumped rather than smooth: a few knots with gaps between them.
+                val knot = i % 5
+                f = (OrbMath.range(knot * 97 + 3, 0.25f, 0.9f) +
+                    (OrbMath.unitRandom(seed * 3 + 1) - 0.5f) * 0.30f).coerceIn(0.05f, 1.05f)
+                angle = OrbMath.range(knot * 53 + 7, 0f, OrbMath.TAU) +
+                    (OrbMath.unitRandom(seed * 9 + 4) - 0.5f) * 0.8f + turn
+            }
+            GalaxyKind.Lenticular -> {
+                // A ring: nothing in the middle at all.
+                f = OrbMath.range(seed * 3 + 1, 0.62f, 1.0f)
+                angle = OrbMath.unitRandom(seed * 7 + 2) * OrbMath.TAU + turn
+            }
+        }
+        val rr = r * (0.06f + f * 0.98f)
+        val p = Offset(at.x + cos(angle) * rr, at.y + sin(angle) * rr * squash)
+        val colour = if (i % 7 == 0) spark else if (i % 3 == 0) gas else arm
+        drawCircle(
+            color = colour.copy(alpha = fade * (0.10f + (1f - f) * 0.45f) * OrbMath.range(seed * 5 + 9, 0.4f, 1f)),
+            radius = px(0.4f + OrbMath.unitRandom(seed * 17 + 3) * 1.5f),
+            center = p,
+            blendMode = BlendMode.Plus,
+        )
+    }
+
+    // The gas it sits in, over the top so it reads as being in front of some of
+    // the stars and behind others.
+    for (i in 0 until 5) {
+        val drift = turn * 3f + i * 1.9f
+        val off = r * OrbMath.range(galaxy.ring * 71 + i, 0.10f, 0.55f)
+        val q = Offset(at.x + cos(drift) * off, at.y + sin(drift) * off * squash)
+        val size2 = r * OrbMath.range(galaxy.ring * 89 + i, 0.45f, 0.95f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(gas.copy(alpha = 0.10f * fade), Color.Transparent),
+                center = q,
+                radius = size2,
+            ),
+            radius = size2,
+            center = q,
+            blendMode = BlendMode.Plus,
+        )
+    }
+
+    // The stars you can enter, drawn over their own galaxy.
+    drawStarMap(stars, clock, flight, focus, arm, spark, gas)
 }
 
 /**
@@ -1050,6 +1358,7 @@ private fun DrawScope.drawSatellite(
     turn: Float,
     accent: Color,
     highlight: Color,
+    planet: PlanetSpec,
 ) {
     val r = radius * moon.orbit
     if (r < 3f) return
@@ -1125,20 +1434,7 @@ private fun DrawScope.drawSatellite(
     // from one side with a dark far limb. Below this size the shading is
     // indistinguishable from a plain dot and costs the same, so it is skipped.
     if (presence > 0.5f && body > 3.5f) {
-        val lit = Offset(p.x - body * 0.38f, p.y - body * 0.30f)
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(
-                    Color.White.copy(alpha = alpha * 0.92f),
-                    colour.copy(alpha = alpha * 0.80f),
-                    Color.Black.copy(alpha = alpha * 0.55f),
-                ),
-                center = lit,
-                radius = body * 1.7f,
-            ),
-            radius = body,
-            center = p,
-        )
+        drawPlanet(planet, p, body * planet.kind.bulk, alpha, colour, accent, highlight)
     } else {
         drawCircle(
             color = Color.White.copy(alpha = alpha * (0.30f + near * 0.45f)),
@@ -1150,6 +1446,276 @@ private fun DrawScope.drawSatellite(
 
     if (presence > 0.55f && near > 0.85f) {
         flare(p, body * 2.0f, Color.White, alpha * 0.30f)
+    }
+}
+
+/**
+ * A WORLD, close enough to see what it is.
+ *
+ * *"allow the user to explore the different kind of planets"* — so a body stops
+ * being a lit dot the moment it is large enough to show anything, and what it
+ * becomes is drawn per kind rather than tinted per kind. A gas giant has bands
+ * that wrap round its curve; a rocky world has craters with lit rims and cast
+ * shadow; an ocean world has coastlines under cloud; a lava world has a dark
+ * crust with the heat showing through the cracks.
+ *
+ * Every one of them is lit from the same side, with a terminator and a dark far
+ * limb. That single cue is what makes a circle read as a sphere — without it the
+ * most detailed surface in the world is still a coin.
+ */
+private fun DrawScope.drawPlanet(
+    planet: PlanetSpec,
+    at: Offset,
+    radius: Float,
+    alpha: Float,
+    base: Color,
+    accent: Color,
+    highlight: Color,
+) {
+    val r = radius.coerceAtLeast(2f)
+    val seed = planet.designation.hashCode()
+    val lit = Offset(at.x - r * 0.42f, at.y - r * 0.34f)
+    val skin = lerpColour(base, highlight, planet.hue.coerceIn(-0.5f, 0.5f) + 0.5f)
+
+    // A ring system goes behind the body first, so the front half can overlap it.
+    if (planet.rings > 0) {
+        drawPlanetRings(planet, at, r, alpha, skin, back = true)
+    }
+
+    // The body: lit side to dark limb.
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(
+                Color.White.copy(alpha = alpha * planet.albedo),
+                skin.copy(alpha = alpha * 0.92f),
+                skin.copy(alpha = alpha * 0.45f),
+                Color.Black.copy(alpha = alpha * 0.88f),
+            ),
+            center = lit,
+            radius = r * 1.75f,
+        ),
+        radius = r,
+        center = at,
+    )
+
+    // The surface. Everything below is clipped to the disc by construction —
+    // features are placed by a latitude whose half-width comes from the circle,
+    // which is also what makes them curve with the body instead of lying flat.
+    when (planet.kind) {
+        PlanetKind.GasGiant -> {
+            for (i in 0 until planet.features) {
+                val y = (i.toFloat() / planet.features - 0.5f) * 1.86f
+                val w = r * kotlin.math.sqrt((1f - y * y).coerceAtLeast(0f))
+                if (w < 1f) continue
+                val band = lerpColour(skin, if (i % 2 == 0) highlight else Color.Black, 0.30f)
+                drawLine(
+                    color = band.copy(alpha = alpha * 0.34f * shade(y)),
+                    start = Offset(at.x - w, at.y + y * r),
+                    end = Offset(at.x + w, at.y + y * r),
+                    strokeWidth = (r * 0.20f).coerceAtLeast(px(1f)),
+                    cap = StrokeCap.Round,
+                )
+            }
+            // The storm every gas giant seems to have.
+            val sx = at.x + r * OrbMath.range(seed + 3, -0.45f, 0.25f)
+            val sy = at.y + r * OrbMath.range(seed + 5, -0.30f, 0.30f)
+            drawOval(
+                color = highlight.copy(alpha = alpha * 0.40f),
+                topLeft = Offset(sx - r * 0.26f, sy - r * 0.13f),
+                size = Size(r * 0.52f, r * 0.26f),
+            )
+        }
+
+        PlanetKind.Rocky, PlanetKind.Barren -> {
+            for (i in 0 until planet.features) {
+                val a = OrbMath.range(seed + i * 13, 0f, OrbMath.TAU)
+                val d = OrbMath.range(seed + i * 17, 0f, 0.80f)
+                val c = Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d * 0.9f)
+                val cr = r * OrbMath.range(seed + i * 7, 0.06f, 0.19f)
+                // Lit rim on the sunward side, shadow opposite. A flat grey ring
+                // reads as a hole; the pair reads as a crater.
+                drawCircle(Color.Black.copy(alpha = alpha * 0.34f * shade((c.y - at.y) / r)), cr, c)
+                drawCircle(
+                    color = Color.White.copy(alpha = alpha * 0.22f * shade((c.y - at.y) / r)),
+                    radius = cr,
+                    center = Offset(c.x - cr * 0.22f, c.y - cr * 0.22f),
+                    style = Stroke(px(0.9f)),
+                )
+            }
+        }
+
+        PlanetKind.Ocean -> {
+            for (i in 0 until planet.features) {
+                val a = OrbMath.range(seed + i * 23, 0f, OrbMath.TAU)
+                val d = OrbMath.range(seed + i * 29, 0.05f, 0.66f)
+                val c = Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d * 0.9f)
+                // Continents as clusters of overlapping blobs — a single ellipse
+                // reads as a logo, several read as a coastline.
+                for (k in 0 until 5) {
+                    val q = Offset(
+                        c.x + OrbMath.range(seed + i * 31 + k, -0.22f, 0.22f) * r,
+                        c.y + OrbMath.range(seed + i * 37 + k, -0.16f, 0.16f) * r,
+                    )
+                    if ((q - at).getDistance() > r * 0.94f) continue
+                    drawCircle(
+                        color = lerpColour(skin, highlight, 0.55f)
+                            .copy(alpha = alpha * 0.42f * shade((q.y - at.y) / r)),
+                        radius = r * OrbMath.range(seed + i * 41 + k, 0.09f, 0.20f),
+                        center = q,
+                    )
+                }
+            }
+            // Cloud, over the lot.
+            for (i in 0 until 4) {
+                val y = OrbMath.range(seed + i * 61, -0.7f, 0.7f)
+                val w = r * kotlin.math.sqrt((1f - y * y).coerceAtLeast(0f)) * 0.9f
+                drawLine(
+                    color = Color.White.copy(alpha = alpha * 0.20f * shade(y)),
+                    start = Offset(at.x - w, at.y + y * r),
+                    end = Offset(at.x + w, at.y + y * r),
+                    strokeWidth = (r * 0.11f).coerceAtLeast(px(1f)),
+                    cap = StrokeCap.Round,
+                )
+            }
+        }
+
+        PlanetKind.Lava -> {
+            // A dark crust with the heat underneath showing through. Drawn
+            // additively so the cracks genuinely glow rather than being painted
+            // orange on black.
+            drawCircle(Color.Black.copy(alpha = alpha * 0.55f), r, at)
+            for (i in 0 until planet.features) {
+                val a = OrbMath.range(seed + i * 19, 0f, OrbMath.TAU)
+                val from = r * OrbMath.range(seed + i * 23, 0.0f, 0.35f)
+                val to = r * OrbMath.range(seed + i * 29, 0.45f, 0.95f)
+                drawLine(
+                    brush = Brush.linearGradient(
+                        listOf(Color.Transparent, highlight.copy(alpha = alpha * 0.85f), Color.Transparent),
+                        start = Offset(at.x + cos(a) * from, at.y + sin(a) * from),
+                        end = Offset(at.x + cos(a) * to, at.y + sin(a) * to * 0.9f),
+                    ),
+                    start = Offset(at.x + cos(a) * from, at.y + sin(a) * from),
+                    end = Offset(at.x + cos(a) * to, at.y + sin(a) * to * 0.9f),
+                    strokeWidth = px(1.4f),
+                    cap = StrokeCap.Round,
+                    blendMode = BlendMode.Plus,
+                )
+            }
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(highlight.copy(alpha = alpha * 0.30f), Color.Transparent),
+                    center = at,
+                    radius = r * 1.7f,
+                ),
+                radius = r * 1.7f,
+                center = at,
+                blendMode = BlendMode.Plus,
+            )
+        }
+
+        PlanetKind.Ice -> {
+            // Caps at both poles and a bright, high-albedo body.
+            for (pole in listOf(-1f, 1f)) {
+                val y = pole * 0.72f
+                val w = r * kotlin.math.sqrt((1f - y * y).coerceAtLeast(0f)) * 1.5f
+                drawOval(
+                    color = Color.White.copy(alpha = alpha * 0.55f * shade(y)),
+                    topLeft = Offset(at.x - w, at.y + y * r - r * 0.16f),
+                    size = Size(w * 2f, r * 0.32f),
+                )
+            }
+            for (i in 0 until planet.features) {
+                val a = OrbMath.range(seed + i * 43, 0f, OrbMath.TAU)
+                drawLine(
+                    color = Color.White.copy(alpha = alpha * 0.30f),
+                    start = at,
+                    end = Offset(at.x + cos(a) * r * 0.85f, at.y + sin(a) * r * 0.78f),
+                    strokeWidth = px(0.8f),
+                )
+            }
+        }
+
+        PlanetKind.Ringed -> Unit // the rings below are the whole design
+
+        PlanetKind.Shattered -> {
+            // Broken open: a dark core with debris still on the old orbit.
+            drawCircle(Color.Black.copy(alpha = alpha * 0.45f), r * 0.86f, at)
+            for (i in 0 until planet.features) {
+                val a = OrbMath.range(seed + i * 11, 0f, OrbMath.TAU)
+                val d = OrbMath.range(seed + i * 13, 0.85f, 1.7f)
+                drawCircle(
+                    color = skin.copy(alpha = alpha * 0.65f),
+                    radius = px(OrbMath.range(seed + i * 17, 0.7f, 2.2f)),
+                    center = Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d * 0.55f),
+                    blendMode = BlendMode.Plus,
+                )
+            }
+        }
+    }
+
+    if (planet.rings > 0) {
+        drawPlanetRings(planet, at, r, alpha, skin, back = false)
+    }
+
+    // The atmosphere, and the bright limb where it catches the light.
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(Color.Transparent, accent.copy(alpha = alpha * 0.22f), Color.Transparent),
+            center = at,
+            radius = r * 1.30f,
+        ),
+        radius = r * 1.30f,
+        center = at,
+        blendMode = BlendMode.Plus,
+    )
+    for (i in 0 until 40) {
+        val a = OrbMath.TAU * i / 40f
+        // Sunward half only, fading round to nothing.
+        val facing = (cos(a + 2.5f) + 1f) / 2f
+        if (facing < 0.4f) continue
+        drawCircle(
+            color = Color.White.copy(alpha = alpha * (facing - 0.4f) * 0.75f),
+            radius = px(0.9f),
+            center = Offset(at.x + cos(a) * r, at.y + sin(a) * r),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/**
+ * How lit a point at latitude [y] is, given a light coming from up and left.
+ * Everything on a planet's surface uses it, so the whole world agrees about
+ * where its sun is — features shaded independently look like stickers.
+ */
+private fun shade(y: Float): Float = (0.35f + (1f - (y + 1f) / 2f) * 0.9f).coerceIn(0.15f, 1f)
+
+/** A ring system, drawn in halves so the planet can sit inside it. */
+private fun DrawScope.drawPlanetRings(
+    planet: PlanetSpec,
+    at: Offset,
+    r: Float,
+    alpha: Float,
+    skin: Color,
+    back: Boolean,
+) {
+    val squash = 0.14f + abs(sin(planet.tilt)) * 0.30f
+    withTransform({
+        rotate(planet.tilt * 40f, at)
+        scale(1f, squash, at)
+    }) {
+        for (i in 0 until planet.rings) {
+            val rr = r * (1.35f + i * 0.26f)
+            // The near half is drawn over the body, the far half under it.
+            drawArc(
+                color = skin.copy(alpha = alpha * (if (back) 0.34f else 0.52f)),
+                startAngle = if (back) 180f else 0f,
+                sweepAngle = 180f,
+                useCenter = false,
+                topLeft = Offset(at.x - rr, at.y - rr),
+                size = Size(rr * 2f, rr * 2f),
+                style = Stroke((r * 0.13f).coerceAtLeast(px(1f))),
+            )
+        }
     }
 }
 
