@@ -1,5 +1,39 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (build break) — two `size`s that read identically
+
+**What broke.** `9a4d063` failed CI on one line:
+`OrbUniverse.kt:301 Unresolved reference 'minDimension'`.
+
+**Why.** `PointerInputScope.size` is an **IntSize**. `DrawScope.size` is a
+**Size**. Only the second has `minDimension` / `maxDimension` / `center`. In
+`OrbUniverse` the gesture handlers and the Canvas sit about thirty lines apart,
+so `size.minDimension` looks correct in both places and compiles in one. I wrote
+it twice: caught the first when adding the pan limit, missed the second in the
+world hit test.
+
+**Why the gate could not help.** `scripts/jvmcheck` excludes Compose by
+construction — it cannot resolve androidx without `dl.google.com`. So for
+anything in a `@Composable` or a `DrawScope`, **CI is the first compile**, and
+the twenty-minute round trip is the cost of every slip.
+
+**The pattern worth noticing, rather than the fix.** Two of the last three pushes
+carried a defect only CI could find, and both were in blind-written Compose:
+
+1. the stale `pointerInput(Unit)` capture — compiled cleanly, shipped broken,
+   and stars could not be clicked;
+2. this one — did not compile at all.
+
+Meanwhile the off-device gate caught four real faults in the PURE layer this
+session: the shell flickering at every seam, a core left burning over the level
+below it, stars overlapping until one became unreachable, and the Orbit orb
+clipping its frame. The lesson is not "be more careful in Compose" — that is not
+a mechanism. It is that **the ratio of pure logic to drawing decides the real
+error rate**, which is the argument for `Cosmos.kt` and `UniverseMath.kt`
+carrying as much of the decision-making as they can. It does not cover the
+drawing and it never will.
+
+
 ## 2026-08-23 (latest) — four layers, and a tap that ran against an empty list
 
 **What was asked.** *"it's not letting me go inside the stars… make all the part
