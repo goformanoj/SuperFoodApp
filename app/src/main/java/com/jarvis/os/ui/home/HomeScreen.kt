@@ -303,6 +303,13 @@ fun JarvisApp(
                 ThemeBackdrop(
                     palette = palette,
                     backdrop = BackdropStyle.resolve(backdropId, palette.orbStyle),
+                    // Animated only where nothing scrolls. The sky's clocks run at
+                    // 150 and 38 seconds, so its motion is imperceptible by design
+                    // — but the invalidation it causes is not, and behind a
+                    // scrolling list it was a full-screen redraw every frame
+                    // competing with the scroll for the same budget. Home has no
+                    // list; everywhere else gets the same picture, still.
+                    live = current == Dest.Home,
                 )
 
                 when (current) {

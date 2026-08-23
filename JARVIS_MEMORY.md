@@ -1,5 +1,93 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (variety, and the lag) — eight kinds meant eight pictures
+
+**Reported.** *"why do the planets look the same in each of the stars, just the
+colours are different"* — flagged for the second time — plus *"I'm able to
+displace this"*, and *"the app is overall laggy while scrolling or anything"*.
+
+### The generator could only ever produce eight worlds
+
+`PlanetKind` decided the material AND the drawing routine. Eight kinds, eight
+`when` branches, one picture each. Every other field — hue, albedo, feature count
+— was a tint on top of a fixed image, so *no amount of extra seeding could have
+helped*: the seed was only ever choosing between eight outcomes. The first attempt
+at this problem added more seeds, which is why it came back.
+
+**The fix is to make the space multiply rather than enumerate.** `SurfacePattern`
+is now a separate axis from `PlanetKind`: the material picks the palette and the
+plausible patterns, the pattern draws the surface. On top go the things any world
+can have regardless — polar caps, cloud, storms, rings, atmosphere, impact rays,
+and for a broken world how much of it is left. Two worlds must now agree on six
+independent rolls to look alike.
+
+Three axes were already being generated and thrown away:
+
+- **`tilt` was never read.** Every planet in the universe has had an axial tilt
+  since the day the type was written, and the renderer never rotated anything by
+  it. Reading it is the cheapest variety in the file.
+- **Ring systems differed only in band count**, which at this size is barely a
+  difference. The *opening* varies now — edge-on as a bright line through the
+  planet, or face-on as a full disc — with a division that moves.
+- **`spin`** (new) moves the pattern round the body, so two worlds sharing a
+  pattern and a feature count still have their marks in different places.
+
+Two kinds needed an axis of their own and got a real one rather than a fudge:
+**barren worlds get impact ray systems** (only where there is no weather to erase
+them, which is why the Moon has them and Earth does not), and **shattered worlds
+get how much of the body survived**, driving both debris count and spread from one
+number. Both were found by a test that measures distinctness directly rather than
+by looking at a screenshot.
+
+### Stars were six colours, and all of them white in the middle
+
+`lerpColour(accent, highlight, kind.heat)` — the app's two theme colours mixed by
+kind. That gives a whole galaxy **six possible star colours**, all drawn from the
+same pair. And `point()` drew a pure white disc at every call site, so the colour
+lived only in the faint halo around a bright white core. Nine stars read as one
+star repeated.
+
+`starInk` puts them on a temperature sequence instead: blue giant blue-white, red
+dwarf orange, pulsar violet-white, with a **per-class** spread. Per class, not
+global — a white dwarf is always near-white, so a spread that suits a red dwarf
+leaves thirty of them identical, and its variation lives in saturation and
+lightness rather than hue. The test caught exactly that and was right to.
+
+The same rule as dimensions: **past the orb, the theme stops.** A star's colour is
+its temperature and no theme gets a say in it.
+
+### The lag was the sky, redrawn behind every screen
+
+The backdrop ran an infinite transition behind every destination, redrawing a
+full screen of primitives at 60fps: ~205 `drawCircle` calls plus ~15 `flare`s, and
+each flare allocates **three gradient shaders**. Forty-five shader allocations per
+frame, for a background, while the foreground was trying to scroll a list.
+
+Two changes. The faint majority now sort into a dozen buckets by colour, size and
+brightness and go out as `drawPoints` — the same pixels, a fifteenth of the draw
+list — and they no longer twinkle, which is both cheaper and truer, since the
+faint stars in a real sky are the ones that do not visibly scintillate. And the
+sky's clocks only run **where nothing scrolls**: 150 and 38 second periods mean
+nobody has ever seen it move while reading a settings screen — they have only felt
+it, as the list not quite keeping up with their thumb.
+
+### Displacement: a pan limit that did not know about zoom
+
+The limit was a flat 0.45 of the frame at any zoom, so a galaxy that fitted the
+screen perfectly could still be shoved into a corner. Panning is for looking
+around something too big to see at once, so the allowance is now exactly the
+overhang: at a view of 1 the content fits, the limit is zero, and it cannot be
+moved at all. Zooming back out reclaims the travel it lent, or a scene panned to
+the edge at 3x stays stranded when the zoom returns.
+
+### Still owed
+
+Galaxy-level distinctness beyond what already varies, and the new backdrops.
+Deliberately not stacked into this commit: every Compose change here is blind, CI
+is the first thing that compiles it, and a large blind change is worth landing
+before the next one goes on top of it.
+
+
 ## 2026-08-23 (nothing zoomed) — a keyed `remember` behind a `pointerInput(Unit)`
 
 **Reported.** *"nothing is zoomable now, im not able to do anything"*, then the

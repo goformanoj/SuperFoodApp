@@ -2,8 +2,8 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `3d736c2`, **green with the
-`jarvis-debug-apk` artifact**, and `main` fast-forwarded to it. The universe is
+Branch `claude/phone-glitch-investigation-g6dnhk`, **CI pending** — `main` is at
+`3d736c2`, the last green state. The universe is
 now four layers you can touch: orb → galaxy → a star's **system** → a **world** with things on it. Every
 layer zooms, the orb turns under a drag, and the theme stops at the orb.
 
@@ -24,6 +24,20 @@ by value, and `view`/`yaw`/`pitch` on stage keys. The rule, stated once:
 The symptom is worth remembering too, because it named the cause: the only state
 still reachable was the one with no keys, so the only thing a pinch could do was
 move the picture around.
+
+### The generator rule this round: multiply, do not enumerate
+
+When one field decides an entire picture, the space of outcomes is the size of
+that field's enum and nothing else in the spec can change it. Eight `PlanetKind`s
+meant eight worlds, and every extra seed added variation nobody could see. The
+answer is never more seeds — it is **another axis**, chosen independently, that
+composes with the first.
+
+Watch for the same shape elsewhere: a `when` over an enum that returns a whole
+rendering is a generator with that enum's cardinality, however rich the data
+hanging off it looks.
+
+**Still owed:** galaxy-level distinctness, and the new backdrops.
 
 ### Debt carried deliberately, not hidden
 

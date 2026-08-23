@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -16,6 +17,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -54,13 +56,29 @@ fun ThemeBackdrop(
      * lag exactly the same way. A picker thumbnail is a still.
      */
     thumbnail: Boolean = false,
+    /**
+     * Whether the clocks run at all.
+     *
+     * A full-detail backdrop that is *still* costs nothing per frame, and behind a
+     * scrolling list that is exactly what it should be: the sky's slowest clock
+     * has a 150-second period and its fastest 38, so nobody has ever seen it move
+     * while reading a settings screen — they have only felt it, as the list not
+     * quite keeping up with their thumb.
+     *
+     * Separate from [thumbnail], which is about DETAIL rather than motion. A
+     * picker tile is both; a settings background is still at full detail.
+     */
+    live: Boolean = true,
 ) {
+    // The sky's geometry, kept across frames rather than rebuilt in each one.
+    val sky = remember { SkyCache() }
+
     // Only created when it will be used: a rememberInfiniteTransition that exists
     // but is ignored still schedules frames, so gating the VALUES rather than the
     // transition would have saved nothing. The same lesson as HudOrb's.
     val drift: Float
     val flow: Float
-    if (thumbnail) {
+    if (thumbnail || !live) {
         // Frozen off the zero mark, so a still shows the scene mid-motion rather
         // than at the degenerate moment where everything lines up.
         drift = STILL_DRIFT
@@ -72,7 +90,7 @@ fun ThemeBackdrop(
     }
 
     Canvas(modifier = modifier.fillMaxSize()) {
-        drawBackdrop(palette, backdrop, drift, flow, thumbnail)
+        drawBackdrop(palette, backdrop, drift, flow, thumbnail, sky)
     }
 }
 
@@ -108,6 +126,7 @@ private fun DrawScope.drawBackdrop(
     drift: Float,
     flow: Float,
     thumbnail: Boolean,
+    sky: SkyCache,
 ) {
     run {
         val w = size.width
@@ -199,8 +218,8 @@ private fun DrawScope.drawBackdrop(
         when (backdrop) {
             BackdropStyle.DeepReef, BackdropStyle.Canyon, BackdropStyle.Dune -> Unit
             BackdropStyle.DeepSky, BackdropStyle.LowOrbit, BackdropStyle.AuroraVeil ->
-                starField(w, h, palette.highlight, heavy = !thumbnail, t = flow, scale = detail)
-            else -> starField(w, h, palette.highlight, heavy = false, t = flow, scale = detail)
+                starField(w, h, palette.highlight, heavy = !thumbnail, t = flow, scale = detail, sky = sky)
+            else -> starField(w, h, palette.highlight, heavy = false, t = flow, scale = detail, sky = sky)
         }
 
         // A light source below the fold — skipped where the scene already has
@@ -424,25 +443,124 @@ private fun DrawScope.starField(
     heavy: Boolean,
     t: Float,
     scale: Float = 1f,
+    sky: SkyCache,
 ) {
     val count = ((if (heavy) 220 else 150) * scale).toInt()
-    for (i in 0 until count) {
-        val x = OrbMath.unitRandom(i * 3 + 1) * w
-        val y = OrbMath.unitRandom(i * 3 + 2) * h
-        // Own phase, own rate. Shallow: a star that fades to nothing reads as a
-        // rendering fault rather than as distance.
-        val twinkle = 0.78f + 0.22f * kotlin.math.sin(t * (1.4f + OrbMath.unitRandom(i * 5 + 2) * 2.2f) + i)
-        val alpha = OrbMath.range(i * 7 + 11, 0.22f, 0.85f) * twinkle
-        if (OrbMath.unitRandom(i * 17 + 7) > 0.93f) {
-            flare(Offset(x, y), OrbMath.range(i, 3f, 9f) * density, Color.White, alpha * 1.25f)
-        } else {
-            drawCircle(
-                color = (if (OrbMath.unitRandom(i * 13 + 5) > 0.68f) warm else Color.White)
-                    .copy(alpha = alpha),
-                radius = OrbMath.range(i * 3 + 3, 0.6f, 2.3f) * density,
-                center = Offset(x, y),
-            )
+    val field = sky.of(w, h, count, warm, density)
+
+    // THE FAINT MAJORITY, IN A HANDFUL OF CALLS RATHER THAN TWO HUNDRED.
+    //
+    // Two hundred `drawCircle`s a frame, behind every screen in the app, is a
+    // real bill on a phone that is also trying to scroll a list. Bucketed by
+    // colour, size and brightness they collapse into a dozen `drawPoints` calls
+    // drawing the same pixels — the sky is identical and the draw list is a
+    // fifteenth the length.
+    //
+    // They are also STILL. Only the bright few twinkle now, which is both cheaper
+    // and truer: the faint stars in a real sky are the ones that do not visibly
+    // scintillate, and a whole field of them shimmering was always slightly wrong.
+    field.buckets.forEach { bucket ->
+        drawPoints(
+            points = bucket.points,
+            pointMode = PointMode.Points,
+            color = bucket.colour,
+            strokeWidth = bucket.diameter,
+            cap = StrokeCap.Round,
+        )
+    }
+
+    // The bright few, drawn properly and breathing. Each of these allocates three
+    // gradient shaders, so the count is the cost — and a dozen genuinely bright
+    // stars carry a sky better than fifteen competing ones.
+    field.flares.forEach { f ->
+        val twinkle = 0.78f + 0.22f * kotlin.math.sin(t * f.rate + f.phase)
+        flare(f.at, f.size, Color.White, f.alpha * twinkle)
+    }
+}
+
+/** One `drawPoints` call: every star that shares a colour, a size and a brightness. */
+private class StarBucket(
+    val points: List<Offset>,
+    val colour: Color,
+    val diameter: Float,
+)
+
+/** A star bright enough to be worth a shader and a twinkle of its own. */
+private class FlareStar(
+    val at: Offset,
+    val size: Float,
+    val alpha: Float,
+    val rate: Float,
+    val phase: Float,
+)
+
+private class SkyLayout(val buckets: List<StarBucket>, val flares: List<FlareStar>)
+
+/**
+ * The sky's geometry, built once and kept.
+ *
+ * Positions, sizes and colours come out of a hash of the star's index, so they
+ * are the same every frame — and were being recomputed every frame anyway, along
+ * with the bucket lists they now sort into. This holds the result until the frame
+ * size or the star count actually changes.
+ *
+ * **Deliberately not Compose state.** It is written from the draw phase, and a
+ * `MutableState` written during draw and read during composition is an endless
+ * recomposition loop. A plain holder has no observers, exactly as
+ * `WorldPlacements` does for the same reason.
+ */
+internal class SkyCache {
+    private var key: String = ""
+    private var layout: SkyLayout = SkyLayout(emptyList(), emptyList())
+
+    fun of(w: Float, h: Float, count: Int, warm: Color, density: Float): SkyLayout {
+        val k = "$w:$h:$count:${warm.value}:$density"
+        if (k == key) return layout
+
+        // Three sizes, two colours, four brightnesses: twelve buckets, which is
+        // enough that the sky still has depth in it and few enough that the draw
+        // list stays short.
+        val buckets = LinkedHashMap<Int, MutableList<Offset>>()
+        val sizes = listOf(0.8f, 1.4f, 2.2f)
+        val alphas = listOf(0.28f, 0.44f, 0.62f, 0.85f)
+        val flares = mutableListOf<FlareStar>()
+
+        for (i in 0 until count) {
+            val at = Offset(OrbMath.unitRandom(i * 3 + 1) * w, OrbMath.unitRandom(i * 3 + 2) * h)
+            if (OrbMath.unitRandom(i * 17 + 7) > 0.945f) {
+                flares += FlareStar(
+                    at = at,
+                    size = OrbMath.range(i, 3f, 9f) * density,
+                    alpha = OrbMath.range(i * 7 + 11, 0.55f, 0.95f),
+                    rate = 1.4f + OrbMath.unitRandom(i * 5 + 2) * 2.2f,
+                    phase = i.toFloat(),
+                )
+                continue
+            }
+            // Brightness squared, so most of the sky is faint and only a few
+            // stand out — the distribution a real field has.
+            val b = OrbMath.unitRandom(i * 7 + 11).let { it * it }
+            val ai = (b * alphas.size).toInt().coerceAtMost(alphas.size - 1)
+            val si = (OrbMath.unitRandom(i * 3 + 3) * sizes.size).toInt().coerceAtMost(sizes.size - 1)
+            val ci = if (OrbMath.unitRandom(i * 13 + 5) > 0.68f) 1 else 0
+            buckets.getOrPut(ci * 100 + si * 10 + ai) { mutableListOf() } += at
         }
+
+        layout = SkyLayout(
+            buckets = buckets.map { (id, pts) ->
+                val ci = id / 100
+                val si = (id / 10) % 10
+                val ai = id % 10
+                StarBucket(
+                    points = pts,
+                    colour = (if (ci == 1) warm else Color.White).copy(alpha = alphas[ai]),
+                    diameter = sizes[si] * 2f * density,
+                )
+            },
+            flares = flares,
+        )
+        key = k
+        return layout
     }
 }
 

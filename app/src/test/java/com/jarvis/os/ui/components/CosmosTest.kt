@@ -436,6 +436,153 @@ class CosmosTest {
     }
 
 
+    // ── Distinctness: the thing that was actually wrong ──────────────────────
+
+    /**
+     * What a world looks like, as a string.
+     *
+     * Everything a viewer can actually SEE from across a system, and nothing they
+     * cannot. Hue is bucketed because two hues a hundredth apart are the same
+     * colour to an eye, and counting them as different would let the generator
+     * pass this by varying something invisible — which is precisely the failure
+     * being tested for.
+     */
+    @Test
+    fun `a star's colour is its temperature, not the app's palette`() {
+        // The six classes must land in six different places on the wheel, or the
+        // chart is back to one repeated star. Red dwarf and protostar are both
+        // deliberately red, so they are compared on lightness instead.
+        val blue = hueOf(starInk(StarKind.BlueGiant, 3))
+        val red = hueOf(starInk(StarKind.RedDwarf, 3))
+        val pulsar = hueOf(starInk(StarKind.Pulsar, 3))
+        assertTrue("blue giant at $blue is not blue", blue in 0.50f..0.66f)
+        assertTrue("red dwarf at $red is not red", red < 0.09f || red > 0.95f)
+        assertTrue("pulsar at $pulsar is not violet", pulsar in 0.66f..0.80f)
+    }
+
+    @Test
+    fun `two stars of one class are not the same colour`() {
+        // The jitter is the point: six kinds without it is six swatches, and a
+        // field of red dwarfs should run from amber to salmon.
+        StarKind.entries.forEach { kind ->
+            val inks = (1..30).map { starInk(kind, it * 13) }
+            val distinct = inks.map {
+                "${(it.r * 40).toInt()}/${(it.g * 40).toInt()}/${(it.b * 40).toInt()}"
+            }.toSet().size
+            assertTrue("$kind gives only $distinct colours across 30 stars", distinct >= 20)
+        }
+    }
+
+    @Test
+    fun `no star comes out black or washed to white`() {
+        StarKind.entries.forEach { kind ->
+            (1..40).forEach { b ->
+                val ink = starInk(kind, b * 7)
+                val hi = maxOf(ink.r, ink.g, ink.b)
+                assertTrue("$kind/$b is too dark", hi > 0.30f)
+                val lo = min(min(ink.r, ink.g), ink.b)
+                assertTrue("$kind/$b has no colour left in it", kind == StarKind.WhiteDwarf || hi - lo > 0.02f)
+            }
+        }
+    }
+
+
+    private fun lookOf(p: PlanetSpec): String = listOf(
+        p.kind.name,
+        p.pattern.name,
+        (p.features / 3),
+        if (p.cap > 0f) "cap" else "-",
+        (p.cloud * 4).toInt(),
+        p.storms,
+        p.rings,
+        p.rays,
+        (p.intact * 5).toInt(),
+        p.moons,
+        (p.ringTilt * 3).toInt(),
+        (p.tilt * 2).toInt(),
+        (p.albedo * 4).toInt(),
+    ).joinToString("/")
+
+    @Test
+    fun `worlds do not repeat themselves`() {
+        // "why do the planets look the same in each of the stars, just the
+        // colours are different". They did: kind alone decided the whole picture,
+        // so there were eight possible worlds and everything else was a tint.
+        val looks = (0 until 400).map { lookOf(planetFor(it * 37 + 11, null)) }
+        val distinct = looks.toSet().size
+        assertTrue("only $distinct distinct looks in ${looks.size} worlds", distinct > 340)
+    }
+
+    @Test
+    fun `two worlds of the same kind still look different`() {
+        // The sharper version of the same question, and the one that failed
+        // before: hold the material constant and the picture must STILL vary.
+        PlanetKind.entries.forEach { kind ->
+            val same = (0 until 600)
+                .map { planetFor(it * 53 + 7, null) }
+                .filter { it.kind == kind }
+                .take(40)
+            if (same.size < 10) return@forEach
+            val distinct = same.map { lookOf(it) }.toSet().size
+            assertTrue(
+                "$kind: only $distinct distinct looks across ${same.size} of them",
+                distinct >= same.size - 2,
+            )
+        }
+    }
+
+    @Test
+    fun `every kind can wear more than one pattern`() {
+        // A kind with a single plausible pattern is a kind that is back to being
+        // one picture, whatever else varies.
+        PlanetKind.entries.forEach { kind ->
+            assertTrue(
+                "$kind has only ${SurfacePattern.formingOn(kind).size} pattern",
+                SurfacePattern.formingOn(kind).size >= 3,
+            )
+        }
+    }
+
+    @Test
+    fun `a pattern is never implausible for its material`() {
+        // Craters on a gas giant would say the generator is not paying attention,
+        // and one bad combination undoes fifty good ones.
+        assertTrue(SurfacePattern.Cratered !in SurfacePattern.formingOn(PlanetKind.GasGiant))
+        assertTrue(SurfacePattern.Banded !in SurfacePattern.formingOn(PlanetKind.Rocky))
+        assertTrue(SurfacePattern.Cratered !in SurfacePattern.formingOn(PlanetKind.Ocean))
+        (0 until 300).forEach {
+            val p = planetFor(it * 17 + 3, null)
+            assertTrue(
+                "${p.kind} came out ${p.pattern}",
+                p.pattern in SurfacePattern.formingOn(p.kind),
+            )
+        }
+    }
+
+    @Test
+    fun `a world without air has neither cloud nor caps`() {
+        // Cloud on an airless rock, or a polar cap with nothing to freeze out of,
+        // is a world assembled from parts rather than generated as one thing.
+        (0 until 400).forEach {
+            val p = planetFor(it * 23 + 5, null)
+            if (p.haze < 0.05f) {
+                assertTrue("${p.designation} has cloud without air", p.cloud < 0.05f)
+                assertEquals("${p.designation} has caps without air", 0f, p.cap, 1e-6f)
+            }
+        }
+    }
+
+    @Test
+    fun `a gas giant is never given a polar cap`() {
+        (0 until 400).forEach {
+            val p = planetFor(it * 29 + 13, null)
+            if (p.kind == PlanetKind.GasGiant) {
+                assertEquals("${p.designation} has a cap on nothing", 0f, p.cap, 1e-6f)
+            }
+        }
+    }
+
+
     private fun hueOf(ink: Ink): Float {
         val hi = maxOf(ink.r, ink.g, ink.b)
         val lo = min(min(ink.r, ink.g), ink.b)

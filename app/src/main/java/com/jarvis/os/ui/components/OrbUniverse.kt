@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -59,6 +60,7 @@ import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlinx.coroutines.launch
 
 /**
@@ -392,6 +394,16 @@ fun OrbUniverse(
                         // everything above it.
                         if (gestureZoom > 0f) {
                             view = (view * gestureZoom).coerceIn(MIN_VIEW, MAX_VIEW)
+                            // Zooming back out has to RECLAIM the travel it lent.
+                            // Otherwise a scene panned to the edge at 3x stays
+                            // stranded there when the zoom comes back to 1, which
+                            // is the displacement complaint by another route.
+                            val span = minOf(size.width, size.height)
+                            val limit = UniverseMath.panLimit(span, view)
+                            pan = Offset(
+                                UniverseMath.clampPan(pan.x, limit),
+                                UniverseMath.clampPan(pan.y, limit),
+                            )
                             // Pinching well past the minimum is how you leave —
                             // the same gesture that surfaces out of a dive, so
                             // there is one way back up rather than two.
@@ -425,7 +437,15 @@ fun OrbUniverse(
                                     // was.
                                     .coerceIn(-1.2f, 1.2f)
                             } else {
-                                val limit = minOf(size.width, size.height) * 0.45f
+                                // The allowance is the OVERHANG, not a flat
+                                // fraction of the frame. At a view of 1 the
+                                // content fits and there is nothing to look
+                                // around, so the limit is zero and the scene
+                                // cannot be shoved off centre at all.
+                                val limit = UniverseMath.panLimit(
+                                    minOf(size.width, size.height),
+                                    view,
+                                )
                                 pan = Offset(
                                     UniverseMath.clampPan(pan.x + panChange.x, limit),
                                     UniverseMath.clampPan(pan.y + panChange.y, limit),
@@ -1135,19 +1155,28 @@ private fun DrawScope.drawStarMap(
         // MUCH smaller than the first version. A star is a point with light around
         // it; the previous radii made every one of them a disc.
         val r = size.minDimension * 0.011f * star.size * star.kind.scale * grow
-        val colour = lerpColour(accent, highlight, star.kind.heat)
+        // FROM THE STAR, NOT FROM THE THEME. This was
+        // `lerpColour(accent, highlight, kind.heat)` — the app's two colours mixed
+        // by kind, which gives a whole galaxy six possible star colours drawn from
+        // the same pair. A star's colour is its temperature, and no theme gets a
+        // say in it.
+        val colour = starInk(star.kind, star.branch).toColor()
         val pulse = 0.88f + 0.12f * sin(clock * 1.7f + star.phase)
+        // Per-star optics: how many spikes it throws and which way they lie. Two
+        // stars of one kind are now a different figure, not the same cross twice.
+        val arms = 2 + (OrbMath.unitRandom(star.branch * 3407 + 19) * 2.4f).toInt()
+        val lean = OrbMath.unitRandom(star.branch * 3517 + 23) * OrbMath.PI_F
 
         when (star.kind) {
             StarKind.BlueGiant -> {
                 halo(at, r * 7f, colour, alpha * 0.30f * pulse)
-                spikes(at, r * 9f, Color.White, alpha * 0.55f, clock * 0.05f)
-                point(at, r * 1.5f, alpha * pulse)
+                spikes(at, r * 9f, colour, alpha * 0.55f, lean + clock * 0.05f, arms)
+                point(at, r * 1.5f, alpha * pulse, colour)
             }
             StarKind.RedDwarf -> {
                 halo(at, r * 3.2f, colour, alpha * 0.34f * pulse)
-                spikes(at, r * 3.4f, colour, alpha * 0.28f, clock * 0.03f)
-                point(at, r * 0.72f, alpha * 0.82f * pulse)
+                spikes(at, r * 3.4f, colour, alpha * 0.28f, lean + clock * 0.03f, arms)
+                point(at, r * 0.72f, alpha * 0.82f * pulse, colour)
             }
             StarKind.Binary -> {
                 // Two points about a shared centre, close enough to read as a pair
@@ -1156,10 +1185,12 @@ private fun DrawScope.drawStarMap(
                 val sep = r * 2.1f
                 listOf(0f, OrbMath.PI_F).forEachIndexed { i, off ->
                     val q = Offset(at.x + cos(a + off) * sep, at.y + sin(a + off) * sep * 0.62f)
-                    val c = if (i == 0) highlight else accent
+                    // A binary is TWO stars, so it gets two colours — the pair
+                    // seeded apart rather than one colour used twice.
+                    val c = if (i == 0) colour else starInk(StarKind.RedDwarf, star.branch + 7).toColor()
                     halo(q, r * 2.8f, c, alpha * 0.30f)
-                    spikes(q, r * 3.0f, Color.White, alpha * 0.30f, 0f)
-                    point(q, r * 0.85f, alpha * 0.92f)
+                    spikes(q, r * 3.0f, c, alpha * 0.30f, lean + i * 0.6f, arms)
+                    point(q, r * 0.85f, alpha * 0.92f, c)
                 }
             }
             StarKind.Pulsar -> {
@@ -1181,7 +1212,7 @@ private fun DrawScope.drawStarMap(
                         blendMode = BlendMode.Plus,
                     )
                 }
-                point(at, r * 0.9f, alpha)
+                point(at, r * 0.9f, alpha, colour)
             }
             StarKind.Protostar -> {
                 // Wrapped in its cloud: the halo is the subject, the star barely
@@ -1193,13 +1224,13 @@ private fun DrawScope.drawStarMap(
                     halo(q, r * OrbMath.range(star.branch * 17 + i, 4f, 7f), secondary, alpha * 0.16f)
                 }
                 halo(at, r * 3f, colour, alpha * 0.28f)
-                point(at, r * 0.8f, alpha * 0.55f)
+                point(at, r * 0.8f, alpha * 0.55f, colour)
             }
             StarKind.WhiteDwarf -> {
                 // Dense and dim: almost nothing but the point itself.
                 halo(at, r * 1.9f, colour, alpha * 0.26f)
-                spikes(at, r * 2.6f, Color.White, alpha * 0.34f, 0f)
-                point(at, r * 0.62f, alpha * 0.95f)
+                spikes(at, r * 2.6f, colour, alpha * 0.34f, lean, arms)
+                point(at, r * 0.62f, alpha * 0.95f, colour)
             }
         }
     }
@@ -1210,11 +1241,33 @@ private fun DrawScope.drawStarMap(
  * is nearly pure white, small, and does NOT fade gradually — a tight bright disc
  * with only a hairline of falloff at its edge.
  */
-private fun DrawScope.point(at: Offset, radius: Float, alpha: Float) {
+/**
+ * The hard core of a light source.
+ *
+ * **Tinted, with a white centre** — not a white disc. Every star on the chart used
+ * to be pure white here whatever kind it was, and a white disc is a white disc: the
+ * halo around it carried all the colour, at a fraction of the brightness, so the
+ * eye read nine identical lights. A real star shows its temperature in the core and
+ * saturates to white only at the very middle, which is both truer and the single
+ * change that makes a star chart look like one.
+ */
+private fun DrawScope.point(
+    at: Offset,
+    radius: Float,
+    alpha: Float,
+    tint: Color = Color.White,
+) {
     if (radius <= 0f || alpha <= 0.004f) return
+    val r = radius.coerceAtLeast(px(0.9f))
     drawCircle(
-        color = Color.White.copy(alpha = alpha.coerceAtMost(1f)),
-        radius = radius.coerceAtLeast(px(0.9f)),
+        color = tint.copy(alpha = alpha.coerceAtMost(1f)),
+        radius = r,
+        center = at,
+        blendMode = BlendMode.Plus,
+    )
+    drawCircle(
+        color = Color.White.copy(alpha = (alpha * 0.85f).coerceAtMost(1f)),
+        radius = r * 0.46f,
         center = at,
         blendMode = BlendMode.Plus,
     )
@@ -1246,12 +1299,30 @@ private fun DrawScope.halo(at: Offset, radius: Float, colour: Color, alpha: Floa
  * biggest reason the first chart did not read as a sky. Horizontal arm longer
  * than the vertical, both tapering to nothing, exactly as a real one does.
  */
-private fun DrawScope.spikes(at: Offset, reach: Float, colour: Color, alpha: Float, tilt: Float) {
+/**
+ * Diffraction spikes.
+ *
+ * [arms] is per star rather than fixed at the classic four: the number of spikes a
+ * bright source shows depends on the optics it is seen through, and varying it is
+ * a strong, cheap difference between two stars that would otherwise be the same
+ * cross at two sizes.
+ */
+private fun DrawScope.spikes(
+    at: Offset,
+    reach: Float,
+    colour: Color,
+    alpha: Float,
+    tilt: Float,
+    arms: Int = 2,
+) {
     if (reach <= 0f || alpha <= 0.004f) return
-    for ((dx, dy, len) in listOf(
-        Triple(cos(tilt), sin(tilt), reach),
-        Triple(-sin(tilt), cos(tilt), reach * 0.55f),
-    )) {
+    val rays = (0 until arms).map { i ->
+        val a = tilt + i * OrbMath.PI_F / arms
+        // The first arm is the long one; the rest are shorter, so the figure has a
+        // dominant axis instead of being a rosette.
+        Triple(cos(a), sin(a), reach * (if (i == 0) 1f else 0.55f))
+    }
+    for ((dx, dy, len) in rays) {
         val from = Offset(at.x - dx * len, at.y - dy * len)
         val to = Offset(at.x + dx * len, at.y + dy * len)
         drawLine(
@@ -1769,6 +1840,49 @@ private fun DrawScope.drawPlanetStage(
         )
     }
 
+    // TEXTURE, RESOLVING AS YOU CLOSE IN.
+    //
+    // *"when I zoom into a planet, i should find some things, the texture of the
+    // planet or smth like that"*. A world that is merely drawn LARGER as you
+    // approach gives nothing back for the approach — the same picture, bigger,
+    // which is the definition of an anticlimax. Real detail has to appear that was
+    // not there before, and it has to appear at a scale where it could not have
+    // been visible earlier.
+    //
+    // So: grain over the whole surface, fading in from the moment the view starts
+    // closing, at a size that is sub-pixel until it isn't. It costs one batched
+    // call rather than a thousand circles, and it is what makes a planet feel like
+    // ground rather than paint.
+    val grain = ((view - 1.05f) / 0.9f).coerceIn(0f, 1f)
+    if (grain > 0.01f) {
+        val seed = world.planet.designation.hashCode()
+        val motes = (260 * grain).toInt()
+        val pts = ArrayList<Offset>(motes)
+        for (i in 0 until motes) {
+            // Square-rooted radius, or every mote piles into the middle: a
+            // uniform random radius on a disc is not a uniform scatter over it.
+            val a = OrbMath.range(seed + i * 71 + 3, 0f, OrbMath.TAU)
+            val d = sqrt(OrbMath.unitRandom(seed + i * 73 + 5)) * 0.97f
+            pts += Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d)
+        }
+        drawPoints(
+            points = pts,
+            pointMode = PointMode.Points,
+            color = Color.White.copy(alpha = alpha * 0.16f * grain),
+            strokeWidth = px(1.3f),
+            cap = StrokeCap.Round,
+        )
+        // And the same again in shadow, offset, so the grain has relief instead of
+        // being a dusting of white specks.
+        drawPoints(
+            points = pts.map { Offset(it.x + px(1.1f), it.y + px(1.1f)) },
+            pointMode = PointMode.Points,
+            color = Color.Black.copy(alpha = alpha * 0.20f * grain),
+            strokeWidth = px(1.3f),
+            cap = StrokeCap.Round,
+        )
+    }
+
     // The things. Held back until the view has actually closed in, so arriving
     // and then finding something are two separate moments rather than one.
     val reveal = ((view - LANDMARK_REVEAL) / 0.8f).coerceIn(0f, 1f)
@@ -1865,16 +1979,22 @@ private const val LANDMARK_REVEAL = 1.15f
 /**
  * A WORLD, close enough to see what it is.
  *
- * *"allow the user to explore the different kind of planets"* — so a body stops
- * being a lit dot the moment it is large enough to show anything, and what it
- * becomes is drawn per kind rather than tinted per kind. A gas giant has bands
- * that wrap round its curve; a rocky world has craters with lit rims and cast
- * shadow; an ocean world has coastlines under cloud; a lava world has a dark
- * crust with the heat showing through the cracks.
+ * **What it is made of and how it is marked are two different things**, and that
+ * separation is the whole point of this function. There used to be one drawing
+ * routine per [PlanetKind], so `kind` decided the entire picture and every gas
+ * giant in the universe was the same gas giant in a different colour — which is
+ * exactly what got reported: *"why do the planets look the same in each of the
+ * stars, just the colours are different"*.
+ *
+ * Now the material picks the palette and the plausible patterns, and the pattern
+ * draws the surface. On top of that go the things any world can have regardless:
+ * polar caps, cloud, storms, a ring system, an atmosphere. Two worlds have to
+ * agree on six independent rolls to look alike, and the whole surface is turned
+ * by the planet's own axial tilt so even an exact match is posed differently.
  *
  * Every one of them is lit from the same side, with a terminator and a dark far
- * limb. That single cue is what makes a circle read as a sphere — without it the
- * most detailed surface in the world is still a coin.
+ * limb applied OVER the finished surface. That single cue is what makes a circle
+ * read as a sphere — without it the most detailed surface in the world is a coin.
  */
 private fun DrawScope.drawPlanet(
     planet: PlanetSpec,
@@ -1889,6 +2009,8 @@ private fun DrawScope.drawPlanet(
     val seed = planet.designation.hashCode()
     val lit = Offset(at.x - r * 0.42f, at.y - r * 0.34f)
     val skin = lerpColour(base, highlight, planet.hue.coerceIn(-0.5f, 0.5f) + 0.5f)
+    val dark = lerpColour(skin, Color.Black, 0.55f)
+    val bright = lerpColour(skin, Color.White, 0.45f)
 
     // A ring system goes behind the body first, so the front half can overlap it.
     if (planet.rings > 0) {
@@ -1913,171 +2035,132 @@ private fun DrawScope.drawPlanet(
 
     // THE SURFACE, ACTUALLY CLIPPED TO THE DISC.
     //
-    // It used to say the features were "clipped by construction" — placed by a
-    // latitude whose half-width comes from the circle. That is true of where the
-    // features are CENTRED and false of where they end: a band drawn with a round
-    // cap bulges half a stroke past the limb, a crater centred at 0.80 with a
-    // radius of 0.19 reaches 0.99 and its lit rim goes over, and the ice caps were
-    // sized at 1.5x the chord and hung out of both sides of the planet like ears.
-    // Every one of those reads as a sticker laid on top of a circle rather than as
-    // a surface, which is most of what "sooo low quality" was looking at.
+    // The old comment claimed features were "clipped by construction" — placed by
+    // a latitude whose half-width comes from the circle. That is true of where a
+    // feature is CENTRED and false of where it ENDS: a band drawn with a round cap
+    // bulges half a stroke past the limb, a crater centred at 0.80 with a radius
+    // of 0.19 reaches 0.99 and its lit rim goes over, and the ice caps were sized
+    // at 1.5x the chord and hung out of both sides like ears. Every one of those
+    // reads as a sticker laid on a circle rather than as a surface.
     //
-    // A real clip costs one path and removes the whole class of fault, so features
-    // can now be drawn generously and trust the edge.
+    // A real clip costs one path and removes the whole class, so features can be
+    // drawn generously and trust the edge.
     val disc = Path().apply { addOval(Rect(at.x - r, at.y - r, at.x + r, at.y + r)) }
     clipPath(disc) {
-        when (planet.kind) {
-            PlanetKind.GasGiant -> {
-                for (i in 0 until planet.features) {
-                    val y = (i.toFloat() / planet.features - 0.5f) * 1.86f
-                    val w = r * kotlin.math.sqrt((1f - y * y).coerceAtLeast(0f))
-                    if (w < 1f) continue
-                    val band = lerpColour(skin, if (i % 2 == 0) highlight else Color.Black, 0.30f)
+        // TURNED BY ITS OWN AXIS. `tilt` has been generated for every world since
+        // the beginning and was never once read — so every planet in the universe
+        // was posed identically. Rotating the surface (and not the lighting, which
+        // comes from the star and does not care how the world is leaning) is the
+        // cheapest variety in this file.
+        withTransform({ rotate(planet.tilt * 57.3f, at) }) {
+            when (planet.pattern) {
+                SurfacePattern.Banded -> bands(planet, at, r, alpha, skin, bright, dark, seed)
+                SurfacePattern.Swirled -> swirls(planet, at, r, alpha, bright, dark, seed)
+                SurfacePattern.Marbled -> marbling(planet, at, r, alpha, bright, dark, seed)
+                SurfacePattern.Cratered -> craters(planet, at, r, alpha, seed)
+                SurfacePattern.Cracked -> cracks(planet, at, r, alpha, highlight, seed)
+                SurfacePattern.Mottled -> mottling(planet, at, r, alpha, bright, dark, seed)
+                SurfacePattern.Veined -> veins(planet, at, r, alpha, bright, seed)
+                SurfacePattern.Dappled -> dapples(planet, at, r, alpha, bright, dark, seed)
+                SurfacePattern.Ridged -> ridges(planet, at, r, alpha, bright, dark, seed)
+                SurfacePattern.Featureless -> Unit
+            }
+
+            // ── The things any world can have, whatever it is made of ────────
+            //
+            // These are what turn ten patterns into a space nobody can exhaust.
+            // Each is an independent roll in the generator, so a mottled world
+            // with caps and heavy cloud and a mottled world with neither share a
+            // pattern and nothing else.
+
+            if (planet.cap > 0f) {
+                for (pole in listOf(-1f, 1f)) {
+                    val y = pole * (1f - planet.cap)
+                    val w = r * sqrt((1f - y * y).coerceAtLeast(0f)) * 1.25f
+                    drawOval(
+                        color = Color.White.copy(alpha = alpha * 0.62f * shade(y)),
+                        topLeft = Offset(at.x - w, at.y + y * r - r * planet.cap * 0.7f),
+                        size = Size(w * 2f, r * planet.cap * 1.5f),
+                    )
+                }
+            }
+
+            if (planet.cloud > 0.08f) {
+                // Cloud is drawn as broken belts rather than as a haze over the
+                // whole disc: a uniform white wash just lowers the contrast of
+                // whatever is underneath and reads as fog on the lens.
+                val decks = 2 + (planet.cloud * 5f).toInt()
+                for (i in 0 until decks) {
+                    val y = OrbMath.range(seed + i * 149 + 7, -0.86f, 0.86f)
+                    val half = r * sqrt((1f - y * y).coerceAtLeast(0f))
+                    val from = OrbMath.range(seed + i * 151 + 11, -1f, 0.2f) * half
+                    val to = from + half * OrbMath.range(seed + i * 157 + 13, 0.7f, 1.9f)
                     drawLine(
-                        color = band.copy(alpha = alpha * 0.34f * shade(y)),
-                        start = Offset(at.x - w, at.y + y * r),
-                        end = Offset(at.x + w, at.y + y * r),
-                        strokeWidth = (r * 0.20f).coerceAtLeast(px(1f)),
+                        color = Color.White.copy(alpha = alpha * 0.30f * planet.cloud * shade(y)),
+                        start = Offset(at.x + from, at.y + y * r),
+                        end = Offset(at.x + to.coerceAtMost(half), at.y + y * r),
+                        strokeWidth = (r * 0.10f).coerceAtLeast(px(1f)),
                         cap = StrokeCap.Round,
                     )
                 }
-                // The storm every gas giant seems to have.
-                val sx = at.x + r * OrbMath.range(seed + 3, -0.45f, 0.25f)
-                val sy = at.y + r * OrbMath.range(seed + 5, -0.30f, 0.30f)
-                drawOval(
-                    color = highlight.copy(alpha = alpha * 0.40f),
-                    topLeft = Offset(sx - r * 0.26f, sy - r * 0.13f),
-                    size = Size(r * 0.52f, r * 0.26f),
+            }
+
+            // Ray systems: bright streaks thrown out from a fresh impact, on the
+            // worlds with no weather to erase them. They cross everything else on
+            // the surface, which is what makes them read as recent.
+            for (i in 0 until planet.rays) {
+                val a = planet.spin + OrbMath.range(seed + i * 181 + 3, 0f, OrbMath.TAU)
+                val from = Offset(
+                    at.x + cos(a) * r * OrbMath.range(seed + i * 191, 0.15f, 0.7f),
+                    at.y + sin(a) * r * OrbMath.range(seed + i * 193, 0.15f, 0.7f),
                 )
-            }
-
-            PlanetKind.Rocky, PlanetKind.Barren -> {
-                for (i in 0 until planet.features) {
-                    val a = OrbMath.range(seed + i * 13, 0f, OrbMath.TAU)
-                    val d = OrbMath.range(seed + i * 17, 0f, 0.80f)
-                    val c = Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d * 0.9f)
-                    val cr = r * OrbMath.range(seed + i * 7, 0.06f, 0.19f)
-                    // Lit rim on the sunward side, shadow opposite. A flat grey ring
-                    // reads as a hole; the pair reads as a crater.
-                    drawCircle(Color.Black.copy(alpha = alpha * 0.34f * shade((c.y - at.y) / r)), cr, c)
-                    drawCircle(
-                        color = Color.White.copy(alpha = alpha * 0.22f * shade((c.y - at.y) / r)),
-                        radius = cr,
-                        center = Offset(c.x - cr * 0.22f, c.y - cr * 0.22f),
-                        style = Stroke(px(0.9f)),
-                    )
-                }
-            }
-
-            PlanetKind.Ocean -> {
-                for (i in 0 until planet.features) {
-                    val a = OrbMath.range(seed + i * 23, 0f, OrbMath.TAU)
-                    val d = OrbMath.range(seed + i * 29, 0.05f, 0.66f)
-                    val c = Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d * 0.9f)
-                    // Continents as clusters of overlapping blobs — a single ellipse
-                    // reads as a logo, several read as a coastline.
-                    for (k in 0 until 5) {
-                        val q = Offset(
-                            c.x + OrbMath.range(seed + i * 31 + k, -0.22f, 0.22f) * r,
-                            c.y + OrbMath.range(seed + i * 37 + k, -0.16f, 0.16f) * r,
-                        )
-                        if ((q - at).getDistance() > r * 0.94f) continue
-                        drawCircle(
-                            color = lerpColour(skin, highlight, 0.55f)
-                                .copy(alpha = alpha * 0.42f * shade((q.y - at.y) / r)),
-                            radius = r * OrbMath.range(seed + i * 41 + k, 0.09f, 0.20f),
-                            center = q,
-                        )
-                    }
-                }
-                // Cloud, over the lot.
-                for (i in 0 until 4) {
-                    val y = OrbMath.range(seed + i * 61, -0.7f, 0.7f)
-                    val w = r * kotlin.math.sqrt((1f - y * y).coerceAtLeast(0f)) * 0.9f
-                    drawLine(
-                        color = Color.White.copy(alpha = alpha * 0.20f * shade(y)),
-                        start = Offset(at.x - w, at.y + y * r),
-                        end = Offset(at.x + w, at.y + y * r),
-                        strokeWidth = (r * 0.11f).coerceAtLeast(px(1f)),
-                        cap = StrokeCap.Round,
-                    )
-                }
-            }
-
-            PlanetKind.Lava -> {
-                // A dark crust with the heat underneath showing through. Drawn
-                // additively so the cracks genuinely glow rather than being painted
-                // orange on black.
-                drawCircle(Color.Black.copy(alpha = alpha * 0.55f), r, at)
-                for (i in 0 until planet.features) {
-                    val a = OrbMath.range(seed + i * 19, 0f, OrbMath.TAU)
-                    val from = r * OrbMath.range(seed + i * 23, 0.0f, 0.35f)
-                    val to = r * OrbMath.range(seed + i * 29, 0.45f, 0.95f)
+                val fan = 5 + (OrbMath.unitRandom(seed + i * 197) * 5).toInt()
+                for (k in 0 until fan) {
+                    val ra = OrbMath.range(seed + i * 199 + k * 7, 0f, OrbMath.TAU)
+                    val len = r * OrbMath.range(seed + i * 211 + k * 11, 0.25f, 0.85f)
                     drawLine(
                         brush = Brush.linearGradient(
-                            listOf(Color.Transparent, highlight.copy(alpha = alpha * 0.85f), Color.Transparent),
-                            start = Offset(at.x + cos(a) * from, at.y + sin(a) * from),
-                            end = Offset(at.x + cos(a) * to, at.y + sin(a) * to * 0.9f),
+                            listOf(
+                                Color.White.copy(alpha = alpha * 0.30f),
+                                Color.Transparent,
+                            ),
+                            start = from,
+                            end = Offset(from.x + cos(ra) * len, from.y + sin(ra) * len),
                         ),
-                        start = Offset(at.x + cos(a) * from, at.y + sin(a) * from),
-                        end = Offset(at.x + cos(a) * to, at.y + sin(a) * to * 0.9f),
-                        strokeWidth = px(1.4f),
+                        start = from,
+                        end = Offset(from.x + cos(ra) * len, from.y + sin(ra) * len),
+                        strokeWidth = px(OrbMath.range(seed + i * 223 + k, 0.7f, 2.0f)),
                         cap = StrokeCap.Round,
-                        blendMode = BlendMode.Plus,
                     )
                 }
             }
 
-            PlanetKind.Ice -> {
-                // Caps at both poles and a bright, high-albedo body.
-                for (pole in listOf(-1f, 1f)) {
-                    val y = pole * 0.72f
-                    // 1.15, not the old 1.5: the cap should reach the limb and be
-                    // trimmed by it, not be half again wider than the whole planet.
-                    val w = r * kotlin.math.sqrt((1f - y * y).coerceAtLeast(0f)) * 1.15f
-                    drawOval(
-                        color = Color.White.copy(alpha = alpha * 0.55f * shade(y)),
-                        topLeft = Offset(at.x - w, at.y + y * r - r * 0.16f),
-                        size = Size(w * 2f, r * 0.32f),
-                    )
-                }
-                for (i in 0 until planet.features) {
-                    val a = OrbMath.range(seed + i * 43, 0f, OrbMath.TAU)
-                    drawLine(
-                        color = Color.White.copy(alpha = alpha * 0.30f),
-                        start = at,
-                        end = Offset(at.x + cos(a) * r * 0.85f, at.y + sin(a) * r * 0.78f),
-                        strokeWidth = px(0.8f),
-                    )
-                }
-            }
-
-            PlanetKind.Ringed -> Unit // the rings below are the whole design
-
-            PlanetKind.Shattered -> {
-                // Broken open: a dark core, with the fracture running through it. The
-                // debris is outside the body, so it is drawn past the clip below.
-                drawCircle(Color.Black.copy(alpha = alpha * 0.45f), r * 0.86f, at)
-                for (i in 0 until 3) {
-                    val a = OrbMath.range(seed + i * 71, 0f, OrbMath.TAU)
-                    drawLine(
-                        color = skin.copy(alpha = alpha * 0.55f),
-                        start = Offset(at.x - cos(a) * r, at.y - sin(a) * r),
-                        end = Offset(at.x + cos(a) * r, at.y + sin(a) * r),
-                        strokeWidth = px(1.2f),
-                        blendMode = BlendMode.Plus,
-                    )
-                }
+            for (i in 0 until planet.storms) {
+                val sx = at.x + r * OrbMath.range(seed + i * 163 + 3, -0.55f, 0.55f)
+                val sy = at.y + r * OrbMath.range(seed + i * 167 + 5, -0.45f, 0.45f)
+                val sw = r * OrbMath.range(seed + i * 173 + 7, 0.14f, 0.30f)
+                val sh = sw * OrbMath.range(seed + i * 179 + 9, 0.42f, 0.80f)
+                // A storm is an eye inside a wall, not a coloured blob: the ring
+                // is what makes it read as weather rather than as a paint mark.
+                drawOval(
+                    color = bright.copy(alpha = alpha * 0.42f),
+                    topLeft = Offset(sx - sw, sy - sh),
+                    size = Size(sw * 2f, sh * 2f),
+                )
+                drawOval(
+                    color = dark.copy(alpha = alpha * 0.40f),
+                    topLeft = Offset(sx - sw * 0.42f, sy - sh * 0.42f),
+                    size = Size(sw * 0.84f, sh * 0.84f),
+                )
             }
         }
 
         // LIGHT, APPLIED OVER THE SURFACE RATHER THAN UNDER IT.
         //
-        // The body gradient ran first and every feature was painted on top of it at
-        // full strength, so a bright band or a white ice cap sat undimmed on the part
-        // of the planet facing away from the sun. Nothing looks spherical if its dark
-        // side is as bright as its lit side. This is one gradient over the finished
-        // surface, and it is the single biggest reason these read as balls now.
+        // The body gradient runs first and every feature is painted on top of it,
+        // so without this the night side is as bright as the day side and nothing
+        // looks spherical. One gradient over the finished surface, outside the
+        // tilt transform because the sun does not lean with the planet.
         drawCircle(
             brush = Brush.radialGradient(
                 listOf(
@@ -2092,8 +2175,8 @@ private fun DrawScope.drawPlanet(
             radius = r,
             center = at,
         )
-        // A specular bloom where the light actually lands, so there is a highlight to
-        // read the curvature against.
+        // A specular bloom where the light actually lands, so there is a highlight
+        // to read the curvature against.
         drawCircle(
             brush = Brush.radialGradient(
                 listOf(Color.White.copy(alpha = alpha * 0.30f * planet.albedo), Color.Transparent),
@@ -2107,8 +2190,8 @@ private fun DrawScope.drawPlanet(
     }
 
     // Outside the body: the parts that are deliberately NOT on the surface.
-    when (planet.kind) {
-        PlanetKind.Lava -> drawCircle(
+    if (planet.kind == PlanetKind.Lava) {
+        drawCircle(
             brush = Brush.radialGradient(
                 listOf(highlight.copy(alpha = alpha * 0.30f), Color.Transparent),
                 center = at,
@@ -2118,44 +2201,267 @@ private fun DrawScope.drawPlanet(
             center = at,
             blendMode = BlendMode.Plus,
         )
-        PlanetKind.Shattered -> for (i in 0 until planet.features) {
+    }
+    if (planet.kind == PlanetKind.Shattered) {
+        // The less of the world that survived, the more of it is out here and the
+        // further it has spread. One number drives both, so a barely-cracked
+        // world has a tight halo of chips and a mostly-destroyed one is a cloud.
+        val lost = 1f - planet.intact
+        val count = planet.features + (lost * 26f).toInt()
+        for (i in 0 until count) {
             val a = OrbMath.range(seed + i * 11, 0f, OrbMath.TAU)
-            val d = OrbMath.range(seed + i * 13, 1.02f, 1.7f)
+            val d = OrbMath.range(seed + i * 13, 1.02f, 1.35f + lost * 1.4f)
             drawCircle(
                 color = skin.copy(alpha = alpha * 0.65f),
-                radius = px(OrbMath.range(seed + i * 17, 0.7f, 2.2f)),
+                radius = px(OrbMath.range(seed + i * 17, 0.7f, 1.4f + lost * 2.2f)),
                 center = Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d * 0.55f),
                 blendMode = BlendMode.Plus,
             )
         }
-        else -> Unit
     }
 
     if (planet.rings > 0) {
         drawPlanetRings(planet, at, r, alpha, skin, back = false)
     }
 
-    // The atmosphere, and the bright limb where it catches the light.
-    drawCircle(
-        brush = Brush.radialGradient(
-            listOf(Color.Transparent, accent.copy(alpha = alpha * 0.22f), Color.Transparent),
-            center = at,
-            radius = r * 1.30f,
-        ),
-        radius = r * 1.30f,
-        center = at,
-        blendMode = BlendMode.Plus,
-    )
-    for (i in 0 until 40) {
-        val a = OrbMath.TAU * i / 40f
-        // Sunward half only, fading round to nothing.
-        val facing = (cos(a + 2.5f) + 1f) / 2f
-        if (facing < 0.4f) continue
+    // The atmosphere, and the bright limb where it catches the light. Scaled by
+    // how much air the world actually has, so an airless rock has a hard edge and
+    // a thick-atmosphere world glows — a difference you read before any surface
+    // detail resolves, and one more axis two worlds have to match on.
+    if (planet.haze > 0.05f) {
         drawCircle(
-            color = Color.White.copy(alpha = alpha * (facing - 0.4f) * 0.75f),
-            radius = px(0.9f),
-            center = Offset(at.x + cos(a) * r, at.y + sin(a) * r),
+            brush = Brush.radialGradient(
+                listOf(Color.Transparent, accent.copy(alpha = alpha * 0.26f * planet.haze), Color.Transparent),
+                center = at,
+                radius = r * (1.10f + planet.haze * 0.28f),
+            ),
+            radius = r * (1.10f + planet.haze * 0.28f),
+            center = at,
             blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+// ── The ten surfaces ────────────────────────────────────────────────────────
+//
+// Each takes the same arguments and draws inside a disc of radius [r] at [at],
+// already clipped and already turned to the planet's axis. `spin` moves the
+// pattern round the body so two worlds sharing one pattern are still not the
+// same picture.
+
+/** Latitude belts. The half-width at each latitude comes from the circle. */
+private fun DrawScope.bands(
+    p: PlanetSpec, at: Offset, r: Float, alpha: Float,
+    skin: Color, bright: Color, dark: Color, seed: Int,
+) {
+    for (i in 0 until p.features) {
+        val y = (i.toFloat() / p.features - 0.5f) * 1.94f
+        val w = r * sqrt((1f - y * y).coerceAtLeast(0f))
+        if (w < 1f) continue
+        // Belt widths vary rather than alternating evenly — a regular stripe
+        // pattern reads as fabric, an irregular one reads as weather.
+        val band = lerpColour(skin, if (i % 2 == 0) bright else dark, OrbMath.range(seed + i * 37, 0.22f, 0.55f))
+        drawLine(
+            color = band.copy(alpha = alpha * 0.40f * shade(y)),
+            start = Offset(at.x - w, at.y + y * r),
+            end = Offset(at.x + w, at.y + y * r),
+            strokeWidth = (r * OrbMath.range(seed + i * 41, 0.11f, 0.26f)).coerceAtLeast(px(1f)),
+            cap = StrokeCap.Butt,
+        )
+    }
+}
+
+/** Belts pulled into a vortex — the same material, stirred. */
+private fun DrawScope.swirls(
+    p: PlanetSpec, at: Offset, r: Float, alpha: Float,
+    bright: Color, dark: Color, seed: Int,
+) {
+    for (i in 0 until p.features) {
+        val path = Path()
+        val turn = OrbMath.range(seed + i * 53, 1.1f, 2.6f)
+        val from = r * OrbMath.range(seed + i * 59, 0.10f, 0.40f)
+        val to = r * OrbMath.range(seed + i * 61, 0.70f, 1.02f)
+        val steps = 22
+        for (k in 0..steps) {
+            val f = k.toFloat() / steps
+            val rad = from + (to - from) * f
+            val a = p.spin + i * 1.7f + f * turn
+            val x = at.x + cos(a) * rad
+            val y = at.y + sin(a) * rad
+            if (k == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        drawPath(
+            path = path,
+            color = (if (i % 2 == 0) bright else dark).copy(alpha = alpha * 0.34f),
+            style = Stroke((r * 0.10f).coerceAtLeast(px(1f)), cap = StrokeCap.Round),
+        )
+    }
+}
+
+/** Large soft masses running into each other: continents, or cloud decks. */
+private fun DrawScope.marbling(
+    p: PlanetSpec, at: Offset, r: Float, alpha: Float,
+    bright: Color, dark: Color, seed: Int,
+) {
+    for (i in 0 until p.features) {
+        val a = p.spin + OrbMath.range(seed + i * 23, 0f, OrbMath.TAU)
+        val d = OrbMath.range(seed + i * 29, 0.05f, 0.72f)
+        val c = Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d)
+        val tone = if (OrbMath.unitRandom(seed + i * 67) > 0.45f) bright else dark
+        // Several overlapping blobs, not one ellipse: a single shape reads as a
+        // logo, a cluster reads as a coastline.
+        for (k in 0 until 6) {
+            val q = Offset(
+                c.x + OrbMath.range(seed + i * 31 + k, -0.26f, 0.26f) * r,
+                c.y + OrbMath.range(seed + i * 37 + k, -0.20f, 0.20f) * r,
+            )
+            drawCircle(
+                color = tone.copy(alpha = alpha * 0.30f * shade((q.y - at.y) / r)),
+                radius = r * OrbMath.range(seed + i * 41 + k, 0.10f, 0.24f),
+                center = q,
+            )
+        }
+    }
+}
+
+/** Impacts, each with a lit rim on the sunward side and a shadow opposite. */
+private fun DrawScope.craters(p: PlanetSpec, at: Offset, r: Float, alpha: Float, seed: Int) {
+    for (i in 0 until p.features) {
+        val a = p.spin + OrbMath.range(seed + i * 13, 0f, OrbMath.TAU)
+        val d = OrbMath.range(seed + i * 17, 0f, 0.94f)
+        val c = Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d)
+        val cr = r * OrbMath.range(seed + i * 7, 0.05f, 0.21f)
+        val s = shade((c.y - at.y) / r)
+        // A flat grey ring reads as a hole. The pair — floor in shadow, rim
+        // catching the light — is what reads as a crater.
+        drawCircle(Color.Black.copy(alpha = alpha * 0.36f * s), cr, c)
+        drawCircle(
+            color = Color.White.copy(alpha = alpha * 0.26f * s),
+            radius = cr,
+            center = Offset(c.x - cr * 0.20f, c.y - cr * 0.20f),
+            style = Stroke(px(1.0f)),
+        )
+    }
+}
+
+/** Fractures, lit from beneath where the crust is thin. */
+private fun DrawScope.cracks(
+    p: PlanetSpec, at: Offset, r: Float, alpha: Float, glow: Color, seed: Int,
+) {
+    drawCircle(Color.Black.copy(alpha = alpha * 0.42f), r, at)
+    for (i in 0 until p.features) {
+        val path = Path()
+        var a = p.spin + OrbMath.range(seed + i * 19, 0f, OrbMath.TAU)
+        var pt = Offset(
+            at.x + cos(a) * r * OrbMath.range(seed + i * 23, 0f, 0.35f),
+            at.y + sin(a) * r * OrbMath.range(seed + i * 29, 0f, 0.35f),
+        )
+        path.moveTo(pt.x, pt.y)
+        // A crack WANDERS. A straight line from the middle to the edge is a
+        // spoke, and eight spokes is a wheel, not a broken crust.
+        for (k in 0 until 5) {
+            a += OrbMath.range(seed + i * 31 + k * 7, -0.75f, 0.75f)
+            val step = r * OrbMath.range(seed + i * 37 + k * 11, 0.14f, 0.30f)
+            pt = Offset(pt.x + cos(a) * step, pt.y + sin(a) * step)
+            path.lineTo(pt.x, pt.y)
+        }
+        drawPath(
+            path = path,
+            color = glow.copy(alpha = alpha * 0.80f),
+            style = Stroke(px(OrbMath.range(seed + i * 43, 0.9f, 2.2f)), cap = StrokeCap.Round),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/** Many small patches — something weathered unevenly. */
+private fun DrawScope.mottling(
+    p: PlanetSpec, at: Offset, r: Float, alpha: Float,
+    bright: Color, dark: Color, seed: Int,
+) {
+    val n = p.features * 4
+    for (i in 0 until n) {
+        val a = p.spin + OrbMath.range(seed + i * 11, 0f, OrbMath.TAU)
+        val d = sqrt(OrbMath.unitRandom(seed + i * 13)) * 0.98f
+        val c = Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d)
+        drawCircle(
+            color = (if (OrbMath.unitRandom(seed + i * 17) > 0.5f) bright else dark)
+                .copy(alpha = alpha * OrbMath.range(seed + i * 19, 0.08f, 0.26f)),
+            radius = r * OrbMath.range(seed + i * 23, 0.04f, 0.13f),
+            center = c,
+        )
+    }
+}
+
+/** Long branching lines: rivers, rilles, or lava tubes. */
+private fun DrawScope.veins(
+    p: PlanetSpec, at: Offset, r: Float, alpha: Float, tone: Color, seed: Int,
+) {
+    for (i in 0 until p.features) {
+        var a = p.spin + OrbMath.range(seed + i * 29, 0f, OrbMath.TAU)
+        var pt = Offset(at.x, at.y)
+        val path = Path()
+        path.moveTo(pt.x, pt.y)
+        for (k in 0 until 7) {
+            a += OrbMath.range(seed + i * 31 + k * 13, -0.5f, 0.5f)
+            val step = r * 0.17f
+            pt = Offset(pt.x + cos(a) * step, pt.y + sin(a) * step)
+            path.lineTo(pt.x, pt.y)
+        }
+        drawPath(
+            path = path,
+            color = tone.copy(alpha = alpha * 0.30f),
+            style = Stroke(px(OrbMath.range(seed + i * 37, 0.8f, 1.8f)), cap = StrokeCap.Round),
+        )
+    }
+}
+
+/** Discrete spots at every scale. */
+private fun DrawScope.dapples(
+    p: PlanetSpec, at: Offset, r: Float, alpha: Float,
+    bright: Color, dark: Color, seed: Int,
+) {
+    val n = p.features * 3
+    for (i in 0 until n) {
+        val a = p.spin + OrbMath.range(seed + i * 41, 0f, OrbMath.TAU)
+        val d = sqrt(OrbMath.unitRandom(seed + i * 43)) * 0.92f
+        // Size falls off sharply, so a few large spots sit among many small ones
+        // rather than everything being the same middling size.
+        val g = OrbMath.unitRandom(seed + i * 47)
+        val rad = r * (0.03f + g * g * g * 0.22f)
+        drawCircle(
+            color = (if (OrbMath.unitRandom(seed + i * 53) > 0.6f) bright else dark)
+                .copy(alpha = alpha * 0.34f),
+            radius = rad,
+            center = Offset(at.x + cos(a) * r * d, at.y + sin(a) * r * d),
+        )
+    }
+}
+
+/** Parallel ridges catching the light along one edge. */
+private fun DrawScope.ridges(
+    p: PlanetSpec, at: Offset, r: Float, alpha: Float,
+    bright: Color, dark: Color, seed: Int,
+) {
+    val n = p.features + 4
+    for (i in 0 until n) {
+        val off = (i.toFloat() / n - 0.5f) * 1.96f * r
+        val half = sqrt((r * r - off * off).coerceAtLeast(0f))
+        if (half < 1f) continue
+        val wob = OrbMath.range(seed + i * 59, -0.06f, 0.06f) * r
+        // Shadow and highlight one pixel apart along the ridge line: that offset
+        // pair is the whole trick, and it is what makes them look raised.
+        drawLine(
+            color = dark.copy(alpha = alpha * 0.34f),
+            start = Offset(at.x - half, at.y + off + wob),
+            end = Offset(at.x + half, at.y + off - wob),
+            strokeWidth = px(1.6f),
+        )
+        drawLine(
+            color = bright.copy(alpha = alpha * 0.30f),
+            start = Offset(at.x - half, at.y + off + wob - px(1.4f)),
+            end = Offset(at.x + half, at.y + off - wob - px(1.4f)),
+            strokeWidth = px(1.1f),
         )
     }
 }
@@ -2176,22 +2482,33 @@ private fun DrawScope.drawPlanetRings(
     skin: Color,
     back: Boolean,
 ) {
-    val squash = 0.14f + abs(sin(planet.tilt)) * 0.30f
+    // Ring systems used to differ only in how many bands they had, which at this
+    // size is barely a difference at all. Now the OPENING varies — one world
+    // shows its rings almost edge-on as a bright line through the planet, another
+    // face-on as a full disc — and a division sits somewhere up the system, at a
+    // place that moves. Those two together read as different worlds instantly,
+    // long before anyone counts bands.
+    val squash = planet.ringTilt
+    val gapAt = (planet.rings * planet.ringGap).toInt()
     withTransform({
         rotate(planet.tilt * 40f, at)
         scale(1f, squash, at)
     }) {
         for (i in 0 until planet.rings) {
+            if (i == gapAt && planet.rings > 2) continue
             val rr = r * (1.35f + i * 0.26f)
+            // Outer bands are thinner and fainter, so the system fades outward
+            // rather than stopping at a hard edge.
+            val fade = 1f - i.toFloat() / (planet.rings + 1f) * 0.55f
             // The near half is drawn over the body, the far half under it.
             drawArc(
-                color = skin.copy(alpha = alpha * (if (back) 0.34f else 0.52f)),
+                color = skin.copy(alpha = alpha * fade * (if (back) 0.34f else 0.52f)),
                 startAngle = if (back) 180f else 0f,
                 sweepAngle = 180f,
                 useCenter = false,
                 topLeft = Offset(at.x - rr, at.y - rr),
                 size = Size(rr * 2f, rr * 2f),
-                style = Stroke((r * 0.13f).coerceAtLeast(px(1f))),
+                style = Stroke((r * 0.13f * fade).coerceAtLeast(px(1f))),
             )
         }
     }

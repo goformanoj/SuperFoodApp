@@ -125,6 +125,60 @@ fun paletteFor(branch: Int, kind: StarKind): DimensionPalette {
  * Eight kinds, each with a surface that is drawn differently rather than tinted
  * differently: bands, craters, coastlines, cracks, ice, a ring system.
  */
+/**
+ * A star's own colour, from its physics rather than from the app's palette.
+ *
+ * Star colour used to be `lerp(accent, highlight, kind.heat)` — two theme colours
+ * interpolated by kind. That gives a galaxy exactly six possible star colours, all
+ * of them drawn from the same two, which is why a chart of nine stars read as one
+ * repeated star: *"I WANT all planets, all galaxies, all stars to be distinct"*.
+ *
+ * Real stars are placed on a temperature sequence, and that sequence is not a
+ * matter of taste — a red dwarf is orange, a blue giant is blue-white, and no
+ * theme should be able to say otherwise. This is the same rule already applied to
+ * dimensions: **past the orb, the theme stops**.
+ *
+ * The jitter is what stops six kinds becoming six swatches. Each star moves inside
+ * its own class by a seeded amount, so a field of red dwarfs runs from amber to
+ * salmon the way a real one does.
+ */
+fun starInk(kind: StarKind, branch: Int): Ink {
+    // Hue on the wheel, saturation, lightness — the anchor for each class, and
+    // how far a member of it may sit from that anchor.
+    //
+    // The SPREAD is per class rather than one global number, because the classes
+    // genuinely differ in how tight they are. A white dwarf is always near-white,
+    // so a spread that suits a red dwarf leaves thirty of them indistinguishable —
+    // its variation lives in saturation and lightness (hot blue-white through to a
+    // cooler yellow-white) rather than in hue, and the test that caught this was
+    // right to.
+    val c = when (kind) {
+        StarKind.BlueGiant -> StarInk(0.58f, 0.55f, 0.82f, 0.05f, 0.22f, 0.14f)
+        StarKind.RedDwarf -> StarInk(0.045f, 0.85f, 0.58f, 0.05f, 0.22f, 0.20f)
+        StarKind.Binary -> StarInk(0.13f, 0.60f, 0.76f, 0.07f, 0.26f, 0.18f)
+        StarKind.Pulsar -> StarInk(0.72f, 0.65f, 0.78f, 0.06f, 0.24f, 0.16f)
+        StarKind.Protostar -> StarInk(0.02f, 0.78f, 0.50f, 0.05f, 0.20f, 0.24f)
+        StarKind.WhiteDwarf -> StarInk(0.55f, 0.26f, 0.88f, 0.14f, 0.30f, 0.16f)
+    }
+    return Ink.hsl(
+        h = c.hue + (OrbMath.unitRandom(branch * 2903 + 11) - 0.5f) * c.hueSpread,
+        s = (c.sat + (OrbMath.unitRandom(branch * 3079 + 13) - 0.5f) * c.satSpread)
+            .coerceIn(0.10f, 1f),
+        l = (c.light + (OrbMath.unitRandom(branch * 3271 + 17) - 0.5f) * c.lightSpread)
+            .coerceIn(0.35f, 0.97f),
+    )
+}
+
+/** One stellar class: where it sits on the sequence, and how tight it is. */
+private class StarInk(
+    val hue: Float,
+    val sat: Float,
+    val light: Float,
+    val hueSpread: Float,
+    val satSpread: Float,
+    val lightSpread: Float,
+)
+
 enum class PlanetKind(
     val label: String,
     /** One line, shown when the planet is close enough to read about. */
@@ -164,6 +218,65 @@ enum class PlanetKind(
     }
 }
 
+/**
+ * HOW a surface is marked, kept separate from WHAT the world is made of.
+ *
+ * This is the fix for *"why do the planets look the same in each of the stars,
+ * just the colours are different"*. There were eight kinds and eight drawing
+ * routines, so `kind` decided the entire picture: every gas giant was the same
+ * gas giant with a different hue, and no amount of extra seeding could change
+ * that, because the seed was only ever choosing between eight outcomes.
+ *
+ * Splitting the pattern off makes the space multiply instead of enumerate. A gas
+ * giant can be banded, swirled, marbled or dappled; a rocky world cratered,
+ * ridged, mottled or veined — and that combines with polar caps, cloud, storms,
+ * rings, tilt and spin, all of which vary on their own. Two worlds now have to
+ * agree on six independent things to look alike rather than one.
+ */
+enum class SurfacePattern(val label: String) {
+    /** Latitude bands, the classic. */
+    Banded("BANDED"),
+    /** Bands pulled into a vortex — the same material, stirred. */
+    Swirled("SWIRLED"),
+    /** Large soft masses running into each other. Continents, or cloud decks. */
+    Marbled("MARBLED"),
+    /** Impacts, each with a lit rim and a cast shadow. */
+    Cratered("CRATERED"),
+    /** Fractures, lit from beneath where the crust is thin. */
+    Cracked("CRACKED"),
+    /** Many small patches — the surface of something weathered unevenly. */
+    Mottled("MOTTLED"),
+    /** Long branching lines. Rivers, rilles, or lava tubes. */
+    Veined("VEINED"),
+    /** Discrete spots at every scale. */
+    Dappled("DAPPLED"),
+    /** Parallel ridges catching the light along one edge. */
+    Ridged("RIDGED"),
+    /** Nothing at all, and deliberately: a world that is only its own colour. */
+    Featureless("FEATURELESS"),
+    ;
+
+    companion object {
+        /**
+         * Which patterns a material can plausibly carry.
+         *
+         * Not every pattern on every kind — craters on a gas giant would say the
+         * generator is not paying attention, and one implausible combination
+         * undoes the credibility of fifty good ones.
+         */
+        fun formingOn(kind: PlanetKind): List<SurfacePattern> = when (kind) {
+            PlanetKind.GasGiant -> listOf(Banded, Swirled, Marbled, Dappled)
+            PlanetKind.Rocky -> listOf(Cratered, Ridged, Mottled, Veined)
+            PlanetKind.Ocean -> listOf(Marbled, Mottled, Dappled, Veined)
+            PlanetKind.Lava -> listOf(Cracked, Veined, Mottled, Ridged)
+            PlanetKind.Ice -> listOf(Cracked, Ridged, Marbled, Featureless)
+            PlanetKind.Ringed -> listOf(Banded, Swirled, Dappled, Featureless)
+            PlanetKind.Barren -> listOf(Cratered, Ridged, Mottled, Featureless)
+            PlanetKind.Shattered -> listOf(Cracked, Ridged, Cratered, Veined)
+        }
+    }
+}
+
 /** One world, generated rather than stored. */
 data class PlanetSpec(
     val kind: PlanetKind,
@@ -179,6 +292,51 @@ data class PlanetSpec(
     val hue: Float,
     /** 0 dark, 1 bright — how much light it returns. */
     val albedo: Float,
+    /** How the surface is marked, chosen independently of what it is made of. */
+    val pattern: SurfacePattern,
+    /**
+     * Where the pattern starts, in radians.
+     *
+     * Two worlds with the same pattern and the same feature count still differ,
+     * because the marks are not in the same places. Cheap, and it does more for
+     * apparent variety than another whole pattern would.
+     */
+    val spin: Float,
+    /** Polar cap extent as a fraction of the radius; 0 for a world with none. */
+    val cap: Float,
+    /** Cloud cover, 0 clear to 1 total. Any world with an atmosphere can have it. */
+    val cloud: Float,
+    /** Persistent storms, drawn over whatever the pattern is. */
+    val storms: Int,
+    /** How wide the ring system opens — near 0 is edge-on, near 1 is face-on. */
+    val ringTilt: Float,
+    /** How far up the rings the Cassini-style gap sits, 0..1. */
+    val ringGap: Float,
+    /** Atmospheric rim, 0 airless to 1 thick. */
+    val haze: Float,
+    /**
+     * Bright ejecta rays thrown out by fresh impacts.
+     *
+     * Only on worlds with nothing to erase them — weather grinds a ray system
+     * flat in a geological instant, which is why the Moon has them and Earth does
+     * not. Added because airless worlds were the one material with almost no axes
+     * of their own: no cloud, no caps, no storms, no rings, so two barren worlds
+     * had only their pattern and their crater count to tell them apart, and the
+     * distinctness test said so.
+     */
+    val rays: Int,
+    /**
+     * How much of the body survived, for a world that did not.
+     *
+     * 1 for everything else, so it adds no noise where it means nothing. A
+     * shattered world had the fewest axes of any material — no air, no cloud, no
+     * caps, no storms, no rings, and no rays either, because there is no
+     * atmosphere-free surface left to throw them across. This is the one thing a
+     * broken world can differ in, and it is the most visible thing about it: a
+     * cracked sphere and a third of a sphere in a cloud of rubble are not the
+     * same sight.
+     */
+    val intact: Float,
 )
 
 /** The world at [seed], in a dimension belonging to [star]. */
@@ -187,6 +345,22 @@ fun planetFor(seed: Int, star: StarKind?): PlanetSpec {
     val kind = choices[(OrbMath.unitRandom(seed * 6151 + 17) * choices.size).toInt()
         .coerceAtMost(choices.size - 1)]
     val canRing = kind == PlanetKind.Ringed || kind == PlanetKind.GasGiant
+    val patterns = SurfacePattern.formingOn(kind)
+    val pattern = patterns[(OrbMath.unitRandom(seed * 8291 + 37) * patterns.size).toInt()
+        .coerceAtMost(patterns.size - 1)]
+    // Whether a world has an ATMOSPHERE at all is one roll, and cloud, haze and
+    // polar caps all hang off it — because a world with cloud and no haze, or
+    // caps and no air, is a world assembled from parts rather than generated.
+    val air = when (kind) {
+        PlanetKind.GasGiant -> 1f
+        PlanetKind.Ocean -> OrbMath.range(seed * 173 + 41, 0.65f, 1f)
+        PlanetKind.Ice -> OrbMath.range(seed * 173 + 41, 0.20f, 0.75f)
+        PlanetKind.Lava -> OrbMath.range(seed * 173 + 41, 0.30f, 0.85f)
+        PlanetKind.Rocky -> OrbMath.range(seed * 173 + 41, 0f, 0.80f)
+        PlanetKind.Ringed -> OrbMath.range(seed * 173 + 41, 0.40f, 0.95f)
+        PlanetKind.Barren -> OrbMath.range(seed * 173 + 41, 0f, 0.25f)
+        PlanetKind.Shattered -> 0f
+    }
     return PlanetSpec(
         kind = kind,
         designation = UniverseMath.designationFor(seed * 31 + 5),
@@ -209,6 +383,35 @@ fun planetFor(seed: Int, star: StarKind?): PlanetSpec {
             PlanetKind.GasGiant -> OrbMath.range(seed * 13 + 2, 0.50f, 0.72f)
             PlanetKind.Lava -> OrbMath.range(seed * 13 + 2, 0.30f, 0.48f)
             else -> OrbMath.range(seed * 13 + 2, 0.22f, 0.45f)
+        },
+        pattern = pattern,
+        spin = OrbMath.unitRandom(seed * 6733 + 59) * OrbMath.TAU,
+        // A cap needs somewhere cold to sit and something to freeze out of the
+        // air. A gas giant has no surface to put one on.
+        cap = if (kind == PlanetKind.GasGiant || air < 0.18f) {
+            0f
+        } else {
+            val roll = OrbMath.unitRandom(seed * 3187 + 61)
+            if (roll > 0.42f) OrbMath.range(seed * 3187 + 67, 0.12f, 0.34f) else 0f
+        },
+        cloud = air * OrbMath.range(seed * 2531 + 71, 0f, 0.95f),
+        storms = when {
+            kind == PlanetKind.GasGiant -> 1 + (OrbMath.unitRandom(seed * 911 + 73) * 3).toInt()
+            air > 0.55f -> (OrbMath.unitRandom(seed * 911 + 73) * 2.6f).toInt()
+            else -> 0
+        },
+        ringTilt = OrbMath.range(seed * 1409 + 79, 0.08f, 0.62f),
+        ringGap = OrbMath.range(seed * 1409 + 83, 0.30f, 0.80f),
+        haze = air,
+        rays = if (air < 0.30f && kind != PlanetKind.Shattered) {
+            (OrbMath.unitRandom(seed * 4409 + 89) * 4.2f).toInt()
+        } else {
+            0
+        },
+        intact = if (kind == PlanetKind.Shattered) {
+            OrbMath.range(seed * 5087 + 97, 0.34f, 0.92f)
+        } else {
+            1f
         },
     )
 }

@@ -296,6 +296,26 @@ object UniverseMath {
     fun clampPan(value: Float, limit: Float): Float =
         if (abs(value) <= limit) value else if (value > 0f) limit else -limit
 
+    /**
+     * How far the eye may be moved off centre at a given zoom.
+     *
+     * **Zero at rest, and that is the point.** The pan limit used to be a flat
+     * 0.45 of the frame whatever the zoom, so a galaxy that fitted the screen
+     * perfectly could still be shoved into a corner — *"just that I'm able to
+     * displace this"*. Nothing is gained by dragging a picture that already fits,
+     * and every drag that does it leaves the composition worse than it was found.
+     *
+     * Panning is for looking around something too big to see at once, so the
+     * allowance is exactly the overhang: at [view] 1 the content fits and the
+     * limit is 0, and every bit of zoom past that buys the same bit of travel.
+     * This is how a photo viewer behaves, and it is why one never leaves a photo
+     * stranded off screen.
+     *
+     * @param span the shorter side of the frame.
+     */
+    fun panLimit(span: Float, view: Float): Float =
+        span * 0.5f * (view - 1f).coerceAtLeast(0f)
+
     /** Where a fresh dive starts: shell 0, filling the screen. */
     const val START_ZOOM = 0f
 
