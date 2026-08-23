@@ -451,6 +451,114 @@ class UniverseMathTest {
         assertEquals(9, UniverseMath.seedFor(depth = 7, j = 2))
     }
 
+    // ---- dimensions that actually differ ----------------------------------
+
+    @Test
+    fun `each kind of star leads somewhere with its own character`() {
+        // The bug this pins: branching the seed produced nine different sets of
+        // random numbers drawn from ONE set of ranges, so every dimension looked
+        // alike however different the numbers were. Character has to come from
+        // the ranges. Compared on the aggregate of a whole dimension, because any
+        // single shell can coincide.
+        val profiles = StarKind.entries.associateWith { kind ->
+            val trait = traitOf(kind)
+            (0..20).map { UniverseMath.shellAt(it, trait) }
+        }
+        profiles.forEach { (kind, shells) ->
+            profiles.forEach { (other, otherShells) ->
+                if (kind != other) {
+                    val dust = shells.sumOf { it.dust }
+                    val otherDust = otherShells.sumOf { it.dust }
+                    val bodies = shells.sumOf { it.satellites.size }
+                    val otherBodies = otherShells.sumOf { it.satellites.size }
+                    val shapes = shells.map { it.kind }.toSet()
+                    assertTrue(
+                        "$kind and $other are indistinguishable: dust $dust/$otherDust, " +
+                            "bodies $bodies/$otherBodies, shapes $shapes",
+                        dust != otherDust || bodies != otherBodies ||
+                            shapes != otherShells.map { it.kind }.toSet(),
+                    )
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a dimension only grows the shapes that belong to it`() {
+        StarKind.entries.forEach { kind ->
+            val trait = traitOf(kind)
+            (0..40).forEach { seed ->
+                val shape = UniverseMath.kindFor(seed, trait)
+                assertTrue(
+                    "$kind grew a $shape, which is not one of ${kind.shapes}",
+                    shape in kind.shapes,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `the crowded dimensions are crowded and the empty ones are empty`() {
+        // Stated as an ordering rather than as magic numbers, so it survives a
+        // retune of any single kind.
+        fun bodiesIn(kind: StarKind) =
+            (0..20).sumOf { UniverseMath.shellAt(it, traitOf(kind)).satellites.size }
+        fun dustIn(kind: StarKind) =
+            (0..20).sumOf { UniverseMath.shellAt(it, traitOf(kind)).dust }
+
+        assertTrue(
+            "a red dwarf's sky should be busier than a blue giant's",
+            bodiesIn(StarKind.RedDwarf) > bodiesIn(StarKind.BlueGiant),
+        )
+        assertTrue(
+            "a protostar is mostly gas and should carry the most dust",
+            StarKind.entries.filter { it != StarKind.Protostar }
+                .all { dustIn(StarKind.Protostar) > dustIn(it) },
+        )
+        assertTrue(
+            "a white dwarf has swept its system clean and should be the emptiest",
+            StarKind.entries.filter { it != StarKind.WhiteDwarf }
+                .all { dustIn(StarKind.WhiteDwarf) < dustIn(it) },
+        )
+    }
+
+    @Test
+    fun `tempo and reach reach the bodies`() {
+        val fast = UniverseMath.shellAt(3, traitOf(StarKind.Pulsar))
+        val slow = UniverseMath.shellAt(3, traitOf(StarKind.WhiteDwarf))
+        assertTrue(
+            "a pulsar's system should turn faster than a white dwarf's",
+            fast.satellites.maxOf { abs(it.speed) } > slow.satellites.maxOf { abs(it.speed) },
+        )
+        val wide = UniverseMath.shellAt(5, traitOf(StarKind.BlueGiant))
+        val tight = UniverseMath.shellAt(5, traitOf(StarKind.WhiteDwarf))
+        assertTrue(
+            "a blue giant's orbits should reach further than a white dwarf's",
+            wide.satellites.maxOf { it.orbit } > tight.satellites.maxOf { it.orbit },
+        )
+    }
+
+    @Test
+    fun `every dimension still has something in it`() {
+        // The failure mode of scaling everything by a trait: a kind tuned too far
+        // down produces empty shells, which reads as the dive being broken.
+        StarKind.entries.forEach { kind ->
+            (0..20).forEach { seed ->
+                val shell = UniverseMath.shellAt(seed, traitOf(kind))
+                assertTrue("$kind shell $seed has no bodies", shell.satellites.isNotEmpty())
+                assertTrue("$kind shell $seed has no dust", shell.dust > 0)
+                shell.satellites.forEach {
+                    assertTrue("$kind shell $seed: an orbit collapsed", it.orbit > 0.05f)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `the neutral dimension is what it always was`() {
+        assertEquals(UniverseMath.shellAt(7), UniverseMath.shellAt(7, DimensionTrait.NEUTRAL))
+    }
+
     // ---- gestures --------------------------------------------------------
 
     @Test

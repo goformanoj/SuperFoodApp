@@ -44,7 +44,44 @@ fun ThemeBackdrop(
     palette: JarvisPalette = LocalPalette.current,
     /** Which world to draw. Defaults to the one this theme ships with. */
     backdrop: BackdropStyle = BackdropStyle.defaultFor(palette.orbStyle),
+    /**
+     * Whether this instance runs its clocks, and how much detail it draws.
+     *
+     * The background picker shows ELEVEN of these at once. Live, that is eleven
+     * infinite transitions each invalidating a Canvas at 60fps, each drawing a
+     * 150-star field and four additive blooms — which is precisely the fault the
+     * theme picker already had once with seven live orbs, and it made Settings
+     * lag exactly the same way. A picker thumbnail is a still.
+     */
+    thumbnail: Boolean = false,
 ) {
+    // Only created when it will be used: a rememberInfiniteTransition that exists
+    // but is ignored still schedules frames, so gating the VALUES rather than the
+    // transition would have saved nothing. The same lesson as HudOrb's.
+    val drift: Float
+    val flow: Float
+    if (thumbnail) {
+        // Frozen off the zero mark, so a still shows the scene mid-motion rather
+        // than at the degenerate moment where everything lines up.
+        drift = STILL_DRIFT
+        flow = STILL_FLOW
+    } else {
+        val live = liveClocks()
+        drift = live.first
+        flow = live.second
+    }
+
+    Canvas(modifier = modifier.fillMaxSize()) {
+        drawBackdrop(palette, backdrop, drift, flow, thumbnail)
+    }
+}
+
+/** Where a still backdrop is frozen — mid-drift, not at the aligned zero mark. */
+private const val STILL_DRIFT = 1.9f
+private const val STILL_FLOW = 3.4f
+
+@Composable
+private fun liveClocks(): Pair<Float, Float> {
     val transition = rememberInfiniteTransition(label = "backdrop")
     // Very slow. A backdrop that visibly turns competes with the orb; one that
     // drifts imperceptibly is atmosphere.
@@ -62,9 +99,23 @@ fun ThemeBackdrop(
         label = "backdropFlow",
     )
 
-    Canvas(modifier = modifier.fillMaxSize()) {
+    return drift to flow
+}
+
+private fun DrawScope.drawBackdrop(
+    palette: JarvisPalette,
+    backdrop: BackdropStyle,
+    drift: Float,
+    flow: Float,
+    thumbnail: Boolean,
+) {
+    run {
         val w = size.width
         val h = size.height
+        // A thumbnail is a fifth of the width of the real thing, so the same
+        // counts buy nothing and cost the same. Detail follows apparent size, the
+        // way OrbQuality already does for the orb.
+        val detail = if (thumbnail) 0.25f else 1f
         val focus = Offset(w / 2f, h * 0.34f)
         val base = ThemeArt.backdrop(palette.orbStyle)
 
@@ -148,8 +199,8 @@ fun ThemeBackdrop(
         when (backdrop) {
             BackdropStyle.DeepReef, BackdropStyle.Canyon, BackdropStyle.Dune -> Unit
             BackdropStyle.DeepSky, BackdropStyle.LowOrbit, BackdropStyle.AuroraVeil ->
-                starField(w, h, palette.highlight, heavy = true, t = flow)
-            else -> starField(w, h, palette.highlight, heavy = false, t = flow)
+                starField(w, h, palette.highlight, heavy = !thumbnail, t = flow, scale = detail)
+            else -> starField(w, h, palette.highlight, heavy = false, t = flow, scale = detail)
         }
 
         // A light source below the fold — skipped where the scene already has
@@ -366,8 +417,15 @@ private fun DrawScope.circuitFloor(horizonY: Float, colour: Color) {
  * instead of the whole field pulsing as one. That is the difference between a sky
  * and a string of fairy lights.
  */
-private fun DrawScope.starField(w: Float, h: Float, warm: Color, heavy: Boolean, t: Float) {
-    val count = if (heavy) 220 else 150
+private fun DrawScope.starField(
+    w: Float,
+    h: Float,
+    warm: Color,
+    heavy: Boolean,
+    t: Float,
+    scale: Float = 1f,
+) {
+    val count = ((if (heavy) 220 else 150) * scale).toInt()
     for (i in 0 until count) {
         val x = OrbMath.unitRandom(i * 3 + 1) * w
         val y = OrbMath.unitRandom(i * 3 + 2) * h

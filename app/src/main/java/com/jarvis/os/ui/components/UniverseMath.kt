@@ -145,11 +145,22 @@ object UniverseMath {
         return if (lap == 0) name else "$name ${lap + 1}"
     }
 
-    /** What kind of structure a shell is. Same seed, same kind, always. */
-    fun kindFor(seed: Int): ShellKind =
-        ShellKind.entries[(OrbMath.unitRandom(seed * 31 + 7) * ShellKind.entries.size)
-            .toInt()
-            .coerceAtMost(ShellKind.entries.size - 1)]
+    /**
+     * What kind of structure a shell is. Same seed and trait, same kind, always.
+     *
+     * Drawn from the DIMENSION's shapes rather than from all four, weighted so
+     * the first is twice as likely as the rest — a red dwarf's sky should be
+     * mostly swarms, not swarms exactly half the time.
+     */
+    @JvmOverloads
+    fun kindFor(seed: Int, trait: DimensionTrait = DimensionTrait.NEUTRAL): ShellKind {
+        val shapes = if (trait.shapes.isEmpty()) ShellKind.entries.toList() else trait.shapes
+        val roll = OrbMath.unitRandom(seed * 31 + 7)
+        if (shapes.size == 1) return shapes[0]
+        if (roll < 0.5f) return shapes[0]
+        val rest = ((roll - 0.5f) / 0.5f * (shapes.size - 1)).toInt().coerceAtMost(shapes.size - 2)
+        return shapes[rest + 1]
+    }
 
     /**
      * The structure at [seed], generated rather than stored.
@@ -161,25 +172,26 @@ object UniverseMath {
      * every call site drew the same values in the same order — a constraint that
      * survives about one refactor.
      */
-    fun shellAt(seed: Int): ShellSpec {
-        val kind = kindFor(seed)
-        val count = when (kind) {
-            ShellKind.Binary -> 2
-            ShellKind.Cluster -> 6 + (OrbMath.unitRandom(seed * 17 + 3) * 4).toInt()
-            ShellKind.Ringed -> 3 + (OrbMath.unitRandom(seed * 17 + 3) * 2).toInt()
-            ShellKind.Spiral -> 4 + (OrbMath.unitRandom(seed * 17 + 3) * 3).toInt()
-        }
+    @JvmOverloads
+    fun shellAt(seed: Int, trait: DimensionTrait = DimensionTrait.NEUTRAL): ShellSpec {
+        val kind = kindFor(seed, trait)
+        // The dimension sets the range; the seed picks inside it. That order is
+        // the whole fix for "all the dimensions look the same": branching the
+        // seed only ever changed which number came out of an identical range.
+        val span = trait.bodies.last - trait.bodies.first + 1
+        val count = trait.bodies.first + (OrbMath.unitRandom(seed * 17 + 3) * span).toInt()
+            .coerceAtMost(span - 1)
         val satellites = (0 until count).map { i ->
             val s = seed * 101 + i * 13
             Satellite(
                 // Nothing inside 0.34: that band belongs to the child shell, and
                 // a satellite there would be read as part of it.
-                orbit = OrbMath.range(s + 1, 0.34f, 1.02f),
+                orbit = OrbMath.range(s + 1, 0.34f, 1.02f) * trait.reach,
                 size = OrbMath.range(s + 2, 0.030f, 0.075f),
                 phase = OrbMath.unitRandom(s + 3) * OrbMath.TAU,
                 // Signed, so some satellites run backwards and the system never
                 // reads as one rigid turntable — the same choice Orbit's rings make.
-                speed = OrbMath.range(s + 4, 0.20f, 0.85f) *
+                speed = OrbMath.range(s + 4, 0.20f, 0.85f) * trait.tempo *
                     (if (OrbMath.unitRandom(s + 5) > 0.5f) 1f else -1f),
                 tilt = OrbMath.range(s + 6, -0.9f, 0.9f),
                 warmth = OrbMath.unitRandom(s + 7),
@@ -195,19 +207,21 @@ object UniverseMath {
             // of what a shell IS and can be named in the readout. It was derived
             // from armTwist inside the draw loop, where nothing else could see it.
             arms = 2 + (OrbMath.unitRandom(seed * 83 + 19) * 3).toInt(),
-            haze = OrbMath.range(seed * 97 + 23, 0.35f, 1f),
+            haze = OrbMath.range(seed * 97 + 23, 0.35f, 1f) * trait.density,
             lanes = when (kind) {
                 ShellKind.Spiral -> 2 + (OrbMath.unitRandom(seed * 29 + 31) * 3).toInt()
                 ShellKind.Ringed -> 3
                 ShellKind.Cluster -> 0
                 ShellKind.Binary -> 1
             },
-            dust = when (kind) {
-                ShellKind.Spiral -> 220
-                ShellKind.Cluster -> 170
-                ShellKind.Ringed -> 110
-                ShellKind.Binary -> 90
-            },
+            dust = (
+                when (kind) {
+                    ShellKind.Spiral -> 220
+                    ShellKind.Cluster -> 170
+                    ShellKind.Ringed -> 110
+                    ShellKind.Binary -> 90
+                } * trait.density
+                ).toInt(),
             armTwist = OrbMath.range(seed * 59 + 11, 1.6f, 3.4f) *
                 (if (OrbMath.unitRandom(seed * 59 + 12) > 0.5f) 1f else -1f),
             tilt = OrbMath.range(seed * 71 + 13, -0.7f, 0.7f),
@@ -474,15 +488,90 @@ enum class StarKind(
     val summary: String,
     /** 0 = cool and toward the accent, 1 = hot and toward the highlight. */
     val heat: Float,
-    /** How large it draws, relative to the others. */
+    /** How large it draws on the chart, relative to the others. */
     val scale: Float,
+    // ── What its dimension is LIKE ──────────────────────────────────────────
+    //
+    // Added because branching the seed was not enough. Nine stars did lead to
+    // nine different sets of random numbers — and they all looked the same,
+    // because a spiral is a spiral whatever numbers built it. "I asked for each
+    // star's dimensions to be different" is a request about CHARACTER, and
+    // character comes from the ranges, not from the rolls inside them.
+    /** Which structures form here. The first is the common one. */
+    val shapes: List<ShellKind>,
+    /** How much dust and gas. 1 is the neutral amount. */
+    val density: Float,
+    /** How many bodies orbit each structure. */
+    val bodies: IntRange,
+    /** How fast everything moves. */
+    val tempo: Float,
+    /** How far out the structures reach, as a multiple of the shell. */
+    val reach: Float,
 ) {
-    BlueGiant("BLUE GIANT", "Enormous, short-lived, and far too bright for what surrounds it.", 1f, 1.6f),
-    RedDwarf("RED DWARF", "Small, cool and patient. The most common thing in any sky.", 0f, 0.75f),
-    Binary("BINARY", "Two suns locked around a shared centre, each pulling on the other.", 0.6f, 1.15f),
-    Pulsar("PULSAR", "A collapsed core sweeping a beam past you, several times a second.", 0.85f, 0.9f),
-    Protostar("PROTOSTAR", "Still gathering. Wrapped in the cloud it is condensing out of.", 0.35f, 1.25f),
-    WhiteDwarf("WHITE DWARF", "What is left when a star has finished. Dense, dim, and cooling.", 0.95f, 0.6f),
+    BlueGiant(
+        "BLUE GIANT", "Enormous, short-lived, and far too bright for what surrounds it.",
+        heat = 1f, scale = 1.6f,
+        // Vast and nearly empty: a few enormous structures, little left over.
+        shapes = listOf(ShellKind.Spiral, ShellKind.Ringed),
+        density = 0.55f, bodies = 2..4, tempo = 1.35f, reach = 1.15f,
+    ),
+    RedDwarf(
+        "RED DWARF", "Small, cool and patient. The most common thing in any sky.",
+        heat = 0f, scale = 0.75f,
+        // The opposite: crowded, close-packed, and slow.
+        shapes = listOf(ShellKind.Cluster, ShellKind.Binary),
+        density = 1.5f, bodies = 6..10, tempo = 0.55f, reach = 0.72f,
+    ),
+    Binary(
+        "BINARY", "Two suns locked around a shared centre, each pulling on the other.",
+        heat = 0.6f, scale = 1.15f,
+        // Everything here comes in twos.
+        shapes = listOf(ShellKind.Binary, ShellKind.Ringed),
+        density = 0.9f, bodies = 2..4, tempo = 1f, reach = 0.95f,
+    ),
+    Pulsar(
+        "PULSAR", "A collapsed core sweeping a beam past you, several times a second.",
+        heat = 0.85f, scale = 0.9f,
+        // High energy and tightly wound: discs and rings, turning fast.
+        shapes = listOf(ShellKind.Ringed, ShellKind.Spiral),
+        density = 0.8f, bodies = 3..5, tempo = 2.1f, reach = 0.88f,
+    ),
+    Protostar(
+        "PROTOSTAR", "Still gathering. Wrapped in the cloud it is condensing out of.",
+        heat = 0.35f, scale = 1.25f,
+        // Mostly gas, barely any of it formed into anything yet.
+        shapes = listOf(ShellKind.Cluster, ShellKind.Spiral),
+        density = 2.1f, bodies = 1..3, tempo = 0.7f, reach = 1.05f,
+    ),
+    WhiteDwarf(
+        "WHITE DWARF", "What is left when a star has finished. Dense, dim, and cooling.",
+        heat = 0.95f, scale = 0.6f,
+        // Swept clean. The emptiest of the six.
+        shapes = listOf(ShellKind.Binary, ShellKind.Cluster),
+        density = 0.35f, bodies = 2..3, tempo = 0.4f, reach = 0.65f,
+    ),
+    ;
+}
+
+/** What a place is like, independent of which star leads there. */
+data class DimensionTrait(
+    val shapes: List<ShellKind>,
+    val density: Float,
+    val bodies: IntRange,
+    val tempo: Float,
+    val reach: Float,
+) {
+    companion object {
+        /** Everything at 1: the behaviour before dimensions had character. */
+        val NEUTRAL = DimensionTrait(ShellKind.entries.toList(), 1f, 2..9, 1f, 1f)
+    }
+}
+
+/** The character of the dimension behind [kind], or the neutral one for null. */
+fun traitOf(kind: StarKind?): DimensionTrait = if (kind == null) {
+    DimensionTrait.NEUTRAL
+} else {
+    DimensionTrait(kind.shapes, kind.density, kind.bodies, kind.tempo, kind.reach)
 }
 
 /** One star on the opening map, and the dimension behind it. */

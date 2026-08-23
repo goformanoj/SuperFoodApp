@@ -193,9 +193,14 @@ fun OrbUniverse(
     // of satellites sixty times a second for something that changes once every
     // few seconds, which is the allocation mistake OrbDetail exists to remember.
     val branch = chosen?.branch ?: UniverseMath.NO_BRANCH
+    // The star's KIND, not just its seed, decides what its universe is like — a
+    // red dwarf's sky is crowded and slow, a blue giant's is vast and empty.
+    // Branching the seed alone gave nine different sets of numbers drawn from one
+    // set of ranges, which is why every dimension looked the same.
+    val trait = remember(branch) { traitOf(chosen?.kind) }
     val shells = remember(depth, branch) {
         UniverseMath.SHELLS.associateWith {
-            UniverseMath.shellAt(UniverseMath.seedFor(branch, depth, it))
+            UniverseMath.shellAt(UniverseMath.seedFor(branch, depth, it), trait)
         }
     }
 
@@ -282,7 +287,13 @@ fun OrbUniverse(
             val base = size.minDimension * 0.46f
             val eye = Offset(center.x + pan.x, center.y + pan.y)
 
-            drawDeepField(clock, palette.accent)
+            // The sky behind everything. "why is there no background, it looks
+            // bad" — and it was: an opaque near-black rectangle with 150 tiny
+            // identical dots on it. A real sky has depth (gas you are looking
+            // THROUGH), a band where the galaxy is denser, and stars of visibly
+            // different brightnesses.
+            drawSky(clock, palette.accent, palette.secondary, palette.highlight)
+            drawDeepField(clock, palette.accent, palette.highlight)
 
             // THE MAP. Drawn while no star is chosen, and kept drawing while the
             // flight into one is under way — receding and dimming, so the star you
@@ -315,13 +326,14 @@ fun OrbUniverse(
                 drawShell(
                     spec = spec,
                     style = palette.orbStyle,
+                    heat = chosen?.kind?.heat ?: 0.5f,
                     at = eye,
                     radius = base * UniverseMath.shellScale(level) * (1f + breathe * 0.012f + amp * 0.04f),
                     alpha = alpha * flight,
                     core = UniverseMath.coreGlow(level),
                     clock = clock,
-                    accent = palette.accent,
-                    highlight = palette.highlight,
+                    coolAccent = palette.accent,
+                    hotHighlight = palette.highlight,
                     secondary = palette.secondary,
                     viewport = base,
                 )
@@ -506,13 +518,15 @@ private fun StarMapHud(
 private fun DrawScope.drawShell(
     spec: ShellSpec,
     style: OrbStyle,
+    /** The dimension's colour temperature: 0 cool toward accent, 1 hot toward highlight. */
+    heat: Float,
     at: Offset,
     radius: Float,
     alpha: Float,
     core: Float,
     clock: Float,
-    accent: Color,
-    highlight: Color,
+    coolAccent: Color,
+    hotHighlight: Color,
     secondary: Color,
     viewport: Float,
 ) {
@@ -521,6 +535,11 @@ private fun DrawScope.drawShell(
     // motes into a nine-pixel dot costs exactly as much as drawing them into a
     // full-screen galaxy while showing none of it.
     val presence = (radius / viewport).coerceIn(0f, 1.6f)
+    // Every colour in this shell is pulled toward the dimension's temperature, so
+    // a blue giant's universe is visibly hotter than a red dwarf's before a single
+    // structure is drawn.
+    val accent = lerpColour(coolAccent, hotHighlight, heat * 0.55f)
+    val highlight = lerpColour(coolAccent, hotHighlight, 0.45f + heat * 0.55f)
     val turn = clock * 0.35f + spec.tilt * 3f
     val squash = 0.30f + abs(cos(spec.tilt)) * 0.62f
 
@@ -573,16 +592,20 @@ private fun DrawScope.drawShell(
 /**
  * The chart you arrive on: nine stars, six kinds, each drawn as itself.
  *
- * A chooser is only a chooser if the options look different. Nine identical dots
- * with different captions would be a list wearing a sky costume — so a blue giant
- * is genuinely huge and hot-white, a red dwarf is small and dim, a binary is
- * visibly two bodies turning about each other, a pulsar sweeps a beam, a
- * protostar sits inside the cloud it is condensing out of, and a white dwarf is a
- * hard little point with almost nothing around it.
+ * REBUILT — "these don't look like stars in anyway". The first version drew each
+ * star as a large soft radial gradient with a thin circle around it, which is a
+ * photograph of an out-of-focus light, not a star. Two things were wrong and both
+ * are structural:
  *
- * [flight] runs 0..1 as the touched star is entered. The whole map recedes and
- * dims while the chosen one rushes toward the camera, so the dimension is
- * visibly BEHIND the star you picked rather than replacing the screen it was on.
+ *  - **No hard core.** A star is a point source. What makes it read as one is a
+ *    small, almost pure-white centre that is *sharp* against a halo, not a blob
+ *    that fades continuously from the middle outward.
+ *  - **No spikes.** The four-point diffraction cross is the single most
+ *    recognisable feature of a bright star in any photograph, and every kind here
+ *    now has one, scaled to its brightness.
+ *
+ * The outline rings are gone too: they read as targeting reticles and were the
+ * main reason the chart looked like a UI rather than a sky.
  */
 private fun DrawScope.drawStarMap(
     stars: List<StarSpec>,
@@ -596,9 +619,6 @@ private fun DrawScope.drawStarMap(
     val fade = 1f - flight
     stars.forEach { star ->
         val picked = focus != null && focus.branch == star.branch
-        // Everything not chosen falls away from the centre and dims out. The
-        // chosen one instead grows and slides to the middle — it is what the
-        // camera is flying at.
         val home = Offset(star.x * size.width, star.y * size.height)
         val at: Offset
         val grow: Float
@@ -609,8 +629,6 @@ private fun DrawScope.drawStarMap(
                 home.y + (center.y - home.y) * flight,
             )
             grow = 1f + flight * 7f
-            // Bright until the dimension has come up behind it, then out of the
-            // way — the same handover the shell cores make.
             alpha = (1f - flight * flight).coerceAtLeast(0f)
         } else {
             val push = 1f + flight * 0.55f
@@ -623,95 +641,102 @@ private fun DrawScope.drawStarMap(
         }
         if (alpha <= 0.01f) return@forEach
 
-        val r = size.minDimension * 0.028f * star.size * star.kind.scale * grow
+        // MUCH smaller than the first version. A star is a point with light around
+        // it; the previous radii made every one of them a disc.
+        val r = size.minDimension * 0.011f * star.size * star.kind.scale * grow
         val colour = lerpColour(accent, highlight, star.kind.heat)
-        val pulse = 0.85f + 0.15f * sin(clock * 1.7f + star.phase)
+        val pulse = 0.88f + 0.12f * sin(clock * 1.7f + star.phase)
 
         when (star.kind) {
             StarKind.BlueGiant -> {
-                // A huge halo, and far more of it than body — that ratio is the
-                // whole read of "too bright for what surrounds it".
-                drawGlow(at, r * 4.2f, Color.White, colour, alpha * 0.55f * pulse)
-                drawCircle(Color.White.copy(alpha = alpha * 0.95f), r * 0.85f, at, blendMode = BlendMode.Plus)
-                flare(at, r * 2.4f, Color.White, alpha * 0.45f)
+                halo(at, r * 7f, colour, alpha * 0.30f * pulse)
+                spikes(at, r * 9f, Color.White, alpha * 0.55f, clock * 0.05f)
+                point(at, r * 1.5f, alpha * pulse)
             }
             StarKind.RedDwarf -> {
-                // Small, cool, and almost no halo. The quiet one.
-                drawGlow(at, r * 1.9f, colour, colour, alpha * 0.40f * pulse)
-                drawCircle(colour.copy(alpha = alpha * 0.85f), r * 0.55f, at, blendMode = BlendMode.Plus)
+                halo(at, r * 3.2f, colour, alpha * 0.34f * pulse)
+                spikes(at, r * 3.4f, colour, alpha * 0.28f, clock * 0.03f)
+                point(at, r * 0.72f, alpha * 0.82f * pulse)
             }
             StarKind.Binary -> {
-                // Two bodies about a shared centre, turning slowly enough to see.
+                // Two points about a shared centre, close enough to read as a pair
+                // rather than as two separate stars on the chart.
                 val a = clock * 0.55f + star.phase
-                val sep = r * 1.5f
+                val sep = r * 2.1f
                 listOf(0f, OrbMath.PI_F).forEachIndexed { i, off ->
-                    val p = Offset(at.x + cos(a + off) * sep, at.y + sin(a + off) * sep * 0.6f)
+                    val q = Offset(at.x + cos(a + off) * sep, at.y + sin(a + off) * sep * 0.62f)
                     val c = if (i == 0) highlight else accent
-                    drawGlow(p, r * 1.5f, Color.White, c, alpha * 0.60f)
-                    drawCircle(Color.White.copy(alpha = alpha * 0.80f), r * 0.40f, p, blendMode = BlendMode.Plus)
+                    halo(q, r * 2.8f, c, alpha * 0.30f)
+                    spikes(q, r * 3.0f, Color.White, alpha * 0.30f, 0f)
+                    point(q, r * 0.85f, alpha * 0.92f)
                 }
             }
             StarKind.Pulsar -> {
-                // The beam is the identity. Two lobes sweeping opposite ways off a
-                // small, very hard core.
+                // The beam is what names it. Narrow, hard, and sweeping fast.
                 val sweep = clock * 3.1f + star.phase
+                halo(at, r * 2.6f, colour, alpha * 0.34f)
                 for (dir in listOf(1f, -1f)) {
-                    val len = r * 5.5f * dir
+                    val len = r * 16f * dir
                     drawLine(
                         brush = Brush.linearGradient(
-                            listOf(colour.copy(alpha = alpha * 0.55f), Color.Transparent),
+                            listOf(colour.copy(alpha = alpha * 0.60f), Color.Transparent),
                             start = at,
                             end = Offset(at.x + cos(sweep) * len, at.y + sin(sweep) * len),
                         ),
                         start = at,
                         end = Offset(at.x + cos(sweep) * len, at.y + sin(sweep) * len),
-                        strokeWidth = px(2.2f),
+                        strokeWidth = px(2.4f),
                         cap = StrokeCap.Round,
                         blendMode = BlendMode.Plus,
                     )
                 }
-                drawCircle(Color.White.copy(alpha = alpha), r * 0.42f, at, blendMode = BlendMode.Plus)
+                point(at, r * 0.9f, alpha)
             }
             StarKind.Protostar -> {
-                // Wrapped in the cloud it is forming out of: several offset veils,
-                // and only a soft knot at the middle.
+                // Wrapped in its cloud: the halo is the subject, the star barely
+                // visible through it, and no spikes because nothing gets out clean.
                 for (i in 0 until 4) {
                     val drift = clock * 0.20f + i * 1.6f + star.phase
-                    val off = r * OrbMath.range(star.branch * 31 + i, 0.20f, 0.85f)
-                    val p = Offset(at.x + cos(drift) * off, at.y + sin(drift * 1.3f) * off * 0.8f)
-                    drawGlow(p, r * OrbMath.range(star.branch * 17 + i, 1.6f, 2.9f), colour, secondary, alpha * 0.22f)
+                    val off = r * OrbMath.range(star.branch * 31 + i, 1.0f, 3.4f)
+                    val q = Offset(at.x + cos(drift) * off, at.y + sin(drift * 1.3f) * off * 0.8f)
+                    halo(q, r * OrbMath.range(star.branch * 17 + i, 4f, 7f), secondary, alpha * 0.16f)
                 }
-                drawCircle(Color.White.copy(alpha = alpha * 0.55f), r * 0.45f, at, blendMode = BlendMode.Plus)
+                halo(at, r * 3f, colour, alpha * 0.28f)
+                point(at, r * 0.8f, alpha * 0.55f)
             }
             StarKind.WhiteDwarf -> {
-                // Dense and dim: a hard point with a tight halo and nothing else.
-                drawGlow(at, r * 1.4f, Color.White, colour, alpha * 0.35f)
-                drawCircle(Color.White.copy(alpha = alpha * 0.90f), r * 0.34f, at, blendMode = BlendMode.Plus)
+                // Dense and dim: almost nothing but the point itself.
+                halo(at, r * 1.9f, colour, alpha * 0.26f)
+                spikes(at, r * 2.6f, Color.White, alpha * 0.34f, 0f)
+                point(at, r * 0.62f, alpha * 0.95f)
             }
-        }
-
-        // The catalogue name under each, so a star is a place with an identity
-        // before you commit to going there. Dropped once the flight starts —
-        // labels sliding around during a camera move read as debris.
-        if (!picked && fade > 0.6f) {
-            drawCircle(
-                color = colour.copy(alpha = fade * 0.14f),
-                radius = r * 2.6f,
-                center = at,
-                style = Stroke(px(0.9f)),
-            )
         }
     }
 }
 
-/** A soft two-stop halo — every star kind wants one, at different weights. */
-private fun DrawScope.drawGlow(at: Offset, radius: Float, inner: Color, outer: Color, alpha: Float) {
-    if (radius <= 0f || alpha <= 0f) return
+/**
+ * The hard centre. This is the whole difference between a star and a smudge: it
+ * is nearly pure white, small, and does NOT fade gradually — a tight bright disc
+ * with only a hairline of falloff at its edge.
+ */
+private fun DrawScope.point(at: Offset, radius: Float, alpha: Float) {
+    if (radius <= 0f || alpha <= 0.004f) return
+    drawCircle(
+        color = Color.White.copy(alpha = alpha.coerceAtMost(1f)),
+        radius = radius.coerceAtLeast(px(0.9f)),
+        center = at,
+        blendMode = BlendMode.Plus,
+    )
+}
+
+/** The light around it. Soft, coloured, and ending in nothing. */
+private fun DrawScope.halo(at: Offset, radius: Float, colour: Color, alpha: Float) {
+    if (radius <= 0f || alpha <= 0.004f) return
     drawCircle(
         brush = Brush.radialGradient(
             listOf(
-                inner.copy(alpha = alpha),
-                outer.copy(alpha = alpha * 0.45f),
+                colour.copy(alpha = alpha),
+                colour.copy(alpha = alpha * 0.30f),
                 Color.Transparent,
             ),
             center = at,
@@ -721,6 +746,36 @@ private fun DrawScope.drawGlow(at: Offset, radius: Float, inner: Color, outer: C
         center = at,
         blendMode = BlendMode.Plus,
     )
+}
+
+/**
+ * The four-point diffraction cross.
+ *
+ * The most recognisable thing about a bright star in a photograph, and the single
+ * biggest reason the first chart did not read as a sky. Horizontal arm longer
+ * than the vertical, both tapering to nothing, exactly as a real one does.
+ */
+private fun DrawScope.spikes(at: Offset, reach: Float, colour: Color, alpha: Float, tilt: Float) {
+    if (reach <= 0f || alpha <= 0.004f) return
+    for ((dx, dy, len) in listOf(
+        Triple(cos(tilt), sin(tilt), reach),
+        Triple(-sin(tilt), cos(tilt), reach * 0.55f),
+    )) {
+        val from = Offset(at.x - dx * len, at.y - dy * len)
+        val to = Offset(at.x + dx * len, at.y + dy * len)
+        drawLine(
+            brush = Brush.linearGradient(
+                listOf(Color.Transparent, colour.copy(alpha = alpha), Color.Transparent),
+                start = from,
+                end = to,
+            ),
+            start = from,
+            end = to,
+            strokeWidth = px(1.1f),
+            cap = StrokeCap.Round,
+            blendMode = BlendMode.Plus,
+        )
+    }
 }
 
 /**
@@ -1126,17 +1181,94 @@ private fun DrawScope.drawCore(at: Offset, radius: Float, alpha: Float, highligh
  * whole frame scales together and the dive reads as a picture being enlarged
  * instead of as travel through a space that keeps existing around you.
  */
-private fun DrawScope.drawDeepField(clock: Float, accent: Color) {
-    for (i in 0 until 150) {
+private fun DrawScope.drawDeepField(clock: Float, accent: Color, highlight: Color) {
+    // Three depths rather than one flat scatter. A sky where every star is the
+    // same size and brightness reads as noise on glass; the spread is what puts
+    // some of them behind the others.
+    for (i in 0 until 420) {
         val x = OrbMath.unitRandom(i * 2 + 1) * size.width
         val y = OrbMath.unitRandom(i * 2 + 2) * size.height
-        val twinkle = 0.35f + 0.65f * abs(sin(clock * OrbMath.range(i, 0.6f, 2.4f) + i))
+        val depth = OrbMath.unitRandom(i * 7 + 5)
+        // Squared, so most stars are faint and a few are genuinely bright —
+        // which is how a real field is distributed and why it reads as one.
+        val near = depth * depth
+        val twinkle = 0.62f + 0.38f * abs(sin(clock * OrbMath.range(i, 0.6f, 2.4f) + i))
+        val colour = when {
+            i % 23 == 0 -> accent
+            i % 17 == 0 -> highlight
+            else -> Color.White
+        }
+        val a = (0.05f + near * 0.55f) * twinkle
         drawCircle(
-            color = (if (i % 9 == 0) accent else Color.White).copy(
-                alpha = OrbMath.range(i * 3 + 7, 0.06f, 0.34f) * twinkle,
-            ),
-            radius = OrbMath.range(i * 5 + 4, 0.5f, 1.7f),
+            color = colour.copy(alpha = a),
+            radius = px(0.35f + near * 1.15f),
             center = Offset(x, y),
+        )
+        // The brightest few get a cross, which is what stops the field reading
+        // as dust and starts it reading as stars.
+        if (near > 0.86f) {
+            spikes(Offset(x, y), px(3.2f + near * 3.5f), Color.White, a * 0.5f, 0f)
+        }
+    }
+}
+
+/**
+ * The gas the chart sits in.
+ *
+ * Two things a black rectangle does not have: a **galactic band** — the diagonal
+ * thickening where you are looking along the disc rather than out of it — and
+ * broad clouds you see the stars through. Both are drawn under the star field so
+ * the stars sit inside the sky rather than on top of it.
+ */
+private fun DrawScope.drawSky(clock: Float, accent: Color, secondary: Color, highlight: Color) {
+    // Clouds, drifting slowly and overlapping additively.
+    for (i in 0 until 7) {
+        val drift = clock * OrbMath.range(i * 13 + 3, 0.04f, 0.12f) + i * 1.9f
+        val cx = size.width * (0.5f + cos(drift) * OrbMath.range(i * 5 + 1, 0.15f, 0.55f))
+        val cy = size.height * (0.5f + sin(drift * 1.2f) * OrbMath.range(i * 9 + 4, 0.15f, 0.48f))
+        val r = size.minDimension * OrbMath.range(i * 11 + 7, 0.35f, 0.95f)
+        val colour = when (i % 3) {
+            0 -> accent
+            1 -> secondary
+            else -> highlight
+        }
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    colour.copy(alpha = OrbMath.range(i * 3 + 2, 0.04f, 0.10f)),
+                    colour.copy(alpha = 0.02f),
+                    Color.Transparent,
+                ),
+                center = Offset(cx, cy),
+                radius = r,
+            ),
+            radius = r,
+            center = Offset(cx, cy),
+            blendMode = BlendMode.Plus,
+        )
+    }
+
+    // The band. Drawn as a run of overlapping soft discs along a diagonal, so it
+    // has ragged edges instead of the hard boundary a rotated rectangle gives.
+    val steps = 22
+    for (k in 0 until steps) {
+        val t = k.toFloat() / (steps - 1)
+        val x = size.width * (-0.15f + 1.3f * t)
+        val y = size.height * (0.78f - 0.52f * t)
+        val r = size.minDimension * (0.20f + 0.10f * sin(t * 6.2f))
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    accent.copy(alpha = 0.055f),
+                    highlight.copy(alpha = 0.022f),
+                    Color.Transparent,
+                ),
+                center = Offset(x, y),
+                radius = r,
+            ),
+            radius = r,
+            center = Offset(x, y),
+            blendMode = BlendMode.Plus,
         )
     }
 }
