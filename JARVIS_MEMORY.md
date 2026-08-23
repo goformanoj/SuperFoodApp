@@ -1,5 +1,67 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (build break, again) — the third `IntSize` and the end of it
+
+**What broke.** `bcf46c1` failed `compileDebugKotlin` on three errors:
+
+```
+OrbUniverse.kt:402:63  Argument type mismatch: actual type is 'Int', but 'Float' was expected.
+OrbUniverse.kt:446:37  Argument type mismatch: actual type is 'Int', but 'Float' was expected.
+ThemeBackdrop.kt:516:9 'internal' function exposes its 'private-in-file' return type 'SkyLayout'.
+```
+
+**The first two are one fault, and it is the third time it has cost a build.**
+`PointerInputScope.size` is an **IntSize**; `DrawScope.size` is a **Size**. Twice
+before it was `minDimension`, which only the second has. This time it was
+`size.width`, which both have — as different types.
+
+**Why this one hid better than the others.** `minDimension` does not exist on an
+`IntSize`, so it fails wherever it is written. `width` exists on both, and
+`Int * Float` is a `Float` in Kotlin — so every arithmetic use compiles perfectly
+and the mistake is invisible until the value crosses a **function boundary** that
+insists on a `Float`. `UniverseMath.panLimit(span: Float, …)` was the first such
+boundary this file has ever had. It had been sitting there compiling for weeks.
+
+**The fix is not another `.toFloat()`.** Patching the two call sites leaves the
+trap loaded for the next person to write `size.` inside a gesture. There is now
+one named spelling:
+
+```kotlin
+private val PointerInputScope.span: Float
+    get() = minOf(size.width, size.height).toFloat()
+```
+
+documented with all three failures, and the gesture code uses nothing else.
+**Reaching for raw `size` inside a `pointerInput` is the smell** — that is the
+review rule, and it is cheaper than remembering which of two identically-spelled
+properties is in scope thirty lines from a Canvas.
+
+**The third error** was duller: `SkyCache` was declared `internal` while
+`SkyLayout`, the type it returns, is private to the file. It is private now,
+which is all it ever needed to be. Worth noting only because it is the kind of
+thing a visibility keyword typed on autopilot produces.
+
+### What the gate could and could not see, precisely
+
+Everything in `Cosmos.kt` compiled and passed here in seconds — the whole
+generator rewrite, the surface patterns, the star temperature sequence, the
+distinctness tests. Not one of those was wrong.
+
+Everything in `OrbUniverse.kt` and `ThemeBackdrop.kt` is Compose, which
+`scripts/jvmcheck` cannot resolve at all without `dl.google.com`. **CI is the
+first compiler those files ever meet**, and the whole break was in them.
+
+That is the argument for pushing decisions down into the pure layer stated as
+evidence rather than as a preference: the half of this change that could be
+checked off-device had zero defects, and the half that could not had three.
+
+**Splitting the push was right and did not help enough.** Holding the galaxy and
+backdrop work back kept the broken base small — but the base was still broken, so
+the round trip was spent anyway. The lesson is narrower than "push smaller": it is
+that a *new function boundary* in blind Compose is the highest-risk edit there is,
+because it is the only thing that can turn weeks-old working code into an error.
+
+
 ## 2026-08-23 (variety, and the lag) — eight kinds meant eight pictures
 
 **Reported.** *"why do the planets look the same in each of the stars, just the

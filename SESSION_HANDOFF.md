@@ -2,8 +2,8 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk`, **CI pending** — `main` is at
-`3d736c2`, the last green state. The universe is
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `d645286`, **CI pending** —
+`main` is at `3d736c2`, the last green state. The universe is
 now four layers you can touch: orb → galaxy → a star's **system** → a **world** with things on it. Every
 layer zooms, the orb turns under a drag, and the theme stops at the orb.
 
@@ -49,7 +49,29 @@ rather than ripped out blind at the end of a large blind-Compose change. It is
 the next cleanup; do not mistake the passing tests for coverage of anything that
 ships.
 
-### The other gesture gotcha: two `size`s that read identically
+### The two `size`s: now solved rather than remembered
+
+`PointerInputScope.size` is an **IntSize**; `DrawScope.size` is a **Size**. This
+has broken the build three times. Twice on `minDimension`, which only the second
+has — and once on `size.width`, which **both** have as different types.
+
+That third one is the instructive one. Because `Int * Float` is a `Float`, every
+arithmetic use of `size.width` inside a gesture compiles perfectly; the mistake
+only appears when the value crosses a **function boundary** that insists on a
+`Float`. Code that had compiled for weeks broke the moment `panLimit` was added.
+
+Do not try to remember which is in scope. Use the named spelling:
+
+```kotlin
+private val PointerInputScope.span: Float
+    get() = minOf(size.width, size.height).toFloat()
+```
+
+> **Reaching for raw `size` inside a `pointerInput` is the smell.** Adding a new
+> function boundary in blind Compose is the highest-risk edit in this project,
+> because it is the only kind that turns working code into an error.
+
+### The original note, kept for the shape of it
 
 `PointerInputScope.size` is an **IntSize**; `DrawScope.size` is a **Size**. Only
 the second has `minDimension` / `maxDimension` / `center`. In a file where the
