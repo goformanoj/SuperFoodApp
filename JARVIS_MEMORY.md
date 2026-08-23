@@ -1,5 +1,52 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (later) — the orb opens into itself, and colour was the whole problem
+
+**What was asked.** *"build me something more interesting, the dimensions 60-70%
+look the same… keep the galaxy constant and it doesn't depend on the theme… a
+dimension of the forge not necessarily be it's theme colours… the orbs moving on
+the main orbs rings are galaxies, each galaxy has stars, each star is a different
+dimension, count the number of moving orbs on the Jarvis (main orb) and build
+galaxies according to that."*
+
+**Why they looked the same, which was not the geometry.** Every dimension was
+drawn in `palette.accent` and `palette.highlight`. The structures underneath had
+already been given genuinely different physics per star kind — density, tempo,
+reach, which shapes form — and it had barely helped, because **colour is the
+strongest signal a place has and it was constant across all of them**. Two rooms
+painted the same colour read as one room with the furniture moved, however
+different the furniture.
+
+So the theme now stops at the orb. `Cosmos.kt` generates four inks per place from
+its own seed. The anchoring matters as much as the variation: star kind fixes the
+family (blue giants cold, red dwarfs warm) so the chart's labels stay honest,
+and the seed moves within it so no two blue giants are the same blue.
+
+**What the tests caught, and it was two things.**
+
+1. **Stars on galaxy arms overlap where the arms cross.** Placing them along arms
+   is what makes a galaxy read as a structure rather than a scatter — but an arm
+   is a curve, and two curves meet. Measured 0.126 of the frame apart, which
+   under nearest-wins hit testing means one star swallows the other and **a
+   dimension can never be entered**. Invisible except as "that one doesn't work".
+2. **A test fixture was keeping dead code alive.** `starMap()` had no callers left
+   in the app once stars moved into galaxies — but its tests still called it, so
+   it read as covered. A fixture that is the last caller of the thing it tests is
+   not testing anything, and it had silently stopped covering the live path.
+   Retargeting the tests to `starsIn()` is what found bug (1).
+
+The second is the more general lesson and the one to carry: **when a function's
+only remaining callers are in `src/test`, that is a finding.** Green tests on
+dead code look exactly like green tests on live code.
+
+**The hierarchy.** Ring count comes from the orb spec, not from a number I chose,
+because that is what was asked. The orb stage draws the real renderer rather than
+a picture of one — the only version that survives a theme change — and
+`galaxyOn()` is shared by the drawing and the hit test, because two copies of that
+arithmetic would drift and the symptom would be taps missing by a few degrees
+with nothing visibly wrong.
+
+
 ## 2026-08-23 (later) — a crash found by reading, and three lessons repeated
 
 **Five faults from one device session**, all reported without a trace, and the

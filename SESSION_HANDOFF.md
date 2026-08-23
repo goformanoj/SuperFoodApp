@@ -2,10 +2,23 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` merged to `main` at `778f995`
-with the `jarvis-debug-apk` artifact present. Five device-reported faults fixed:
-the Settings crash, the picker lag, the background grid, the star chart, and
-dimensions that were identical.
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `b9e3aca`, **CI not yet
+confirmed** — `main` is at `778f995`. The universe was rebuilt into a three-stage
+hierarchy (orb → galaxy → dimension → worlds) and the theme no longer reaches
+past the orb.
+
+### The gotcha worth carrying: a test fixture can keep dead code alive
+
+`UniverseMath.starMap()` stopped being called by anything that ships the moment
+stars moved onto galaxy arms — but its tests still called it, so it looked
+covered and stayed in the tree. **A fixture that is the last caller of the code
+it tests is not testing anything**, and worse, it stops the live path from being
+covered at all. Retargeting those tests to `starsIn()` is what surfaced the real
+bug: two stars 0.126 of the frame apart, close enough that nearest-wins hit
+testing makes one dimension permanently unreachable.
+
+When a function's only remaining callers are in `src/test`, that is a finding,
+not a tidy-up.
 
 The **call-assistant plan is written and parked** in
 `/root/.claude/plans/can-you-explain-me-groovy-spark.md`. It ships after the
