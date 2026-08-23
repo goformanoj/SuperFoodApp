@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -326,13 +327,12 @@ fun OrbUniverse(
                             // In a system: touch a world to go and stand off it.
                             chosen != null -> {
                                 var best: WorldOrbit? = null
-                                // `minOf`, NOT `size.minDimension`: inside a
-                                // PointerInputScope `size` is an IntSize, which
-                                // has no such property. DrawScope's `size` is a
-                                // Size and does — the two read identically and
-                                // are different types, which is how this got
-                                // written twice in one file.
-                                var bestD = minOf(size.width, size.height) * 0.12f
+                                // `span`, not `size.anything`: see its doc. The
+                                // two `size`s in this file read identically and
+                                // are different types, and reaching for the raw
+                                // one inside a gesture has broken the build
+                                // three times.
+                                var bestD = span * 0.12f
                                 placedWorlds.at.forEach { (w, p) ->
                                     val d = (p - at).getDistance()
                                     if (d < bestD) {
@@ -361,7 +361,7 @@ fun OrbUniverse(
                                     pitch = pitch,
                                     at = at,
                                     centre = Offset(size.width / 2f, size.height / 2f),
-                                    radius = minOf(size.width, size.height) / 2f *
+                                    radius = span / 2f *
                                         fitFor(liveStyle) * ORB_STAGE_ZOOM * view,
                                 )
                                 if (hit != null) galaxy = hit
@@ -398,7 +398,6 @@ fun OrbUniverse(
                             // Otherwise a scene panned to the edge at 3x stays
                             // stranded there when the zoom comes back to 1, which
                             // is the displacement complaint by another route.
-                            val span = minOf(size.width, size.height)
                             val limit = UniverseMath.panLimit(span, view)
                             pan = Offset(
                                 UniverseMath.clampPan(pan.x, limit),
@@ -442,10 +441,7 @@ fun OrbUniverse(
                                 // content fits and there is nothing to look
                                 // around, so the limit is zero and the scene
                                 // cannot be shoved off centre at all.
-                                val limit = UniverseMath.panLimit(
-                                    minOf(size.width, size.height),
-                                    view,
-                                )
+                                val limit = UniverseMath.panLimit(span, view)
                                 pan = Offset(
                                     UniverseMath.clampPan(pan.x + panChange.x, limit),
                                     UniverseMath.clampPan(pan.y + panChange.y, limit),
@@ -845,6 +841,23 @@ private class WorldPlacements {
 }
 
 /** How much larger the orb is here than on the home screen. */
+/**
+ * The shorter side of a gesture frame, as a **Float**.
+ *
+ * `PointerInputScope.size` is an [androidx.compose.ui.unit.IntSize]; `DrawScope.size`
+ * is a [androidx.compose.ui.geometry.Size]. They read identically, they are
+ * different types, and in this file the gesture handlers and the Canvas sit thirty
+ * lines apart. That has now cost three separate build failures: twice for
+ * `minDimension`, which only one of them has, and once for `size.width` coming out
+ * as an `Int` where a `Float` was wanted — arithmetic hides it, because `Int * Float`
+ * is a `Float`, so it only surfaces at a function boundary.
+ *
+ * One named spelling, used everywhere in the gesture code, is the fix. Reaching for
+ * `size` directly inside a `pointerInput` is the smell.
+ */
+private val PointerInputScope.span: Float
+    get() = minOf(size.width, size.height).toFloat()
+
 private const val ORB_STAGE_ZOOM = 1.55f
 
 /** How far a stage may be zoomed. Below the minimum, the gesture leaves instead. */

@@ -509,12 +509,12 @@ private class SkyLayout(val buckets: List<StarBucket>, val flares: List<FlareSta
  * recomposition loop. A plain holder has no observers, exactly as
  * `WorldPlacements` does for the same reason.
  */
-internal class SkyCache {
+private class SkyCache {
     private var key: String = ""
     private var layout: SkyLayout = SkyLayout(emptyList(), emptyList())
 
     fun of(w: Float, h: Float, count: Int, warm: Color, density: Float): SkyLayout {
-        val k = "$w:$h:$count:${warm.value}:$density"
+        val k = "$w:$h:$count:${warm.hashCode()}:$density"
         if (k == key) return layout
 
         // Three sizes, two colours, four brightnesses: twelve buckets, which is
