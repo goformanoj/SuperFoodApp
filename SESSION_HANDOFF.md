@@ -17,6 +17,17 @@ rather than ripped out blind at the end of a large blind-Compose change. It is
 the next cleanup; do not mistake the passing tests for coverage of anything that
 ships.
 
+### The other gesture gotcha: two `size`s that read identically
+
+`PointerInputScope.size` is an **IntSize**; `DrawScope.size` is a **Size**. Only
+the second has `minDimension` / `maxDimension` / `center`. In a file where the
+gesture handlers and the Canvas sit thirty lines apart, `size.minDimension` looks
+right in both places and compiles in one — it was written twice in `OrbUniverse`
+and broke the build the second time. In a gesture, use
+`minOf(size.width, size.height)`.
+
+`scripts/jvmcheck` cannot catch this: it is Compose, so CI is the first compile.
+
 ### The gotcha worth carrying: `pointerInput(Unit)` captures by value
 
 `pointerInput(Unit)` is created ONCE and never restarted. Its lambda closes over

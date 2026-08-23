@@ -298,7 +298,13 @@ fun OrbUniverse(
                             // In a system: touch a world to go and stand off it.
                             chosen != null -> {
                                 var best: WorldOrbit? = null
-                                var bestD = size.minDimension * 0.12f
+                                // `minOf`, NOT `size.minDimension`: inside a
+                                // PointerInputScope `size` is an IntSize, which
+                                // has no such property. DrawScope's `size` is a
+                                // Size and does — the two read identically and
+                                // are different types, which is how this got
+                                // written twice in one file.
+                                var bestD = minOf(size.width, size.height) * 0.12f
                                 placedWorlds.at.forEach { (w, p) ->
                                     val d = (p - at).getDistance()
                                     if (d < bestD) {
