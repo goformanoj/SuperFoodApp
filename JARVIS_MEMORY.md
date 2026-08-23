@@ -1,5 +1,78 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (later) — two reverts, ten worlds, and a sky with a choice in it
+
+**What was asked.** Restore Orbit's orb. Fix Nebula's, which was "just weird".
+Take Forge back to its previous version *and then* make it better. Give the
+galaxy more detail, open it on different kinds of stars, and let a tap on one
+enter that star's dimension. Add ten backgrounds the user can choose between,
+with each theme still bringing its own by default.
+
+**Why both rebuilds were wrong in the same way.** Each replaced a design instead
+of improving it. Forge is the clearest case: the theme is a *filigree* — fine
+metal with light in it — and the rebuild swapped six thin rings and 24 hairline
+spokes for three heavy bands and a molten lump. That is not an improved filigree,
+it is a different object. The correct shape of "make it better" for a design
+somebody likes is **additive**: the rings and spokes are back verbatim, and what
+is new is beads of light running along the wires (depth-shaded, so they pass
+visibly round the back) and a heat gradient across the set. Same for Orbit,
+where the previous attempt narrowed the ring that gave it its proportions.
+
+**The measurement that settled Orbit.** Its widest ring is 1.55 orb radii and the
+orb draws at 0.86 of the half-frame, so it reaches 1.33 before perspective is
+applied at all. Sweeping the entire precession range moved the worst case from
+1.460 to 1.458 — the tilts are irrelevant. There are exactly two levers, ring
+width and orb size, and since the proportions were the thing being asked for, the
+orb is what gave: `fitFor` draws it at 0.657 of the half-frame. That is the
+mechanism built two commits earlier finally doing the job it was built for,
+rather than the narrowing workaround it replaced.
+
+**Nebula's fault was uniform softness.** Two faint rings, a core of five drifting
+veils, seven big lobes — nothing in it had an edge, so the eye had nowhere to
+land and the whole thing read as a smudge rather than as an object. Structure
+went back in without losing the cloud: three brighter narrower rings, a compact
+three-veil core, four lobes instead of seven merging into a flat wash.
+
+**A test that blocked a correct decision.** Raising Nebula's mote count failed
+`OrbitThemeTest`, which asserted Orbit carried the most dust of any theme. Mote
+count is not motion and was never the right property to pin — the assertion was
+about Orbit and was preventing a good change to a different theme. Rewritten
+around what actually distinguishes Orbit (largest body, widest orbit). Worth
+remembering as a shape: when a test fails because of a change somewhere else
+entirely, check whether the test is defending the right thing before changing the
+code to satisfy it.
+
+**Backgrounds as their own axis.** Ten scenes, selectable independently of the
+theme, each a different *kind* of place rather than a recolour — the lesson the
+themes already taught, where three of the original seven shared backdrop geometry
+and no amount of recolouring separated them. The one decision worth recording is
+that "follow the theme" is stored as an **empty id**, not the resolved backdrop:
+writing the current one would freeze it and the next theme change would keep the
+old theme's world. `resolve` also falls back for an unrecognised id, because an id
+outlives the build that wrote it.
+
+**The star chart.** The universe used to open on a structure; it now opens on a
+choice. Nine stars, six kinds, each drawn as itself — a chooser whose options
+look alike is a list wearing a sky costume. The branch is mixed into every seed
+below it by a large odd multiplier, which puts each dimension in a distant region
+of the hash, so no two stars share structure at any depth while a dimension stays
+identical on re-entry. Positions are relaxed apart over four passes because a
+plain hash scatter clumps, and two overlapping stars are both ugly and
+untappable under nearest-wins hit testing.
+
+**The test that mattered most here** is the one checking the endless-zoom seam
+still holds *inside* a branch. Adding a multiplier to the seed is exactly the kind
+of change that could break the level-boundary identity invisibly, and it would
+only have shown up ten levels down on a phone.
+
+**Connectors.** Asked to use them if they helped. `ListConnectors` shows Mobbin,
+Figma, Canva, Adobe and tldraw connected to the account but `enabledInChat:
+false`, so their tools are not loaded in this session at all. Only ElevenLabs is
+enabled, and it is voice and image generation — which does not help build
+procedural Canvas art, and this project has already failed three times at turning
+renders into vector code. Said so plainly rather than spending a round on it.
+
+
 ## 2026-08-23 (third) — a transition that agrees with the gesture
 
 **What was asked.** *"also make the transition from home screen into the galaxy

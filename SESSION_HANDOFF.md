@@ -1,5 +1,49 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-08-23 (later)
+
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `902b59e`, **CI not yet
+confirmed** — `main` is still at `287843a`. Orbit and Forge are back to their
+previous specs, Nebula has structure again, there are ten selectable backgrounds,
+and the galaxy opens on a star chart whose stars each lead to a different
+dimension.
+
+### New gotchas
+
+- **A revert request means revert, not re-derive.** Both "restore Orbit" and
+  "take Forge back then make it better" followed rebuilds that *replaced* the
+  design rather than improving it. The Forge one is the clearer lesson: the theme
+  is a **filigree** — fine metal — and it was swapped for three heavy bands and a
+  molten core, which is not an improvement to a filigree, it is a different
+  object. Improvements to a liked design should be **additive** (Forge's beads and
+  heat gradient) unless the design itself is what was complained about.
+- **A ring wider than `1 / PREFERRED_FILL` cannot be made to fit by retuning.**
+  Orbit's disc is 1.55 orb radii and the orb is drawn at 0.86 of the half-frame:
+  `1.55 × 0.86 = 1.33` before perspective touches it. Tilts and precession swing
+  barely move the number (measured: 1.460 → 1.458 across the whole swing range).
+  The only two options are a narrower ring or a smaller orb — and if the
+  proportions are the thing being asked for, it is the orb that gives.
+- **`JarvisWordmark` scales off the box, not the orb.** A theme drawn at a
+  reduced `fitFor` needs the wordmark scaled by `fitFor / PREFERRED_FILL` too, or
+  it overhangs a body it used to sit inside.
+- **A stored "follow the theme" must be an empty id, not the resolved value.**
+  Writing the current backdrop's id would freeze it, and the next theme change
+  would keep the old theme's world. `BackdropStyle.resolve` also falls back for an
+  *unrecognised* id, which is a real case: an id outlives the build that wrote it.
+- **A test can block a correct decision about a different feature.**
+  `OrbitThemeTest` asserted Orbit carried the most dust of any theme, so raising
+  Nebula's mote count failed it. Mote count is not motion and was the wrong
+  property to pin — the fix was to rewrite the assertion around what actually
+  distinguishes Orbit, not to lower Nebula.
+
+### Connectors, checked 2026-08-23
+
+`ListConnectors` reports Mobbin, Figma, Canva, Adobe and tldraw **connected to
+the account but `enabledInChat: false`** — their tools are not loaded and cannot
+be reached from this session. Only ElevenLabs is enabled, and it is voice/image
+generation, which does not help build procedural Canvas art. Do not promise
+connector-sourced references without checking `enabledInChat` first.
+
 ## Current position — 2026-08-23
 
 Branch `claude/phone-glitch-investigation-g6dnhk` @ `13bb757`, **CI pending**;
