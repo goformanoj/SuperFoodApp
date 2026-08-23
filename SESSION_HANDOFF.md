@@ -2,9 +2,9 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `b9e3aca`, **CI not yet
-confirmed** — `main` is at `778f995`. The universe was rebuilt into a three-stage
-hierarchy (orb → galaxy → dimension → worlds) and the theme no longer reaches
+Branch `claude/phone-glitch-investigation-g6dnhk` merged to `main` at `8d3d689`
+with the `jarvis-debug-apk` artifact present. The universe was rebuilt into a
+three-stage hierarchy (orb → galaxy → dimension → worlds) and the theme no longer reaches
 past the orb.
 
 ### The gotcha worth carrying: a test fixture can keep dead code alive
