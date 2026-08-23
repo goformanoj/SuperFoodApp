@@ -89,7 +89,8 @@ fun OrbUniverse(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     palette: JarvisPalette = LocalPalette.current,
-    amplitude: Float = 0f,
+    /** Mic level as a lambda — see [HudOrb]; a value here recomposes the app. */
+    amplitude: () -> Float = { 0f },
     /**
      * How far through the arrival this is, `0f..1f`, driven by the host so the
      * page and the thing it grew out of move as one. Used for the entry bloom
@@ -249,7 +250,6 @@ fun OrbUniverse(
         }
     }
 
-    val amp = amplitude.coerceIn(0f, 1f)
     // The orb stage draws the real renderer, which needs its scratch buffers —
     // rebuilding ring geometry into fresh lists every frame is the allocation
     // fault OrbDetail exists to remember.
@@ -491,7 +491,7 @@ fun OrbUniverse(
                     detail = orbDetail,
                     clock = clock,
                     breathe = breathe,
-                    amp = amp,
+                    amp = amplitude().coerceIn(0f, 1f),
                     accent = palette.accent,
                     highlight = palette.highlight,
                     secondary = palette.secondary,

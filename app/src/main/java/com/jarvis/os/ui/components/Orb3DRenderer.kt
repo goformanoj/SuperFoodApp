@@ -101,7 +101,10 @@ fun DrawScope.drawOrb3D(
         drawRing(style, ring, f.yaw, f.pitch, r * breathe, camera, focal, t, detail, accent, highlight, f.amp)
     }
 
-    drawMotes((spec.motes * detail.moteScale).toInt(), r * breathe, camera, focal, t, accent, highlight)
+    drawMotes(
+        (spec.motes * detail.moteScale).toInt(),
+        r * breathe, camera, focal, t, accent, highlight, detail,
+    )
 
     if (spec.lobes > 0) {
         drawLobes(spec.lobes, r * breathe, t, accent, highlight, secondary, f.breathe)
@@ -237,6 +240,20 @@ private fun DrawScope.drawRing(
 }
 
 /** Dust on a sphere, depth-shaded so the far motes sit behind the rings. */
+/**
+ * The dust field, with the rotation and projection done in plain floats.
+ *
+ * It used to call `Orb3D.spherePoints`, which builds a `List` and a `Vec3` per
+ * point, **every frame** — then `rotateX`, `rotateY` and `project`, each of which
+ * returns a fresh object. For the 140-mote themes that is around 560 short-lived
+ * allocations a frame, roughly 34,000 a second, for geometry that never changes.
+ *
+ * The positions now come from a buffer on [OrbDetail] that is built once per
+ * count, and the transform is inlined so the loop allocates nothing at all. This
+ * is the same treatment the ring geometry already had; the motes were missed when
+ * it was done, which is why the comment there says the lists were the fault and
+ * this kept doing it anyway.
+ */
 private fun DrawScope.drawMotes(
     count: Int,
     radius: Float,
@@ -245,17 +262,35 @@ private fun DrawScope.drawMotes(
     t: Float,
     accent: Color,
     highlight: Color,
+    detail: OrbDetail,
 ) {
     if (count <= 0) return
-    Orb3D.spherePoints(count, radius * 0.98f).forEachIndexed { i, v ->
-        val spun = Orb3D.rotateY(Orb3D.rotateX(v, t * 0.18f), t * 0.31f)
-        val p = Orb3D.project(spun, camera, focal)
-        val depth = Orb3D.depthFactor(p.depth, radius)
+    val unit = detail.motes(count)
+    val scale = radius * 0.98f
+    // One sin/cos pair for the whole field rather than one per point: every mote
+    // turns by the same two angles.
+    val cx = cos(t * 0.18f)
+    val sx = sin(t * 0.18f)
+    val cy = cos(t * 0.31f)
+    val sy = sin(t * 0.31f)
+    for (i in 0 until count) {
+        val x0 = unit[i * 3] * scale
+        val y0 = unit[i * 3 + 1] * scale
+        val z0 = unit[i * 3 + 2] * scale
+        // rotateX, then rotateY, written out.
+        val y1 = y0 * cx - z0 * sx
+        val z1 = y0 * sx + z0 * cx
+        val x2 = x0 * cy + z1 * sy
+        val z2 = -x0 * sy + z1 * cy
+        // project.
+        val d = kotlin.math.max(camera - z2, 0.05f)
+        val s = focal / d
+        val depth = Orb3D.depthFactor(z2, radius)
         drawCircle(
             color = (if (i % 5 == 0) highlight else accent)
                 .copy(alpha = (0.10f + depth * 0.55f) * OrbMath.range(i * 7 + 3, 0.5f, 1f)),
             radius = px(0.7f + depth * 1.7f),
-            center = Offset(center.x + p.x, center.y + p.y),
+            center = Offset(center.x + x2 * s, center.y + y1 * s),
             blendMode = BlendMode.Plus,
         )
     }

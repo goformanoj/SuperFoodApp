@@ -52,6 +52,12 @@ class MainActivity : ComponentActivity() {
                     val state by engine.state
                     JarvisApp(
                         state = state,
+                        // A LAMBDA, deliberately. Reading `engine.amplitude.value`
+                        // here would make this composable depend on it, and this
+                        // is the composable the whole app hangs off — which is
+                        // precisely the bug being fixed. Read inside the Canvas
+                        // that draws it, and a mic level costs one invalidation.
+                        amplitude = { engine.amplitude.value },
                         onClearChat = { engine.clearConversation() },
                         onWake = { engine.wake() },
                         onInterrupt = { engine.interrupt() },

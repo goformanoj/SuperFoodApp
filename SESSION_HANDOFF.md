@@ -2,8 +2,8 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `8673930`, **green with the
-`jarvis-debug-apk` artifact**, and `main` fast-forwarded to it. The universe is
+Branch `claude/phone-glitch-investigation-g6dnhk`, **CI pending** — `main` is at
+`8673930`, the last green state. The universe is
 now four layers you can touch: orb → galaxy → a star's **system** → a **world** with things on it. Every
 layer zooms, the orb turns under a drag, and the theme stops at the orb.
 
@@ -48,6 +48,26 @@ is exactly the "a fixture keeps dead code alive" trap recorded below. Left in
 rather than ripped out blind at the end of a large blind-Compose change. It is
 the next cleanup; do not mistake the passing tests for coverage of anything that
 ships.
+
+### Where a value LIVES is a performance decision
+
+The app was never smooth, and the cause was not any drawing. `VoiceUiState` held
+`amplitude`, the mic level, and the whole app composes under a single read of that
+object. Every RMS callback — many a second, whenever the mic is open, which is
+nearly always — built a new state object and recomposed **the entire tree**.
+
+> **Anything that changes at sensor rate does not belong in a state object the
+> whole app reads.** Give it its own state, and pass it down as a `() -> Float`
+> read *inside* the Canvas. Reading the lambda in composition restores the bug
+> exactly.
+
+The tell is worth memorising: lag with **no trigger**. Not one screen, not one
+gesture, not after one action — everything, always, including screens that draw
+almost nothing. A slow drawing makes one thing slow; a high-frequency write to
+widely-read state makes everything slow at once.
+
+A test now asserts `amplitude` is not a field on `VoiceUiState`, because a field
+like that gets tidied back in by anyone who thinks state belongs together.
 
 ### The two `size`s: now solved rather than remembered
 

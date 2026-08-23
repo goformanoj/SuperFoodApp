@@ -59,4 +59,22 @@ class OrbDetail(quality: OrbQuality) {
      * each is filled, drawn, and finished with before the next reset.
      */
     val scratch = Path()
+
+    /**
+     * Unit-sphere positions for the mote field, built when the count changes and
+     * not once a frame. The rings got this treatment when Settings lagged; the
+     * motes were missed, and went on allocating a list and a vector per point per
+     * frame for every orb on screen.
+     */
+    private var moteCount = -1
+    private var motePoints = FloatArray(0)
+
+    fun motes(count: Int): FloatArray {
+        if (count != moteCount) {
+            motePoints = FloatArray(count * 3)
+            Orb3D.unitSphere(count, motePoints)
+            moteCount = count
+        }
+        return motePoints
+    }
 }

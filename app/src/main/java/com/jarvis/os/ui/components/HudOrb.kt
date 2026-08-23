@@ -46,7 +46,16 @@ import com.jarvis.os.voice.OrbState
 fun HudOrb(
     modifier: Modifier = Modifier,
     orb: OrbState = OrbState.Idle,
-    amplitude: Float = 0f,
+    /**
+     * Mic level, as a LAMBDA rather than a value.
+     *
+     * The microphone reports many times a second. Taken as a `Float` parameter,
+     * every report recomposed this composable and everything above it that had to
+     * pass the new value down — which reached the whole app, because the state it
+     * lived in is read once at the top of `setContent`. Taken as a lambda and
+     * called inside the Canvas, the same report invalidates one draw.
+     */
+    amplitude: () -> Float = { 0f },
     size: Dp = 300.dp,
     palette: JarvisPalette = LocalPalette.current,
     showLabel: Boolean = true,
@@ -104,7 +113,6 @@ fun HudOrb(
         breathe = STILL_BREATHE
     }
 
-    val amp = amplitude.coerceIn(0f, 1f)
     // Held across frames: the picker draws six of these at once, and rebuilding
     // ring geometry into fresh lists every frame is what made Settings lag.
     // Keyed on the quality BAND, not the size — a selected card animates its orb
@@ -115,6 +123,9 @@ fun HudOrb(
 
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
+            // READ HERE, inside the draw, and nowhere above it. Calling the lambda
+            // in composition would put the recomposition back exactly where it was.
+            val amp = amplitude().coerceIn(0f, 1f)
             drawOrb3D(
                 style = palette.orbStyle,
                 detail = detail,
@@ -177,7 +188,7 @@ fun OrbPreview(
         HudOrb(
             modifier = modifier,
             orb = OrbState.Listening,
-            amplitude = 0f,
+            amplitude = { 0f },
             size = size,
             palette = palette,
             showLabel = false,

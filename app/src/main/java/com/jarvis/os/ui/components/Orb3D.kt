@@ -97,6 +97,36 @@ object Orb3D {
      * spiral, which avoids the clumping at the poles that comes from sampling
      * latitude and longitude independently.
      */
+    /**
+     * The same distribution as [spherePoints], written into a flat `x, y, z`
+     * array on a UNIT sphere.
+     *
+     * `spherePoints` allocates a `List` and a `Vec3` per point, and the mote
+     * field called it **every frame** — 140 objects, plus two more per point for
+     * the rotation and one for the projection, so around 560 short-lived
+     * allocations a frame and roughly 34,000 a second. The geometry never
+     * changes; only the radius it is scaled to does, and that is a multiply.
+     *
+     * Kept on the unit sphere for exactly that reason: the orb breathes, so the
+     * radius is different every frame and caching scaled points would defeat the
+     * purpose. The caller multiplies.
+     *
+     * The same fix `OrbDetail`'s ring buffers already are — the motes were simply
+     * missed when it was done.
+     */
+    fun unitSphere(count: Int, into: FloatArray) {
+        if (count <= 0) return
+        val golden = PI.toFloat() * (3f - sqrt(5f))
+        for (i in 0 until count) {
+            val y = 1f - (i.toFloat() / max(count - 1, 1)) * 2f
+            val r = sqrt(max(1f - y * y, 0f))
+            val theta = golden * i
+            into[i * 3] = cos(theta) * r
+            into[i * 3 + 1] = y
+            into[i * 3 + 2] = sin(theta) * r
+        }
+    }
+
     fun spherePoints(count: Int, radius: Float): List<Vec3> {
         if (count <= 0) return emptyList()
         val golden = PI.toFloat() * (3f - sqrt(5f))

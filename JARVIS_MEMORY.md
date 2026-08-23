@@ -1,5 +1,68 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (why the app was never smooth) — a Float in the wrong object
+
+**Reported.** *"what abt the app lagging alot, the app isn't smooth idk why"* —
+after a round that had already batched the star field and frozen the backdrop off
+Home. Those were real costs and fixing them was not enough, because they were not
+the cause.
+
+**The cause.** `VoiceUiState` carried `amplitude: Float`, the microphone level.
+The mic reports RMS many times a second whenever it is open — which is nearly
+always, because the wake word is always being listened for. Every one of those
+callbacks ran `set { it.copy(amplitude = amp) }`, building a **new state object**.
+
+And the whole app composes under one read of that object:
+
+```kotlin
+// MainActivity.setContent
+val state by engine.state
+JarvisApp(state = state, …)
+```
+
+So every RMS callback **recomposed the entire tree** — home, settings, chat,
+diagnostics, a list mid-scroll, all of it, several times a second, forever. That
+is what "the app isn't smooth" was, and it explains the shape of the complaint
+exactly: not one screen, not one gesture, everything, always, with no obvious
+trigger.
+
+**The fix is where the value lives, not how it is drawn.** Amplitude is its own
+`MutableFloatState` on the engine now, and it reaches the two things that draw it
+as a **`() -> Float` lambda** that is called *inside the Canvas*. A level change
+invalidates one draw and recomposes nothing. Reading the lambda in composition
+would put the whole bug back, so both call sites say so in a comment.
+
+> **The rule: anything that changes at sensor rate does not belong in a state
+> object the whole app reads.** A test now asserts `amplitude` is not a field on
+> `VoiceUiState`, because this is the kind of thing that gets tidied back in.
+
+### Two other things found while looking
+
+- **`OrbDetail` had fixed the rings and missed the motes.** The comment there
+  records that rebuilding ring geometry into fresh lists every frame cost 14,600
+  allocations a frame across the picker — and `drawMotes` went on calling
+  `Orb3D.spherePoints` every frame anyway, which builds a `List` and a `Vec3` per
+  point, then `rotateX`, `rotateY` and `project`, each returning a fresh object.
+  About 560 allocations a frame for geometry that never changes. Unit-sphere
+  positions are cached per count now and the transform is written out in floats,
+  so the loop allocates nothing.
+- **One sin/cos pair for the whole field**, not one per mote: every point turns by
+  the same two angles.
+
+### The gate earned its keep, twice
+
+`mutableFloatStateOf` was not in `scripts/jvmcheck/stubs/Stubs.kt` — the stubs had
+`MutableState<T>` and nothing else — so the engine change failed to compile
+**here**, in two seconds, instead of twenty minutes later in CI. The stub is added
+with a note on why the unboxed one matters: boxing a Float on every mic tick is
+the same class of waste the split exists to remove.
+
+Worth stating plainly, because the last three rounds have all pointed the same
+way: `AssistantEngine` is not a Compose file, so the gate compiles it, and the
+error surfaced instantly. Everything in `Orb3DRenderer`, `HudOrb`, `VoiceWave` and
+`HomeScreen` is Compose, and CI is still the first compiler those meet.
+
+
 ## 2026-08-23 (build break, again) — the third `IntSize` and the end of it
 
 **What broke.** `bcf46c1` failed `compileDebugKotlin` on three errors:

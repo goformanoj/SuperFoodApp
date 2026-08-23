@@ -31,7 +31,8 @@ import kotlin.math.sin
  */
 @Composable
 fun VoiceWave(
-    amplitude: Float,
+    /** Mic level as a lambda, so a level change invalidates a draw, not a tree. */
+    amplitude: () -> Float,
     modifier: Modifier = Modifier,
     palette: JarvisPalette = LocalPalette.current,
     bars: Int = 56,
@@ -43,13 +44,14 @@ fun VoiceWave(
         label = "wavePhase",
     )
 
-    val amp = amplitude.coerceIn(0f, 1f)
-
     Canvas(
         modifier = modifier
             .fillMaxWidth()
             .height(64.dp),
     ) {
+        // Read inside the draw. In composition it would recompose on every RMS
+        // callback from the microphone, which is what this change exists to stop.
+        val amp = amplitude().coerceIn(0f, 1f)
         val w = size.width
         val h = size.height
         val midY = h * 0.52f

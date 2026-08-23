@@ -154,6 +154,17 @@ private fun taskAccents(): List<Color> =
 @Composable
 fun JarvisApp(
     state: VoiceUiState,
+    /**
+     * Mic level, threaded as a lambda from the engine all the way to the two
+     * Canvases that draw it.
+     *
+     * It used to be a field on [state], and since the whole app composes under a
+     * single read of that state at the top of `setContent`, every RMS callback
+     * from the microphone recomposed the entire tree — home, settings, chat, a
+     * list mid-scroll. Passing a lambda means the value is read in the draw phase
+     * and a level change costs one invalidated Canvas.
+     */
+    amplitude: () -> Float,
     onClearChat: () -> Unit,
     onWake: () -> Unit = {},
     onInterrupt: () -> Unit = {},
@@ -315,6 +326,7 @@ fun JarvisApp(
                 when (current) {
                     Dest.Home -> HomeContent(
                         state = state,
+                        amplitude = amplitude,
                         onWake = onWake,
                         onInterrupt = onInterrupt,
                         onExpand = { universeOpen = true },
@@ -442,7 +454,7 @@ fun JarvisApp(
                 OrbUniverse(
                     onClose = { universeOpen = false },
                     palette = palette,
-                    amplitude = state.amplitude,
+                    amplitude = amplitude,
                     entry = dive,
                     modifier = Modifier.graphicsLayer {
                         val grow = 0.32f + 0.68f * dive
@@ -619,6 +631,7 @@ private fun DashboardRow(dest: Dest, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun HomeContent(
     state: VoiceUiState,
+    amplitude: () -> Float = { 0f },
     onWake: () -> Unit = {},
     onInterrupt: () -> Unit = {},
     onExpand: () -> Unit = {},
@@ -704,13 +717,13 @@ private fun HeroSection(
                 .onGloballyPositioned { onOrbPlaced(it.boundsInRoot().center) },
             contentAlignment = Alignment.Center,
         ) {
-            HudOrb(orb = state.orb, amplitude = state.amplitude, size = 280.dp)
+            HudOrb(orb = state.orb, amplitude = amplitude, size = 280.dp)
         }
         Spacer(Modifier.height(8.dp))
 
         // The waveform strip from the designs. Driven by the real mic level, so
         // it shows whether JARVIS can currently hear you rather than just moving.
-        VoiceWave(amplitude = state.amplitude)
+        VoiceWave(amplitude = amplitude)
         Spacer(Modifier.height(12.dp))
 
         // Uppercase and widely tracked, as the status block reads in the designs.
@@ -949,8 +962,8 @@ private fun JarvisAppPreview() {
                 status = "Speaking…",
                 transcript = "What's my schedule today",
                 reply = "You have a team sync at 10:00 and a call with your mentor at 18:30.",
-                amplitude = 0.4f,
             ),
+            amplitude = { 0.4f },
             onClearChat = {},
         )
     }

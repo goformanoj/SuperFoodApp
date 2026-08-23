@@ -1,6 +1,7 @@
 package com.jarvis.os.voice
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VoiceStateTest {
@@ -18,8 +19,20 @@ class VoiceStateTest {
         val s = VoiceUiState()
         assertEquals(OrbState.Idle, s.orb)
         assertEquals("Starting…", s.status)
-        assertEquals(0f, s.amplitude, 0f)
         assertEquals(emptyList<Any>(), s.messages)
+    }
+
+    @Test
+    fun `the mic level is not part of the shared ui state`() {
+        // It was, and because the whole app composes under one read of this
+        // object, every RMS callback from the microphone recomposed the entire
+        // tree — including a list being scrolled on another screen. Anything
+        // that changes at sensor rate has to live somewhere the app does not
+        // read wholesale. This test is here so it cannot quietly come back.
+        assertTrue(
+            "amplitude is back on VoiceUiState",
+            VoiceUiState::class.java.declaredFields.none { it.name == "amplitude" },
+        )
     }
 
     @Test

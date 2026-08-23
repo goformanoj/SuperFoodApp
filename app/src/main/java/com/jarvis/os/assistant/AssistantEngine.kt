@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import com.jarvis.os.ai.Brain
 import com.jarvis.os.ai.agentStep
@@ -146,6 +147,28 @@ class AssistantEngine(context: Context) {
     private val _state = mutableStateOf(VoiceUiState(status = "Starting…", messages = conversation.toList()))
     val state: State<VoiceUiState> get() = _state
 
+    /**
+     * Microphone level, 0..1, kept OUT of [VoiceUiState] on purpose.
+     *
+     * The mic reports RMS many times a second whenever it is open, which is
+     * nearly always — the wake word is always being listened for. While this was
+     * a field on `VoiceUiState`, every one of those callbacks built a new state
+     * object, and since the whole app composes under a single read of [state],
+     * every one of them recomposed the entire tree: home, settings, chat, a list
+     * mid-scroll, all of it. The app was never smooth and this is why.
+     *
+     * A separate state, read through a lambda at the two places that draw it, so
+     * a level change invalidates a draw and nothing else.
+     */
+    private val _amplitude = mutableFloatStateOf(0f)
+    val amplitude: State<Float> get() = _amplitude
+
+    /** Set the mic level without disturbing anything that composes. */
+    private fun setAmplitude(value: Float) {
+        _amplitude.floatValue = value
+        ScreenControlService.instance?.bubble?.setState(_state.value.orb, value)
+    }
+
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -225,9 +248,12 @@ class AssistantEngine(context: Context) {
                 )
             }
         }
-        voice.onAmplitude = { amp -> if (!turn.micGated) set { it.copy(amplitude = amp) } }
+        voice.onAmplitude = { amp -> if (!turn.micGated) setAmplitude(amp) }
         voice.onNoInput = { restartSoon() }
-        voice.onFatal = { msg -> set { it.copy(orb = OrbState.Error, status = msg, amplitude = 0f) } }
+        voice.onFatal = { msg ->
+            setAmplitude(0f)
+            set { it.copy(orb = OrbState.Error, status = msg) }
+        }
         voice.onFinal = { hypotheses ->
             val best = hypotheses.firstOrNull().orEmpty()
             if (best.isNotBlank()) onHeard(best, hypotheses)
@@ -400,7 +426,8 @@ class AssistantEngine(context: Context) {
         if (granted) {
             applyMicOwner()
         } else {
-            set { it.copy(orb = OrbState.Error, status = "Microphone permission needed", amplitude = 0f) }
+            setAmplitude(0f)
+            set { it.copy(orb = OrbState.Error, status = "Microphone permission needed") }
         }
     }
 
@@ -431,7 +458,7 @@ class AssistantEngine(context: Context) {
             disarmWatchdog()
         }
         applyMicOwner()
-        set { it.copy(amplitude = 0f) }
+        setAmplitude(0f)
     }
 
     /**
@@ -512,7 +539,6 @@ class AssistantEngine(context: Context) {
                             session.yieldedToMedia -> "Paused so your audio can play"
                             else -> "Paused"
                         },
-                        amplitude = 0f,
                     )
                 }
             }
@@ -829,7 +855,8 @@ class AssistantEngine(context: Context) {
         }
         // No need to clear the turn here: the only caller is [applyMicOwner],
         // which has already returned early if one is in flight.
-        set { it.copy(orb = idleOrb(), status = idleStatus(), amplitude = 0f) }
+        setAmplitude(0f)
+        set { it.copy(orb = idleOrb(), status = idleStatus()) }
         // Only count down to sleep while awake and outside a session; a session is
         // its own "keep listening" contract, and asleep there is nothing to time.
         main.removeCallbacks(sleepTimer)
@@ -1111,7 +1138,7 @@ class AssistantEngine(context: Context) {
 
         addTurn(ChatTurn(ChatTurn.USER, userText))
         set {
-            it.copy(orb = OrbState.Thinking, status = "Thinking…", transcript = userText, reply = "", amplitude = 0f)
+            it.copy(orb = OrbState.Thinking, status = "Thinking…", transcript = userText, reply = "")
         }
 
         if (!Brain.hasKey()) {
@@ -1802,7 +1829,7 @@ class AssistantEngine(context: Context) {
         // Every state change in the app funnels through here, which is the only
         // reason one line is enough to keep a window in another process's
         // foreground truthful. The bubble ignores repaints it does not need.
-        ScreenControlService.instance?.bubble?.setState(next.orb, next.amplitude)
+        ScreenControlService.instance?.bubble?.setState(next.orb, _amplitude.floatValue)
     }
 
     private companion object {
