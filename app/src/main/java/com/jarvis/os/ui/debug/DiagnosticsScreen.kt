@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.jarvis.os.debug.Check
 import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.debug.Diagnostics
+import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.ErrorRed
@@ -120,9 +121,9 @@ fun DiagnosticsScreen(onSubmitCommand: (String) -> Unit, modifier: Modifier = Mo
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = TextPrimary,
                 unfocusedTextColor = TextPrimary,
-                focusedBorderColor = Cyan,
-                unfocusedBorderColor = GlassBorder,
-                cursorColor = Cyan,
+                focusedBorderColor = JarvisTheme.accent,
+                unfocusedBorderColor = JarvisTheme.glassBorder,
+                cursorColor = JarvisTheme.accent,
             ),
         )
         Spacer(Modifier.height(8.dp))
@@ -162,8 +163,8 @@ fun DiagnosticsScreen(onSubmitCommand: (String) -> Unit, modifier: Modifier = Mo
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(SurfaceGlass)
-                    .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+                    .background(JarvisTheme.glass)
+                    .border(1.dp, JarvisTheme.glassBorder, RoundedCornerShape(12.dp))
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -187,7 +188,7 @@ private fun SectionTitle(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelLarge,
-        color = Cyan,
+        color = JarvisTheme.accent,
         modifier = Modifier.padding(bottom = 8.dp),
     )
 }
@@ -218,9 +219,9 @@ private fun ActionButton(label: String, enabled: Boolean = true, onClick: () -> 
         enabled = enabled,
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Cyan,
+            containerColor = JarvisTheme.accent,
             contentColor = Background,
-            disabledContainerColor = GlassBorder,
+            disabledContainerColor = JarvisTheme.glassBorder,
             disabledContentColor = TextSecondary,
         ),
     ) {

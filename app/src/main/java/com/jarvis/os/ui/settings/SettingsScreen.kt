@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.jarvis.os.ui.speech.SpeechScreen
+import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.JarvisPalette
@@ -92,14 +93,14 @@ fun SettingsScreen(
                 Text(
                     entry.label,
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (selected) Cyan else TextSecondary,
+                    color = if (selected) JarvisTheme.accent else TextSecondary,
                     modifier = Modifier
                         .padding(end = 8.dp)
                         .clip(RoundedCornerShape(20.dp))
-                        .background(if (selected) Cyan.copy(alpha = 0.12f) else SurfaceGlass)
+                        .background(if (selected) JarvisTheme.accent.copy(alpha = 0.12f) else JarvisTheme.glass)
                         .border(
                             1.dp,
-                            if (selected) Cyan else GlassBorder,
+                            if (selected) JarvisTheme.accent else JarvisTheme.glassBorder,
                             RoundedCornerShape(20.dp),
                         )
                         .clickable { section = entry }
@@ -133,8 +134,8 @@ private fun AssistantRow(onOpen: () -> Unit, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(SurfaceGlass)
-            .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
+            .background(JarvisTheme.glass)
+            .border(1.dp, JarvisTheme.glassBorder, RoundedCornerShape(14.dp))
             .clickable { onOpen() }
             .padding(16.dp),
     ) {
@@ -155,11 +156,11 @@ private fun AssistantRow(onOpen: () -> Unit, modifier: Modifier = Modifier) {
         Text(
             "Set up",
             style = MaterialTheme.typography.labelLarge,
-            color = Cyan,
+            color = JarvisTheme.accent,
             modifier = Modifier
                 .clip(RoundedCornerShape(20.dp))
-                .background(Cyan.copy(alpha = 0.12f))
-                .border(1.dp, Cyan, RoundedCornerShape(20.dp))
+                .background(JarvisTheme.accent.copy(alpha = 0.12f))
+                .border(1.dp, JarvisTheme.accent, RoundedCornerShape(20.dp))
                 .padding(horizontal = 18.dp, vertical = 8.dp),
         )
     }
@@ -184,8 +185,8 @@ private fun FeatureToggle(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(SurfaceGlass)
-            .border(1.dp, GlassBorder, RoundedCornerShape(14.dp))
+            .background(JarvisTheme.glass)
+            .border(1.dp, JarvisTheme.glassBorder, RoundedCornerShape(14.dp))
             .clickable { on = !on; onToggle(on) }
             .padding(16.dp),
     ) {
@@ -205,11 +206,11 @@ private fun FeatureToggle(
         Text(
             if (on) "On" else "Off",
             style = MaterialTheme.typography.labelLarge,
-            color = if (on) Cyan else TextSecondary,
+            color = if (on) JarvisTheme.accent else TextSecondary,
             modifier = Modifier
                 .clip(RoundedCornerShape(20.dp))
-                .background(if (on) Cyan.copy(alpha = 0.12f) else SurfaceGlass)
-                .border(1.dp, if (on) Cyan else GlassBorder, RoundedCornerShape(20.dp))
+                .background(if (on) JarvisTheme.accent.copy(alpha = 0.12f) else JarvisTheme.glass)
+                .border(1.dp, if (on) JarvisTheme.accent else JarvisTheme.glassBorder, RoundedCornerShape(20.dp))
                 .padding(horizontal = 18.dp, vertical = 8.dp),
         )
     }

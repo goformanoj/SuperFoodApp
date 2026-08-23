@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.GlassBorder
@@ -90,7 +91,7 @@ fun SpeechScreen(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(SurfaceGlass)
+                    .background(JarvisTheme.glass)
                     .border(1.dp, WarningOrange.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
                     .padding(16.dp),
             ) {
@@ -121,7 +122,7 @@ fun SpeechScreen(
             Text(
                 "Available voices",
                 style = MaterialTheme.typography.labelLarge,
-                color = Cyan,
+                color = JarvisTheme.accent,
                 modifier = Modifier.weight(1f),
             )
             Action("Test") { onPreview() }
@@ -167,10 +168,10 @@ private fun VoiceRow(option: Speaker.Option, selected: Boolean, onClick: () -> U
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) Cyan.copy(alpha = 0.12f) else SurfaceGlass)
+            .background(if (selected) JarvisTheme.accent.copy(alpha = 0.12f) else JarvisTheme.glass)
             .border(
                 1.dp,
-                if (selected) Cyan else GlassBorder,
+                if (selected) JarvisTheme.accent else JarvisTheme.glassBorder,
                 RoundedCornerShape(12.dp),
             )
             .clickable(onClick = onClick)
@@ -181,7 +182,7 @@ private fun VoiceRow(option: Speaker.Option, selected: Boolean, onClick: () -> U
             Text(
                 option.label,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (selected) Cyan else TextPrimary,
+                color = if (selected) JarvisTheme.accent else TextPrimary,
             )
             if (option.needsNetwork) {
                 Text(
@@ -196,7 +197,7 @@ private fun VoiceRow(option: Speaker.Option, selected: Boolean, onClick: () -> U
                 Modifier
                     .size(10.dp)
                     .clip(CircleShape)
-                    .background(Cyan),
+                    .background(JarvisTheme.accent),
             )
         }
     }
@@ -207,7 +208,7 @@ private fun Action(label: String, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         shape = RoundedCornerShape(10.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = Background),
+        colors = ButtonDefaults.buttonColors(containerColor = JarvisTheme.accent, contentColor = Background),
     ) {
         Text(label, style = MaterialTheme.typography.labelLarge)
     }

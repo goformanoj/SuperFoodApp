@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.jarvis.os.calendar.CalendarReader
+import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.SurfaceGlass
@@ -70,7 +71,7 @@ fun CalendarScreen(modifier: Modifier = Modifier) {
                     if (day != lastDay) {
                         lastDay = day
                         Spacer(Modifier.height(14.dp))
-                        Text(day, style = MaterialTheme.typography.labelLarge, color = Cyan)
+                        Text(day, style = MaterialTheme.typography.labelLarge, color = JarvisTheme.accent)
                         Spacer(Modifier.height(8.dp))
                     }
                     EventCard(event)
@@ -93,8 +94,8 @@ private fun EventCard(event: CalendarReader.Event) {
             .fillMaxWidth()
             .padding(vertical = 4.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceGlass)
-            .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+            .background(JarvisTheme.glass)
+            .border(1.dp, JarvisTheme.glassBorder, RoundedCornerShape(12.dp))
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -102,7 +103,7 @@ private fun EventCard(event: CalendarReader.Event) {
             Modifier
                 .size(8.dp)
                 .clip(CircleShape)
-                .background(Cyan),
+                .background(JarvisTheme.accent),
         )
         Spacer(Modifier.size(14.dp))
         Text(
@@ -114,6 +115,6 @@ private fun EventCard(event: CalendarReader.Event) {
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.size(12.dp))
-        Text(event.timeLabel(), style = MaterialTheme.typography.labelLarge, color = Cyan)
+        Text(event.timeLabel(), style = MaterialTheme.typography.labelLarge, color = JarvisTheme.accent)
     }
 }

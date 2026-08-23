@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.jarvis.os.data.ChatTurn
+import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.TextPrimary
@@ -75,7 +76,7 @@ fun ChatScreen(messages: List<ChatTurn>, onClear: () -> Unit) {
                 )
             }
         }
-        HorizontalDivider(color = GlassBorder)
+        HorizontalDivider(color = JarvisTheme.glassBorder)
 
         if (messages.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -108,13 +109,13 @@ private fun ChatBubble(turn: ChatTurn) {
         Text(
             text = if (isUser) "YOU" else "JARVIS",
             style = MaterialTheme.typography.labelSmall,
-            color = if (isUser) TextSecondary else Cyan,
+            color = if (isUser) TextSecondary else JarvisTheme.accent,
         )
         Spacer(Modifier.height(4.dp))
         Text(
             text = turn.content,
             style = MaterialTheme.typography.bodyLarge,
-            color = if (isUser) TextPrimary else Cyan,
+            color = if (isUser) TextPrimary else JarvisTheme.accent,
         )
     }
 }

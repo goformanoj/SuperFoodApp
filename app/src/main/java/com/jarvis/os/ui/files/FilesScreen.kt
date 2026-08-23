@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.jarvis.os.files.Artifact
 import com.jarvis.os.files.ArtifactStore
+import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.SurfaceGlass
@@ -89,8 +90,8 @@ fun FilesScreen(modifier: Modifier = Modifier) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(SurfaceGlass)
-                            .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+                            .background(JarvisTheme.glass)
+                            .border(1.dp, JarvisTheme.glassBorder, RoundedCornerShape(12.dp))
                             .clickable {
                                 runCatching {
                                     context.startActivity(
@@ -107,7 +108,7 @@ fun FilesScreen(modifier: Modifier = Modifier) {
                         Text(
                             artifact.kind.id.uppercase(),
                             style = MaterialTheme.typography.labelLarge,
-                            color = Cyan,
+                            color = JarvisTheme.accent,
                             modifier = Modifier.padding(end = 14.dp),
                         )
                         Column(Modifier.weight(1f)) {
@@ -127,7 +128,7 @@ fun FilesScreen(modifier: Modifier = Modifier) {
                         Text(
                             "Share",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Cyan,
+                            color = JarvisTheme.accent,
                             modifier = Modifier
                                 .clickable {
                                     runCatching {

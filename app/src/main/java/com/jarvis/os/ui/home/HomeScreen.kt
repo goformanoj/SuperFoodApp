@@ -200,6 +200,19 @@ fun JarvisApp(
         },
     ) {
         Box(modifier = modifier.fillMaxSize().background(palette.background)) {
+            // Behind EVERY destination, not just Home.
+            //
+            // It used to live inside HomeContent, which meant the app had one
+            // designed screen and six generic dark lists — you opened Settings
+            // and the world you were just looking at vanished. That gap is most
+            // of what "boring and basic" was describing: not that any single
+            // screen was bad, but that six of them were somewhere else entirely.
+            //
+            // One instance here also costs less than one per screen: the starfield
+            // stays put while destinations change over it, so switching tabs no
+            // longer re-randomises the sky.
+            ThemeBackdrop()
+
             when (current) {
                 Dest.Home -> HomeContent(state, onWake, onInterrupt)
                 Dest.Chat -> ChatScreen(state.messages, onClearChat)
@@ -327,7 +340,7 @@ private fun DashboardBar(onOpen: () -> Unit, modifier: Modifier = Modifier) {
             .systemBarsPadding()
             .padding(horizontal = 20.dp, vertical = 14.dp)
             .clip(shape)
-            .background(SurfaceGlass)
+            .background(JarvisTheme.glass)
             .border(BorderStroke(1.dp, accent.copy(alpha = 0.45f)), shape)
             .clickable { onOpen() }
             .padding(top = 8.dp, bottom = 12.dp),
@@ -377,7 +390,7 @@ private fun DashboardPanel(
             .fillMaxWidth()
             .fillMaxHeight(0.78f)
             .clip(shape)
-            .background(Surface)
+            .background(JarvisTheme.surface)
             .border(BorderStroke(1.dp, accent.copy(alpha = 0.35f)), shape)
             .systemBarsPadding()
             .padding(horizontal = 18.dp, vertical = 14.dp),
@@ -413,7 +426,7 @@ private fun DashboardPanel(
         }
 
         Spacer(Modifier.height(10.dp))
-        HorizontalDivider(color = GlassBorder)
+        HorizontalDivider(color = JarvisTheme.glassBorder)
         Spacer(Modifier.height(6.dp))
 
         Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -476,10 +489,8 @@ private fun HomeContent(
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val viewport = maxHeight
-        // The backdrop sits behind the scrolling content, so the starfield stays
-        // put while the page moves over it — the orb lives in a space rather than
-        // floating on flat black.
-        ThemeBackdrop()
+        // The backdrop is drawn once by the host, behind every destination — see
+        // JarvisApp. Drawing it again here would stack two starfields.
         Column(
             Modifier
                 .fillMaxSize()
@@ -621,7 +632,7 @@ private fun PlaceholderScreen(dest: Dest) {
 
 @Composable
 private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
-    ModalDrawerSheet(drawerContainerColor = Surface) {
+    ModalDrawerSheet(drawerContainerColor = JarvisTheme.surface) {
         Spacer(Modifier.height(28.dp))
         Text(
             text = "J.A.R.V.I.S.",
@@ -635,7 +646,7 @@ private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
             color = TextSecondary,
             modifier = Modifier.padding(start = 24.dp, bottom = 16.dp),
         )
-        HorizontalDivider(color = GlassBorder)
+        HorizontalDivider(color = JarvisTheme.glassBorder)
         Spacer(Modifier.height(8.dp))
 
         Dest.entries.forEach { dest ->
@@ -645,7 +656,7 @@ private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
                 onClick = { onSelect(dest) },
                 icon = { Icon(dest.icon, contentDescription = dest.label) },
                 colors = NavigationDrawerItemDefaults.colors(
-                    selectedContainerColor = SurfaceGlass,
+                    selectedContainerColor = JarvisTheme.glass,
                     unselectedContainerColor = Color.Transparent,
                     selectedIconColor = LocalAccent.current,
                     unselectedIconColor = LocalAccent.current,
@@ -677,8 +688,8 @@ private fun TasksCard() {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(SurfaceGlass)
-            .border(BorderStroke(1.dp, GlassBorder), RoundedCornerShape(20.dp))
+            .background(JarvisTheme.glass)
+            .border(BorderStroke(1.dp, JarvisTheme.glassBorder), RoundedCornerShape(20.dp))
             .padding(18.dp),
     ) {
         when {

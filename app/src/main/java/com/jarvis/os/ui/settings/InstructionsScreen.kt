@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.os.data.UserPreferences
+import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.ErrorRed
@@ -117,11 +118,11 @@ fun InstructionsScreen(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = TextPrimary,
                 unfocusedTextColor = TextPrimary,
-                focusedContainerColor = SurfaceGlass,
-                unfocusedContainerColor = SurfaceGlass,
-                focusedBorderColor = Cyan,
-                unfocusedBorderColor = GlassBorder,
-                cursorColor = Cyan,
+                focusedContainerColor = JarvisTheme.glass,
+                unfocusedContainerColor = JarvisTheme.glass,
+                focusedBorderColor = JarvisTheme.accent,
+                unfocusedBorderColor = JarvisTheme.glassBorder,
+                cursorColor = JarvisTheme.accent,
             ),
         )
         Spacer(Modifier.height(14.dp))
@@ -135,7 +136,7 @@ fun InstructionsScreen(
                 .height(52.dp),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (saved) SuccessGreen else Cyan,
+                containerColor = if (saved) SuccessGreen else JarvisTheme.accent,
                 contentColor = Background,
             ),
         ) {
@@ -207,7 +208,7 @@ private fun SectionLabel(text: String, trailing: String? = null) {
         Text(
             text.uppercase(),
             style = MaterialTheme.typography.labelMedium,
-            color = Cyan,
+            color = JarvisTheme.accent,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 1.5.sp,
             modifier = Modifier.weight(1f),
@@ -225,8 +226,8 @@ private fun LearnedFactRow(fact: String, onForget: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceGlass)
-            .border(1.dp, GlassBorder, RoundedCornerShape(12.dp))
+            .background(JarvisTheme.glass)
+            .border(1.dp, JarvisTheme.glassBorder, RoundedCornerShape(12.dp))
             .padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -234,7 +235,7 @@ private fun LearnedFactRow(fact: String, onForget: () -> Unit) {
             Modifier
                 .size(6.dp)
                 .clip(CircleShape)
-                .background(Cyan),
+                .background(JarvisTheme.accent),
         )
         Text(
             fact,
@@ -264,8 +265,8 @@ private fun ExampleRow(example: String, onAdd: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceGlass)
-            .border(1.dp, Cyan.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+            .background(JarvisTheme.glass)
+            .border(1.dp, JarvisTheme.accent.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
             .clickable { onAdd() }
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -273,7 +274,7 @@ private fun ExampleRow(example: String, onAdd: () -> Unit) {
         Text(
             "+",
             style = MaterialTheme.typography.titleMedium,
-            color = Cyan,
+            color = JarvisTheme.accent,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(end = 12.dp),
         )

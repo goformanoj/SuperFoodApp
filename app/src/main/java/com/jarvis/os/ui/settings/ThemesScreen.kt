@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import com.jarvis.os.ui.components.OrbPreview
+import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.JarvisPalette
 import com.jarvis.os.ui.theme.TextPrimary
@@ -74,7 +75,7 @@ fun ThemesScreen(
         items(JarvisPalette.entries, key = { it.id }) { palette ->
             val selected = palette == current
             val borderColor by animateColorAsState(
-                if (selected) palette.accent else GlassBorder,
+                if (selected) palette.accent else JarvisTheme.glassBorder,
                 tween(300),
                 label = "border",
             )
