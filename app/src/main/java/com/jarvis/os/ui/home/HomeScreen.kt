@@ -325,20 +325,22 @@ fun JarvisApp(
                         onDismiss = { dashboardOpen = false },
                     )
                 }
+            }
 
-                // Last in the Box, so it is drawn over everything — including
-                // the dashboard bar, which would otherwise sit on top of a dive.
-                AnimatedVisibility(
-                    visible = universeOpen,
-                    enter = fadeIn(tween(420)),
-                    exit = fadeOut(tween(260)),
-                ) {
-                    OrbUniverse(
-                        onClose = { universeOpen = false },
-                        palette = palette,
-                        amplitude = state.amplitude,
-                    )
-                }
+            // Last in the host Box, so it covers every destination and the
+            // navigation with it. The first draft of this sat inside the
+            // `bottomDashboard` branch, which would have given the universe to
+            // the Orbit theme alone — the orb is on the home screen of all four.
+            AnimatedVisibility(
+                visible = universeOpen,
+                enter = fadeIn(tween(420)),
+                exit = fadeOut(tween(260)),
+            ) {
+                OrbUniverse(
+                    onClose = { universeOpen = false },
+                    palette = palette,
+                    amplitude = state.amplitude,
+                )
             }
         }
     }

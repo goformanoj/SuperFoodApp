@@ -8,6 +8,11 @@ an endless zoom (`OrbUniverse` + the pure `UniverseMath` behind it). All of it i
 Compose, so **CI is the first real compile** — check for the `jarvis-debug-apk`
 artifact before believing any of it, per Rule 2.
 
+One placement note worth keeping: the universe overlay belongs in the **host
+Box**, after the `bottomDashboard` if/else — not inside it. Put inside, the Orbit
+theme gets the feature and the other three do not, and nothing about the code
+looks wrong.
+
 Backend Phase 1 is still parked on the user: Connect-to-Git in Cloudflare with
 root directory `backend`, `GROQ_API_KEY` and `PROXY_SECRET` as Worker secrets,
 then `POST /admin/migrate`.
