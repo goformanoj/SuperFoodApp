@@ -5,280 +5,50 @@
 
 ## Current position + immediate next
 
-**`main` @ `8b87e14`** — branch `claude/phone-glitch-investigation-g6dnhk`, four device-trace bugs
-fixed, **432 tests / 0 failures off-device**. Awaiting the `jarvis-debug-apk` artifact, then merge.
+**`main` @ `11346ee`** — branch `claude/phone-glitch-investigation-g6dnhk` @ `cb758d2`, several
+commits ahead and awaiting artifacts.
 
-Shipped this session: the retired Groq model removed; the silent agent step instrumented and
-capped; Open-only plans routed through the already-in-app guard; the work session's media gap
-handed to the wake word; and **`scripts/jvmcheck/` committed** — the off-device gate that has been
-a recipe in this file for two sessions.
+Unmerged on the branch: backend **Phase 0 + Phase 1 code** (`backend/`, 48 tests, gated by a
+`backend` CI job), the confirmation fix, the mid-task interrupt fix, `SpokenText`, the orb rework,
+and the **theme sweep** below.
 
-**Owed by the user, on the phone:** the corrected barge-in test (below); clear the three poisoned
-playbook routes (`"did you are"`, `"search box"`, `"the search box is right ya just type"`) and the
-conflicting `pic`/`peak` memory fact; exempt JARVIS from Realme battery optimisation.
-**Owed for Part E:** a Cloudflare account, a Firebase project, and the free-tier cap (~60k/day).
+**Next session, in order:** (1) confirm the artifacts and fast-forward `main`; (2) the user is
+mid-way through Cloudflare setup — Connect-to-Git, then the two Worker secrets, then
+`POST /admin/migrate`, then a real `/chat` (Phase 1 done); (3) Phase 2, the eval harness, which is
+the testing payoff; (4) get a device look at the theme sweep before doing more UI.
 
-**Next session, in order:** (1) merge once the artifact lands; (2) read the next trace for
-`errand: asking for the next move` / `next move answered in Nms` — that pair now names what the
-sixteen-second hole was; (3) the parked `AskGuard` fault; (4) deliberate scrolling, asked for and
-still not built; (5) grow the E2E tier to the three 2026-08-14 root causes.
+### 🎨 THE THEMES REACHED ONE SCREEN IN SEVEN — count before believing it is taste
+"the themes are just not it". It was not taste, it was arithmetic: **`HomeScreen` read
+`LocalPalette`; the other six screens imported the fixed `Cyan` constant directly** — 13 references
+in `SettingsScreen`, 13 in `InstructionsScreen`. So Forge (copper) or Nebula (violet) recoloured the
+orb and the backdrop, and everything else stayed cyan.
 
-### 🗣️ "Cloud means Claude" — a stated rule must be honoured in CODE, not asked of the model
-The user typed `Cloud means Claude` into custom instructions. Speech hears "Claude" as "Cloud"
-every time, the reply carried `<<OPEN|Cloud>>`, and **a Realme phone has a real app labelled
-"Cloud"** — so `AppLauncher.rank` scored it an **exact match, 1000/1000**, and opened it. Nothing
-in the executor malfunctioned; it was handed the wrong name and was fast about it.
+Fixed with `ui/theme/JarvisTheme` — an object of `@Composable` getters, the
+`MaterialTheme.colorScheme` pattern — and a sweep of all nine UI files onto it. `Color.kt`'s
+constants remain as the raw values `JarvisPalette.Arc` is built from; **nothing should import them
+by name again.**
 
-**The code proves the marker said "Cloud", not "Claude":** `tokensMatch` only relates two words
-when one is a prefix of the other, and neither prefixes the other. A correct marker could not have
-reached that app. The fault is entirely upstream of the launcher.
+**GOTCHA: the glass fill was the other half.** It was a flat 8% white, so every card looked
+identical in all seven themes — the accent changed and the surface it sat on did not. It now takes
+the accent at low alpha.
 
-Fixed with pure `control/AppAliases` — parses `X means Y`, `when I say X I mean Y`, `by X I mean Y`
-and `X = Y` from the instructions box **and** from `learnedFacts` (`<<REMEMBER>>` stores the same
-sentence shape). Applied in `AppLauncher.resolvePackage` **before** anything is scored.
+**GOTCHA for any future mechanical sweep of this kind:** never rewrite `import`/`package` lines (it
+mangles the paths), exclude the Material `Surface(` composable from the `Surface` *colour* with a
+lookahead, and replace `SurfaceGlass` **before** `Surface` or the longer name gets eaten by the
+shorter. All three were verified after the fact by grep, not assumed.
 
-**GOTCHA: the alias MUST be applied before ranking, not after.** With the raw word, "Cloud" is a
-perfect match for a real app — no cleverness further down the ranking could have rescued it. The
-name has to be right before the search starts.
-**GOTCHA: do NOT pre-seed a global `cloud → Claude`.** "Cloud" is a genuine launchable app here and
-may be the one another user means. An alias exists only because a particular user said so.
-**GOTCHA: `X is Y` is deliberately unsupported** despite being the most natural phrasing — it is
-also the commonest sentence shape in an instructions box that has nothing to do with apps, and
-"my name is Manoj" becoming an app redirect is worse than the bug being fixed. Four tests assert
-that real instruction text ("Call me sir.", "I'm in Bangalore…") mines no rules at all.
+### 🌌 `ThemeBackdrop` now sits behind EVERY destination
+It was drawn inside `HomeContent`, so the app had one designed screen and six flat dark lists —
+open Settings and the world you were just looking at vanished. That gap, rather than any individual
+screen, is most of what "boring and basic" was describing. Moved into the host `Box` in `JarvisApp`.
+Also cheaper: one instance means the starfield stays put while destinations change over it, instead
+of re-randomising per screen.
 
-**The general lesson, and it is Rule 6 one rung down:** the prompt has asked for this substitution
-for months and it works *most* of the time. That IS the failure — a rule that holds most of the
-time is one the user cannot rely on, and nothing tells them which kind of turn they got. The prompt
-still asks (it catches phrasings the parser does not); it is no longer the only thing between a
-typed rule and the wrong app. A trace line now reports when a rule fires.
+**Mobbin was requested for design references and is unavailable** — `Mobbin MCP requires a paid
+plan` on every query. Do not plan around it without checking first.
 
-### ☠️ BOTH llama MODELS ARE RETIRED — the fallback chain had run out
-Groq retired `llama-3.1-8b-instant` too, hours after `llama-3.3-70b-versatile`. That left SMART and
-FAST holding **one live model each**, so there was no fallback at all — and a trace shows a single
-`Empty reply from model` killing the turn outright with `Brain error`, twice.
-
-**Both tiers now list the same two proven-alive models (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`)
-in opposite order**, so each can reach the other's. `GroqModelListTest` pins the **cross-cover**, not
-the count — "two entries" would also be satisfied by two dead ones.
-
-**GOTCHA: do NOT add model ids from memory.** Guessing is what put two dead models in the list.
-These two are the only ones this account's own traffic proves alive. To add more, check Groq's live
-model list first.
-**GOTCHA: an empty reply is not a broken model.** It is a model that spent its budget without
-producing text — transient. It now retries the SAME model once before falling through.
-
-### 🧾 "That's done." is a CLAIM, and a claim can be checked
-Asked to open Claude and send it a prompt, the errand tapped one control and announced *"That's
-done."* having typed nothing. The user: "you didn't ask him anything yet."
-
-New pure `AgentLoop.donePrematurely(goal, taken)` refuses Done when the GOAL names composing
-something (ask/write/send/search/…) and no `Type` step has ever run. Narrow on purpose: "open YouTube
-and play the first video" needs no typing and is untouched.
-**GOTCHA: "find" and "tell" are deliberately NOT composing words** — "find my messages" and "tell me
-the time" finish with taps alone, and nudging them would cost a round trip on an already-complete
-task. Being wrong costs one round trip (`NOTHING_TYPED` is in `NUDGEABLE`); not checking costs the
-user being told a job is finished when nothing happened.
-**GOTCHA caught by an existing test, not by reasoning:** every `NUDGEABLE` reason must also be in
-`INTERNAL_REASONS`, or a second failure reads the raw diagnostic out loud. Add a reason to one set
-and the suite tells you about the other.
-
-### 🛑 "do it" SENT A MESSAGE HE REWROTE — a confirmation must carry its step
-The worst bug of the session. From a trace: the user asked for a thoughtful reply, JARVIS wrote one,
-could not find the send control, and asked *"I'm about to tap Send, which I can't undo. Shall I?"*.
-The user said **"do it"** → the answer went back to the **model**, which invented a *different*
-message, typed it, and sent it.
-
-`AgentMove.Ask` carried only the **question**. The step being asked about was discarded, so the
-confirmation had nothing to confirm and the model re-planned from scratch. `Ask` now carries
-`pending: ScreenStep?`, the engine holds it in `pendingConfirm`, and a plain yes runs **that step
-and nothing else** — no model round trip, so there is no opportunity to invent new content.
-
-New pure `assistant/Confirmation` matches **whole utterances only**.
-**GOTCHA: "yes but change the wording first" contains "yes" and is NOT permission.** Substring
-matching here sends the wrong message, which is the exact bug being fixed. Anything not plainly yes
-or no is `NEITHER` and falls through to the model as an ordinary request — guessing is worse in both
-directions: yes fires an irreversible action nobody authorised, no silently drops a real request.
-
-**Rule 6, one level up from where it started:** guarding the *action* was not enough while the *ask*
-could still be answered by a different action.
-
-### 🎙️ You could not interrupt a RUNNING TASK — an errand is mostly silence
-Reported: "it doesn't let me interrupt Jarvis when it's in the background and a task is ongoing."
-An errand spends most of its time NOT talking — a step executing, a model call in flight for up to
-25s — and in those stretches `turn.micGated` is true. `BARGE_IN` is the one listener that exists to
-be open while the turn is gated, and it was conditioned on `speaking` alone.
-
-`WorkSession.busyWithTask` (set via `onBusyWithTask`, deliberately separate from `speaking` — a task
-is mostly silence and the silence was the unreachable half) now also claims `BARGE_IN`.
-
-`interrupt()` had two faults of its own: it refused outside `SPEAKING`, and it stopped the
-**sentence** without stopping the **task**. It now bumps `errandToken` (every continuation
-re-checks it, so the in-flight model answer is discarded rather than acted on), calls the new
-`ScreenControlService.cancelSequence()`, and idles the turn **unconditionally**.
-**GOTCHA: that last part is load-bearing** — a turn left anywhere but `IDLE` keeps the mic gated,
-so stopping a task without idling leaves the user having successfully interrupted into silence.
-
-**GOTCHA found by the exhaustive test, not by reasoning:** with a task running AND media playing,
-`BARGE_IN` takes the mic but `yieldedToMedia` still claimed it was yielded — so the wake word would
-have opened a **second listener alongside it**. That is the exact two-owner state that forced a
-revert once before. `yieldedToMedia` now excludes `busyWithTask`. Walking every combination of
-visible × session × media × speaking is what caught it; the four cases I would have written by hand
-would not have.
-
-### 🗣️ TTS reads markdown out loud — clean on the way to the SPEAKER, never the display
-The model formats for a screen (`**bold**`, `* bullets`, `# headings`) and Android's TTS says every
-character. The user heard "asterisk asterisk U I testing". New pure `voice/SpokenText.plain()`,
-applied in `speakTurn` — **the single path to the speaker**, so no route added later can miss it.
-
-**GOTCHA: this is a display/speech SPLIT, not a cleanup.** Nothing is stripped from what is shown;
-on the chat screen the bold and bullets are what make a long answer readable. Strip it at the
-storage layer and you fix the ears by breaking the eyes.
-**GOTCHA: be conservative.** `snake_case`, `2 * 3` and list numbers all survive on purpose —
-removing a character that was really part of a sentence changes the meaning, which is worse than
-reading one stray symbol. 13 tests, built from the actual trace reply.
-
-### ✂️ `max_tokens` was 300 — replies were being guillotined mid-word
-A reply about testing ended `* **UI`. 300 tokens ≈ 220 words, chosen when every reply was a
-sentence or two. The system prompt already asks for brevity, so the cap was doing that job twice and
-only the crude copy could cut a sentence in half. Now **900**.
-
-### 🗑️ "JARVIS is controlling the screen" is REMOVED (asked for twice)
-`setControlOverlay`, `addScrim`/`removeScrim`, `ScrimView`, the safety timer and all four engine
-call sites are gone. **Worth remembering why it existed:** it was the only *always-visible* sign
-JARVIS was driving the screen, and the floating orb only covers that while a session runs. If Play
-review ever wants a visible indicator, it comes back quieter — not as a full-screen tint.
-
-### 🔵 The orb: drag-to-dismiss, and a thumbnail of the in-app orb
-**Dismissal.** A close button ON the orb is the obvious answer and the wrong one — it is 76dp, a
-second target inside it would be a fingernail wide, and tap already means talk. The ✕ appears at
-the bottom the moment a drag starts (not on touch-down — a tap must not flash a target nobody asked
-for), so it is discovered by doing the thing you were already doing, and unlike a long-press it
-cannot fire by accident. Dropping on it **turns the setting off**; an orb that returns next session
-after being deliberately thrown away reads as the dismissal not working.
-
-**Design — waves and nothing else.** Orbits, star dust and the burning core were all tried and all
-removed. The disc plus the swell inside it is what was asked for two rounds earlier; each "richer"
-version was me adding things on top of a brief that was already complete.
-
-**The clock is FROZEN except while Speaking or Listening.** Nobody talking → a resting surface: a
-shallow *static* curve, not a dead-straight line, because still water has a shape (`RESTING_PHASE`).
-Thinking is deliberately not animated — the brief was "still when there is no speaking", and
-thinking is not speaking. Consequence worth keeping: an orb over somebody else's foreground app
-draws **nothing** unless a conversation is actually happening.
-
-**Colour says WHO is talking** — the one thing a 76dp circle can carry at a glance:
-`Speaking` → accent (JARVIS), `Listening` → highlight (the user, swell driven by real mic level),
-`Thinking` → secondary, still.
-**GOTCHA: thinking needs its own colour precisely BECAUSE it is now frozen.** A still orb that also
-looks idle is indistinguishable from one that has given up — and this app has already shipped a
-sixteen-second silence that looked exactly like that.
-
-### 🔁 THE SAME BUG TWICE: state derived from the session must be re-derived in `applyMicOwner`
-The orb stayed on screen after "thank you Jarvis". The rule was right; the **placement of the
-decision** was wrong — it was evaluated only in `resume()`/`pause()`, and the stop phrase ends a
-session **from the background**, so neither fired. The orb outlived the one phrase the user has for
-dismissing him.
-
-**This is the wake-word gap again, made three commits after writing the note about it.** That note
-said: "the state is entered and left long after `pause()` ran, so deciding it once on the way out of
-the foreground would have left the gap exactly as it was." It was true of the hotword and it was
-true of the orb, and the second time it was not spotted by reasoning — the user reported it.
-
-**RULE: anything derived from session state is decided in `applyMicOwner`, never in a lifecycle
-callback.** `applyBubble()` now sits next to `applyHotword()` there. Both rules are pure and live on
-`WorkSession` (`wantsBubble`, `wantsHotword`) so they are tested rather than reasoned about.
-
-`wantsBubble = sessionActive && !jarvisVisible`. **Deliberately still true while audio plays and the
-mic has stood down** — the session is live, only the microphone yielded, and hiding the orb there
-would remove the way back in exactly when the wake word is covering the gap.
-
-### 🎨 The floating orb draws its state INSIDE the disc — no rings, no arcs
-User's words: "i don't want rings outside the circle but waves inside it depicting that it's
-speaking." The first version put every state on the OUTSIDE — a listening ring, a thinking arc, a
-speaking pulse — which is what made it read as a widget with decorations bolted on rather than as
-one object.
-
-Now: three stacked sine bands filling the lower part of the disc, clipped to the circle, like liquid
-with a swell in it. **Layered rather than one stroke on purpose** — a single line at 76dp reads as a
-scratch, while three translucent fills overlapping give depth; each has its own wavelength, speed and
-direction so they never align into one thick band. **The swell height IS the state**: tall and quick
-speaking, real mic level listening, slow even roll thinking, nearly flat idle (drawn once, no
-animation, so an idle orb over someone else's app costs nothing).
-
-**GOTCHA: the body is a vertical ramp, not a centred radial.** The light in the reference comes from
-BELOW; a centred radial makes it look like a button with a highlight on it. The remaining halo has
-no edge anywhere, so it reads as light coming off the orb rather than as another circle.
-
-### 🔵 The floating orb needs NO permission — accessibility overlays can be touchable
-`control/OrbBubble` is a draggable bubble that rides over other apps. It does **not** use
-`SYSTEM_ALERT_WINDOW`. **`TYPE_ACCESSIBILITY_OVERLAY` accepts touches** — the scrim and the tap
-outline only look untouchable because they deliberately set `FLAG_NOT_TOUCHABLE` so JARVIS's own
-gestures pass through them. Leave that flag off and the same window type takes drags and taps. No
-permission, no settings trip, nothing extra to disclose to Play. Cost: it exists only while the
-accessibility service runs — the same condition screen control already needs.
-
-**GOTCHA: it is a `View` on a `Canvas`, NOT Compose, and must stay that way.** A Compose overlay
-needs a lifecycle owner, a saved-state registry and a recomposer attached to a raw window — but the
-real reason is that **anything under `control/` that imports Compose breaks `scripts/jvmcheck`**,
-which compiles the non-UI sources precisely because none of them reach into `ui/`. That is why
-`control/BubbleColors` holds a plain-ARGB copy of `JarvisPalette` instead of reading it.
-**The copy is guarded:** `JarvisPaletteBubbleTest` lives under `ui/` (which `jvmcheck` skips, so it
-runs in CI where Compose exists) and asserts every value still matches. A copy nobody checks drifts.
-
-**GOTCHA: a bubble tap cannot open the microphone when there is no session.** Android 12+ refuses a
-backgrounded app starting a mic foreground service, so `onBubbleTap` claims the mic in place only
-when `session.isActive`; otherwise it brings JARVIS to the front. That is not a fallback, it is the
-only legal route — the wake word does the same for the same reason.
-
-**The control tint now stands down while the orb is up** (`addScrim` returns early on
-`bubble.isShowing`). Same message, quieter surface. With the orb off, the tint is still the only
-indicator and still appears.
-
-Also new: `WorkSession.jarvisOnScreen`, so the bubble and the microphone read the same field about
-where the user is looking; `UserPreferences.floatingOrb` (default on) + `bubbleX`/`bubbleY`; and a
-`FeatureToggle` in Settings (was `WakeToggle`, hard-coded to one feature).
-
-### 🎨 The backdrop was dull because it was ONE flat wash on a clock nobody could see
-The user's words: "it's way too dull". It was a single radial wash at 0.42 alpha over a flat
-colour, drifting on a **150-second** cycle — deliberately imperceptible, and therefore invisible.
-
-Four layers now, in `ThemeBackdrop`: a **vertical ramp** so the screen has a top and a bottom;
-four **additive aurora blooms** (`BlendMode.Plus`) crossing on lissajous paths on a **38-second**
-clock, so overlaps genuinely brighten; a **horizon glow**; and a **vignette last**, which is what
-makes the brightness affordable — the corners fall away and the eye still goes to the orb. The
-starfield roughly doubles (150/220), brightens, and twinkles on **per-star phases** so the sky
-breathes out of step rather than pulsing as one.
-
-**GOTCHA that survives all of it: star PLACEMENT stays `OrbMath.unitRandom`, never `Math.random`.**
-A Canvas redraws every frame, so anything deciding WHERE a star sits is asked sixty times a second
-and a real random re-scatters the sky into static. Brightness is the opposite — it is meant to
-change, so it takes the clock. Same rule as the planet's city lights.
-
-**⚠️ The Compose layer is UNVERIFIABLE off-device** (it needs `dl.google.com`). `jvmcheck` covers
-`OrbBubble`, `BubbleColors` and the engine wiring — everything in `ui/` rode on CI alone.
-
-### 👁️ He COULD see the screen — the prompt told him not to admit it
-A trace has JARVIS answering "can you read my screen" five times with *"I can't view your
-screen"*, *"I don't have visual access to your screen"* — with the accessibility service
-connected. **`buildContext` puts `describeScreen()` into the context on EVERY turn**; it is the
-same listing the executor taps from. He had it the whole time.
-
-One clause did it: *"That listing is for YOU — never read it out or describe it back to the user."*
-The intent was right and is kept — reciting a screen the user is looking at is noise — but the
-model generalised **"do not describe it"** into **"cannot see it"**. Refusing to narrate is a
-choice; claiming blindness while holding the listing is the app saying something untrue about
-itself, which every other line of the prompt forbids. Now: never narrate unasked, answer when
-ASKED, never claim it cannot see what it has.
-
-**GOTCHA: a prohibition on TALKING about a capability reads to the model as not HAVING it.**
-Watch for this shape anywhere the prompt suppresses output about something the app can do.
-
-**GOTCHA: the context is assembled silently, so a trace could not settle this.** The symptom was
-equally consistent with an empty screen read (JARVIS's own window in front, an app exposing no
-text). `buildContext` now logs `screen: N chars — App: …` or `screen: nothing readable from here`
-— the app line only, never the contents, which are the user's private screen. **Read that line
-first** before believing any future "he can't see it" report.
+**⚠️ Compose is unverifiable off-device** (needs `dl.google.com`). `jvmcheck` passing proves only
+that no non-UI source broke; the sweep itself rode on CI.
 
 ### ✅ BACKEND PHASE 0 IS DONE — `cd backend && npm test` → 25 tests, 0 failures
 Quota + token accounting against a fake provider. **No dependencies, no account, no deploy.** A

@@ -3038,6 +3038,61 @@ The prompt still asks for the substitution; it catches phrasings the parser does
 not. It is simply no longer the only thing standing between a rule the user
 typed out and the wrong app opening.
 
+### 2026-08-19 — "The themes are just not it" was arithmetic, not taste
+
+The ask was to use the Mobbin connector and improve the UI, because it is "too
+boring and basic and the themes are just not it". Mobbin turned out to need a
+paid plan — every query returns `Mobbin MCP requires a paid plan` — so there were
+no references to work from.
+
+That turned out not to matter, because the cause was countable. Of seven
+screens, **exactly one was theme-aware.** `HomeScreen` read `LocalPalette`.
+Settings, Instructions, Chat, Files, Calendar, Speech and Diagnostics all
+imported the fixed `Cyan` constant directly: thirteen references in Settings,
+thirteen more in Instructions.
+
+So choosing Forge (copper) or Nebula (violet) recoloured the orb and the
+backdrop, and then every other screen in the app stayed cyan. **A theme that
+reaches one screen in seven is not a theme, it is an accent on a hero image** —
+and that is exactly what it looked like.
+
+**The lesson is the method, not the fix.** "It feels boring" reads as a taste
+problem and invites a taste answer: new colours, new fonts, more decoration. Two
+greps turned it into a number. Counting which files could even *see* the theme
+was faster than any amount of redesign, and it identified something no amount of
+restyling one screen would have solved.
+
+Fixed with `ui/theme/JarvisTheme`, an object of `@Composable` getters on the
+`MaterialTheme.colorScheme` pattern, and a sweep of all nine UI files onto it.
+
+**The glass fill was the other half, and less obvious.** Cards used a flat 8%
+white. So even where the accent *did* change, the surface it sat on did not, and
+every card looked identical across all seven themes — the app read as one grey
+design with a different highlight. It now takes the accent at low alpha.
+
+**And the structural half: `ThemeBackdrop` existed on Home and nowhere else.** It
+was drawn inside `HomeContent`, so the app had one designed screen and six flat
+dark lists; open Settings and the world you were just looking at vanished. That
+gap, rather than any individual screen being bad, is most of what "boring" was
+describing. Moved into the host `Box` behind every destination — which is also
+cheaper, since one instance means the starfield stays put while destinations
+change over it rather than re-randomising per screen.
+
+**GOTCHA banked for any mechanical sweep like this:** never rewrite
+`import`/`package` lines (it mangles the paths into nonsense), exclude the
+Material `Surface(` composable from the `Surface` *colour* with a lookahead, and
+replace `SurfaceGlass` **before** `Surface` or the longer name is eaten by the
+shorter. All three were checked by grep afterwards rather than assumed — a blind
+regex sweep across nine files is exactly the kind of change that looks fine and
+is not.
+
+**Honest boundary, unchanged:** Compose cannot be compiled here (`dl.google.com`
+is blocked), so `jvmcheck` passing proves only that no non-UI source broke. The
+sweep itself rode on CI, and the result needs a device look before any further
+UI work — the next candidates are typography hierarchy and how replies are
+presented, and both are judgement calls better made against a screenshot of the
+new build than guessed at now.
+
 ### 2026-08-18 — Phase 0: the first code in this project verified where it was written
 
 `backend/` exists. 25 tests, 0 failures, **no dependencies, no account, no deploy**.
