@@ -2,11 +2,14 @@
 
 ## Current position — 2026-08-23
 
-Branch `claude/phone-glitch-investigation-g6dnhk`. The UI round is done: the
-themes were cut from seven to four, Orbit was rebuilt, and the orb now opens into
-an endless zoom (`OrbUniverse` + the pure `UniverseMath` behind it). All of it is
-Compose, so **CI is the first real compile** — check for the `jarvis-debug-apk`
-artifact before believing any of it, per Rule 2.
+Branch `claude/phone-glitch-investigation-g6dnhk`, merged to `main` at `81a4b31`
+with the `jarvis-debug-apk` artifact present. The UI round is done: the themes
+were cut from seven to four, Orbit was rebuilt, and the orb now opens into an
+endless zoom (`OrbUniverse` + the pure `UniverseMath` behind it).
+
+**Not yet seen on a phone.** The whole dive is Compose, so CI proves it compiles
+and nothing more — pace (how much travel one pinch buys, how long a level holds)
+is a feel question, and each is a single constant if it needs changing.
 
 One placement note worth keeping: the universe overlay belongs in the **host
 Box**, after the `bottomDashboard` if/else — not inside it. Put inside, the Orbit
