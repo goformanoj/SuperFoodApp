@@ -2,10 +2,12 @@
 
 ## Current position — 2026-08-23
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `7f4fa3a`, **CI pending**;
-`main` is at `81a4b31` with its artifact present. Do not merge `7f4fa3a` until
-`jarvis-debug-apk` appears for it — Rule 2, and this commit is almost entirely
-Compose, which the off-device gate cannot compile. The UI round is done: the themes
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `13bb757`, **CI pending**;
+`main` is at `81a4b31`. The orb rebuild is proven — `jarvis-debug-apk` present
+for `9f552ef` — so everything up to and including the docs commit is green and
+mergeable. Only the transition commit (`13bb757`) is still unverified, and it is
+almost entirely Compose, which the off-device gate cannot compile. Rule 2: wait
+for its artifact before fast-forwarding `main`. The UI round is done: the themes
 were cut from seven to four, Orbit was rebuilt, and the orb now opens into an
 endless zoom (`OrbUniverse` + the pure `UniverseMath` behind it).
 
@@ -22,7 +24,23 @@ Backend Phase 1 is still parked on the user: Connect-to-Git in Cloudflare with
 root directory `backend`, `GROQ_API_KEY` and `PROXY_SECRET` as Worker secrets,
 then `POST /admin/migrate`.
 
-### The gotcha this round — a number only a phone could check
+### Gotcha — two ways a self-dismissing view can open
+
+`OrbUniverse` flies inward from `ENTRY_ZOOM`, which is NEGATIVE, and the
+dismissal threshold `CLOSE_AT` is also negative. Put the entry below it and the
+view closes on its first frame — which on a phone looks exactly like the pinch
+not working, not like a bug in a threshold. `UniverseMathTest` pins the ordering,
+and separately pins that the entry travels far enough to be a movement at all
+(entry == start would be a scale animation with no camera in it, i.e. the
+cross-fade this replaced).
+
+The second way is subtler and is not a constant: a pinch landing DURING the
+arrival is measured against a zoom that has not finished arriving, so it can read
+as a large outward pull. `settled` holds dismissal until the entrance completes.
+Closing a view the instant it opens is the worst possible answer to a gesture
+that meant "deeper".
+
+### The gotcha before that — a number only a phone could check
 
 The Orbit orb shipped drawn outside its own frame, and nothing in the spec looked
 wrong: the widest ring is 1.55 orb radii, the orb is drawn at 0.86 of the

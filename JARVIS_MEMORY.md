@@ -1,5 +1,54 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (third) — a transition that agrees with the gesture
+
+**What was asked.** *"also make the transition from home screen into the galaxy
+smoother, probably some gud effects."*
+
+**What was wrong with it.** The universe was an `AnimatedVisibility` with
+`fadeIn`/`fadeOut`: it appeared over the home screen while nothing else moved. A
+cross-fade is the animation for *this is a different screen*. The gesture is
+"you pulled that thing apart and went through it" — so every frame of the
+animation was contradicting what the user had just done with their fingers. It
+was not that the timing was wrong; it was the wrong kind of movement.
+
+**The fix, and the idea it rests on.** One `dive` progress drives both layers, so
+at every instant they are halves of a single movement rather than two animations
+that happen to overlap. The app swells to ×1.6 and fades out; the universe grows
+from 0.32 to full. Swelling rather than shrinking because the camera is going
+*forward* — a retreating screen would contradict the gesture just as a cross-fade
+did. Alpha runs out ahead of the scale so the home screen is gone before it is
+magnified enough to look soft.
+
+**The detail that made it read as one object.** Both layers pivot on the orb's
+REAL position, reported up from `HeroSection` through `onGloballyPositioned`. The
+orb sits above centre, so pivoting on the screen centre makes the galaxy arrive
+from slightly below it — which reads as two objects rather than one becoming the
+other. And the hero scrolls, so the position is not a constant that could have
+been hardcoded; reading it from the layout is the only version that stays right.
+
+**Growing a still picture is still an appearance.** So the camera moves too: the
+dive starts outside the first shell at `ENTRY_ZOOM` and flies inward to
+`START_ZOOM`, which means the first thing that happens after the pinch is a
+structure rushing up to meet you. A white bloom covers the frames where the
+shells are still too small to read as structure, and the readout is held back
+until the arrival is 55% done — text at full strength over a page that is a third
+of its size reads as an overlay stuck on the animation rather than as part of the
+place.
+
+**Two ways this could dismiss itself on opening, both found by writing the test
+before trusting the code.** The entry zoom is negative and so is the dismissal
+threshold, so `ENTRY_ZOOM` must stay above `CLOSE_AT` or the view closes on its
+first frame — and on a phone that would look like the pinch not working, which is
+a symptom that sends you debugging the gesture rather than the threshold. The
+second is not a constant at all: a pinch landing mid-arrival is measured against a
+zoom that has not finished arriving, so `settled` holds dismissal until the
+entrance completes.
+
+620ms in, 380ms out. Arriving somewhere should take a moment; leaving should feel
+like surfacing.
+
+
 ## 2026-08-23 (second) — the bug was where the gate could not look
 
 **What was reported.** Three screenshots and six items: the Orbit orb cut off at
