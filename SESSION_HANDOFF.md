@@ -17,6 +17,28 @@ mid-way through Cloudflare setup — Connect-to-Git, then the two Worker secrets
 `POST /admin/migrate`, then a real `/chat` (Phase 1 done); (3) Phase 2, the eval harness, which is
 the testing payoff; (4) get a device look at the theme sweep before doing more UI.
 
+### 📜 Long replies were CLIPPED, not merely long
+`state.transcript` / `state.reply` were bare `Text` inside a Column pinned to the viewport height,
+so anything past the fold was unreachable. Both now live in their own `verticalScroll` column,
+`heightIn(max = height * 0.34f)`.
+
+**GOTCHA: bound it as a FRACTION of the hero, never a fixed dp** — the orb above has to stay on
+screen on a small phone, and a constant that is right on one device is wrong on the next.
+**GOTCHA worth generalising: raising `max_tokens` to 900 made this worse, not better.** Longer
+answers arrived and there was still nowhere to put them. A fix upstream can expose a bug downstream
+that was invisible while the upstream limit was hiding it.
+
+### 🗂️ A tab row BELOW the content it switches taxes every tab
+Settings rendered three feature cards unconditionally, and the tab row came after them — so their
+height was stolen from every section underneath. On a real phone the theme picker was one clipped
+row at the very bottom. `ThemesScreen` is a `LazyColumn` that already filled whatever space it was
+given; it simply never had any.
+
+Now three tabs — **General / Voice / Themes** — with nothing above the row but the title, so each
+section owns the screen. **RULE: nothing permanent goes above a tab row.**
+**Also:** the host draws a menu icon at the top-left of every destination, so a screen's own title
+must be indented past it (`start = 56.dp`) or the burger lands on the first letter.
+
 ### 🎨 THE THEMES REACHED ONE SCREEN IN SEVEN — count before believing it is taste
 "the themes are just not it". It was not taste, it was arithmetic: **`HomeScreen` read
 `LocalPalette`; the other six screens imported the fixed `Cyan` constant directly** — 13 references

@@ -3038,6 +3038,52 @@ The prompt still asks for the substitution; it catches phrasings the parser does
 not. It is simply no longer the only thing standing between a rule the user
 typed out and the wrong app opening.
 
+### 2026-08-19 — Two layout bugs that looked like style complaints
+
+"if what Jarvis replies is too long, or doesn't fit on the screen, i can't even
+see the rest" and "this is wayyy tooo clumsy, it doesn't give me space to scroll
+through themes at all". Both read as polish requests. Both were structural.
+
+**The reply was clipped, not merely long.** `state.transcript` and `state.reply`
+were bare `Text` inside a Column pinned to the viewport height, so anything that
+did not fit under the orb ran off the bottom with no way to reach it. The user
+asked how backends work, got several paragraphs, and could read the first third.
+**Clipped text with no way to scroll is worse than a short answer**, because it
+looks like the app is broken rather than brief.
+
+**And the pairing is the interesting part: raising `max_tokens` to 900 yesterday
+made this worse, not better.** That fix was correct — replies had been
+guillotined mid-word — but it produced longer answers into a container that could
+not show them. A fix upstream can expose a bug downstream that was invisible only
+because the upstream limit was hiding it. Worth remembering the next time a limit
+is raised.
+
+Bounded as a **fraction** of the hero rather than a fixed dp, because the orb
+above it has to stay on screen on a small phone and a constant that is right on
+one device is wrong on the next.
+
+**The Settings tab row was below the content it switched.** Three feature cards
+rendered unconditionally first; the tabs came after them. So whatever height
+those three took was stolen from every tab underneath — and on a real phone they
+took all of it, leaving exactly one clipped row of themes at the very bottom.
+
+`ThemesScreen` was never the problem: it is a `LazyColumn` that fills whatever
+space it is given, and it simply never had any. **The rule worth keeping is that
+anything permanently above a tab row is a tax on every tab**, so the three
+switches became a General tab of their own and each of the three sections now
+owns the screen.
+
+Their blurbs went from three sentences to one. Each was wrapping to six lines on
+a phone, which is how three switches managed to fill an entire display — the
+words were doing as much damage as the layout.
+
+**And one thing the screenshot showed that nobody had reported:** the host draws
+a menu icon in the top-left corner of every destination, and Settings drew its
+own title at the same place, so the burger sat on top of the "S". It reads as a
+rendering fault. Indented past it. A screenshot is worth more than a bug report
+here — the user was complaining about something else entirely and this was
+sitting in the same frame.
+
 ### 2026-08-19 — "The themes are just not it" was arithmetic, not taste
 
 The ask was to use the Mobbin connector and improve the UI, because it is "too
