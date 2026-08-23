@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -568,20 +569,39 @@ private fun HeroSection(
 
         if (active) {
             Spacer(Modifier.height(10.dp))
-            Text(
-                text = state.transcript.ifBlank { "Listening…" },
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (state.transcript.isBlank()) TextSecondary else TextPrimary,
-                textAlign = TextAlign.Center,
-            )
-            if (state.reply.isNotBlank()) {
-                Spacer(Modifier.height(12.dp))
+            // What he said, in a box that SCROLLS.
+            //
+            // These were bare Text in a Column pinned to the viewport height, so a
+            // long answer simply ran off the bottom and was unreachable — the user
+            // asked how backends work, got several paragraphs, and could read the
+            // first third of it. Clipped text with no way to reach the rest is
+            // worse than a short answer, because it looks like the app is broken
+            // rather than brief.
+            //
+            // Bounded as a FRACTION of the hero rather than a fixed dp: the orb
+            // above it has to stay on screen on a small phone, and a constant that
+            // is right on one device is wrong on the next.
+            Column(
+                modifier = Modifier
+                    .heightIn(max = height * 0.34f)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Text(
-                    text = state.reply,
+                    text = state.transcript.ifBlank { "Listening…" },
                     style = MaterialTheme.typography.bodyLarge,
-                    color = if (state.orb == OrbState.Error) ErrorRed else LocalAccent.current,
+                    color = if (state.transcript.isBlank()) TextSecondary else TextPrimary,
                     textAlign = TextAlign.Center,
                 )
+                if (state.reply.isNotBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = state.reply,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (state.orb == OrbState.Error) ErrorRed else LocalAccent.current,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }

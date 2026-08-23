@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,7 +33,11 @@ import com.jarvis.os.ui.theme.TextPrimary
 import com.jarvis.os.ui.theme.TextSecondary
 import com.jarvis.os.voice.Speaker
 
-private enum class Section(val label: String) { Voice("Voice"), Appearance("Appearance") }
+private enum class Section(val label: String) {
+    General("General"),
+    Voice("Voice"),
+    Appearance("Themes"),
+}
 
 /**
  * One home for how JARVIS sounds and looks, rather than a tab each. Both are
@@ -54,7 +60,7 @@ fun SettingsScreen(
     onOpenAssistantSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var section by remember { mutableStateOf(Section.Voice) }
+    var section by remember { mutableStateOf(Section.General) }
 
     Column(modifier.fillMaxSize()) {
         Spacer(Modifier.height(56.dp))
@@ -62,32 +68,22 @@ fun SettingsScreen(
             "Settings",
             style = MaterialTheme.typography.headlineSmall,
             color = TextPrimary,
-            modifier = Modifier.padding(horizontal = 20.dp),
+            // Indented past the menu icon the host draws at the top-left corner.
+            // Without this the ☰ lands on top of the "S" and reads as a rendering
+            // fault — visible in a device screenshot.
+            modifier = Modifier.padding(start = 56.dp, end = 20.dp),
         )
 
-        AssistantRow(
-            onOpen = onOpenAssistantSettings,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp),
-        )
-
-        FeatureToggle(
-            title = "Wake word — \"Hey Jarvis\"",
-            blurb = "Summon JARVIS by voice from any app. On-device, nothing recorded. " +
-                "Uses some battery and shows an ongoing notification.",
-            enabled = backgroundWakeEnabled,
-            onToggle = onSetBackgroundWake,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-        )
-
-        FeatureToggle(
-            title = "Floating orb",
-            blurb = "Keeps JARVIS on screen over other apps — drag it anywhere, tap to talk. " +
-                "Needs screen control switched on; no extra permission.",
-            enabled = floatingOrbEnabled,
-            onToggle = onSetFloatingOrb,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-        )
-        Row(Modifier.padding(horizontal = 20.dp, vertical = 12.dp)) {
+        // The tab row sits directly under the title and NOTHING sits above it but
+        // the title.
+        //
+        // Before this, the three switches were always rendered first and the tabs
+        // came after them, so on a real phone the picker was pushed entirely below
+        // the fold — the user's words were "it doesn't give me space to scroll
+        // through themes at all", with a screenshot showing one clipped row of
+        // themes at the very bottom. Anything permanently above a tab row steals
+        // the height that every tab then has to share.
+        Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 10.dp)) {
             Section.entries.forEach { entry ->
                 val selected = entry == section
                 Text(
@@ -108,7 +104,38 @@ fun SettingsScreen(
                 )
             }
         }
+
         when (section) {
+            // Its own tab, so it owns the screen instead of standing on the others.
+            Section.General -> Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                AssistantRow(
+                    onOpen = onOpenAssistantSettings,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+                FeatureToggle(
+                    title = "Wake word — \"Hey Jarvis\"",
+                    // Trimmed from three sentences. Each of these was wrapping to
+                    // six lines on a phone, which is how three switches managed to
+                    // fill an entire screen.
+                    blurb = "Summon him by voice from any app. On-device, nothing recorded.",
+                    enabled = backgroundWakeEnabled,
+                    onToggle = onSetBackgroundWake,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+                FeatureToggle(
+                    title = "Floating orb",
+                    blurb = "Keeps him on screen over other apps. Drag to move, tap to talk.",
+                    enabled = floatingOrbEnabled,
+                    onToggle = onSetFloatingOrb,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+                )
+                Spacer(Modifier.height(24.dp))
+            }
+
             Section.Voice -> SpeechScreen(
                 voices = voices,
                 currentVoiceId = currentVoiceId,
@@ -118,6 +145,7 @@ fun SettingsScreen(
                 onDownloadOffered = onVoiceDownloadOffered,
                 modifier = Modifier.fillMaxWidth(),
             )
+
             Section.Appearance -> ThemesScreen(
                 current = palette,
                 onSelect = onSelectPalette,
