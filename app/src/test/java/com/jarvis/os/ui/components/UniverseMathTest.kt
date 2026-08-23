@@ -634,4 +634,54 @@ class UniverseMathTest {
     private fun assertClose(message: String, expected: Float, actual: Float, tolerance: Float) {
         assertTrue("$message (expected $expected, was $actual)", abs(expected - actual) <= tolerance)
     }
+    // ── The stars have to move with their galaxy ────────────────────────────
+
+    @Test
+    fun `a star maps to the screen and back again`() {
+        // The drawing and the hit test used to compute this separately, and only
+        // the drawing knew about zoom and pan — so zooming in made every star
+        // unreachable while leaving it visible. A round trip is the property that
+        // stops the two ever disagreeing again.
+        val w = 1080f
+        val h = 2400f
+        listOf(0f, 0.5f, 1f, 0.17f, 0.93f).forEach { x ->
+            listOf(0f, 0.5f, 1f, 0.41f).forEach { y ->
+                listOf(0.55f, 1f, 2.3f, 4.5f).forEach { view ->
+                    listOf(0f to 0f, 120f to -80f, -300f to 240f).forEach { (px, py) ->
+                        val (sx, sy) = UniverseMath.onScreen(x, y, w, h, px, py, view)
+                        val (bx, by) = UniverseMath.fromScreen(sx, sy, w, h, px, py, view)
+                        assertEquals("x at view=$view pan=$px", x, bx, 0.0005f)
+                        assertEquals("y at view=$view pan=$py", y, by, 0.0005f)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `at rest a star sits exactly where its fraction says`() {
+        val (sx, sy) = UniverseMath.onScreen(0.25f, 0.75f, 1000f, 2000f, 0f, 0f, 1f)
+        assertEquals(250f, sx, 0.001f)
+        assertEquals(1500f, sy, 0.001f)
+    }
+
+    @Test
+    fun `zooming moves a star away from the centre, not with the frame`() {
+        // The specific failure: the galaxy grew and the stars did not. A star off
+        // centre must travel further out as the view zooms in, by the same factor
+        // the galaxy body uses.
+        val w = 1000f
+        val h = 1000f
+        val (x1, _) = UniverseMath.onScreen(0.75f, 0.5f, w, h, 0f, 0f, 1f)
+        val (x2, _) = UniverseMath.onScreen(0.75f, 0.5f, w, h, 0f, 0f, 2f)
+        assertEquals("offset from centre must double", (x1 - 500f) * 2f, x2 - 500f, 0.001f)
+    }
+
+    @Test
+    fun `a zero view cannot send every tap to infinity`() {
+        val (bx, by) = UniverseMath.fromScreen(100f, 100f, 1000f, 1000f, 0f, 0f, 0f)
+        assertTrue("x went to infinity", bx.isFinite())
+        assertTrue("y went to infinity", by.isFinite())
+    }
+
 }

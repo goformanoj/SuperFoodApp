@@ -352,11 +352,18 @@ fun OrbUniverse(
                                 }
                             }
                             // Inside a galaxy: pick a star.
-                            galaxy != null -> UniverseMath.starAt(
-                                liveStars,
-                                at.x / size.width,
-                                at.y / size.height,
-                            )?.let { chosen = it }
+                            galaxy != null -> {
+                                // The INVERSE of what the star map draws. A bare
+                                // `at.x / size.width` ignored zoom and pan, so
+                                // zooming in left every star visible and none of
+                                // them reachable.
+                                val (nx, ny) = UniverseMath.fromScreen(
+                                    at.x, at.y,
+                                    size.width.toFloat(), size.height.toFloat(),
+                                    pan.x, pan.y, view,
+                                )
+                                UniverseMath.starAt(liveStars, nx, ny)?.let { chosen = it }
+                            }
                             // On the orb: pick one of the bodies riding its rings.
                             else -> {
                                 val hit = galaxyAt(
@@ -998,14 +1005,145 @@ private fun DrawScope.drawOrbStage(
     galaxies.forEachIndexed { i, g ->
         if (i >= spec.rings.size) return@forEachIndexed
         val at = galaxyOn(spec, i, clock, yaw, pitch, center, radius)
-        val ink = g.palette
         val pulse = 0.82f + 0.18f * sin(clock * 1.3f + i * 1.7f)
-        val r = size.minDimension * 0.016f * pulse
+        // Size says how much is in it. A nine-star galaxy and a five-star one
+        // were the same dot before, which threw away a difference that was
+        // already known and already meaningful.
+        val r = size.minDimension * 0.016f * pulse * (0.78f + (g.stars - 5) * 0.075f)
+        drawGalaxyToken(at, r, g, clock)
+    }
+}
 
-        halo(at, r * 6.5f, ink.gas.toColor(), 0.30f)
-        halo(at, r * 3.2f, ink.arm.toColor(), 0.55f)
-        spikes(at, r * 5.5f, Color.White, 0.40f, clock * 0.2f)
-        point(at, r * 0.9f, 0.95f)
+/**
+ * A galaxy as it appears riding the orb's rings: small, but a miniature of the
+ * thing itself rather than a coloured dot.
+ *
+ * Every one of these used to be identical — two halos, the same white cross, and
+ * a **pure white core** at the same size, with only the palette differing. The
+ * white core is the part that did the damage: it is the brightest thing in the
+ * token, so it dominated, and the one axis that did vary was drowned by it.
+ * *"it's hard to distinguish between different galaxies"*.
+ *
+ * Each now shows its own shape at a glance — a spiral has arms, a lenticular is a
+ * ring with nothing in the middle, an irregular is lumpy and off-centre — and its
+ * core carries its colour instead of being white. At seventeen pixels the shape
+ * cue does more work than the colour, which is why it is worth drawing rather
+ * than tinting.
+ */
+private fun DrawScope.drawGalaxyToken(at: Offset, r: Float, g: GalaxySpec, clock: Float) {
+    val ink = g.palette
+    val core = ink.core.toColor()
+    val arm = ink.arm.toColor()
+    val gas = ink.gas.toColor()
+    val spark = ink.spark.toColor()
+    // Its own lean, so a row of them is not a row of identically-tipped ovals.
+    val lean = g.twist * 0.35f
+    val flat = 0.35f + g.tilt * 0.55f
+
+    halo(at, r * 6.0f, gas, 0.26f)
+
+    withTransform({ rotate(lean * 57.3f, at) }) {
+        when (g.kind) {
+            GalaxyKind.Spiral, GalaxyKind.Barred -> {
+                // Arms, as short arcs sweeping out of the middle. Two or three
+                // strokes is enough to read as a spiral at this size — more just
+                // fills the disc back in.
+                for (a in 0 until g.arms.coerceAtMost(3)) {
+                    val path = Path()
+                    val base = a * (OrbMath.TAU / g.arms.coerceAtMost(3)) + clock * 0.25f
+                    for (k in 0..10) {
+                        val f = 0.25f + (k / 10f) * 0.95f
+                        val ang = base + f * g.twist * 0.9f
+                        val x = at.x + cos(ang) * r * f * 2.4f
+                        val y = at.y + sin(ang) * r * f * 2.4f * flat
+                        if (k == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    drawPath(
+                        path = path,
+                        color = arm.copy(alpha = 0.75f),
+                        style = Stroke(r * 0.42f, cap = StrokeCap.Round),
+                        blendMode = BlendMode.Plus,
+                    )
+                }
+                if (g.bar > 0.01f) {
+                    drawLine(
+                        color = core.copy(alpha = 0.85f),
+                        start = Offset(at.x - r * 1.5f, at.y),
+                        end = Offset(at.x + r * 1.5f, at.y),
+                        strokeWidth = r * 0.5f,
+                        cap = StrokeCap.Round,
+                        blendMode = BlendMode.Plus,
+                    )
+                }
+            }
+
+            GalaxyKind.Elliptical -> {
+                // No structure at all, and that IS the shape: a smooth graded
+                // oval. It earns the cross the others no longer get, because a
+                // compact bright thing is what it is.
+                drawOval(
+                    brush = Brush.radialGradient(
+                        listOf(core.copy(alpha = 0.95f), arm.copy(alpha = 0.45f), Color.Transparent),
+                        center = at,
+                        radius = r * 2.6f,
+                    ),
+                    topLeft = Offset(at.x - r * 2.6f, at.y - r * 2.6f * flat),
+                    size = Size(r * 5.2f, r * 5.2f * flat),
+                    blendMode = BlendMode.Plus,
+                )
+                spikes(at, r * 5.0f, spark, 0.40f, clock * 0.2f, 2)
+            }
+
+            GalaxyKind.Irregular -> {
+                // Lumpy and off-centre. Symmetry is the thing it must not have,
+                // so the clumps are placed by seed and never balanced.
+                for (k in 0 until 4) {
+                    val a = OrbMath.range(g.ring * 211 + k, 0f, OrbMath.TAU)
+                    val d = r * OrbMath.range(g.ring * 223 + k, 0.4f, 1.9f)
+                    val q = Offset(at.x + cos(a) * d, at.y + sin(a) * d * flat)
+                    val kr = r * OrbMath.range(g.ring * 227 + k, 0.7f, 1.5f)
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(arm.copy(alpha = 0.80f), Color.Transparent),
+                            center = q,
+                            radius = kr,
+                        ),
+                        radius = kr,
+                        center = q,
+                        blendMode = BlendMode.Plus,
+                    )
+                }
+            }
+
+            GalaxyKind.Lenticular -> {
+                // A ring with nothing in the middle — the one token you can
+                // identify from the corner of your eye, because it is the only
+                // one with a hole in it.
+                drawOval(
+                    color = arm.copy(alpha = 0.85f),
+                    topLeft = Offset(at.x - r * 2.4f, at.y - r * 2.4f * flat),
+                    size = Size(r * 4.8f, r * 4.8f * flat),
+                    style = Stroke(r * 0.42f),
+                    blendMode = BlendMode.Plus,
+                )
+            }
+        }
+    }
+
+    // The core, in the galaxy's OWN colour. This was pure white on every one of
+    // them, which is the brightest thing in the token — so the only axis that did
+    // vary was drowned by the one that did not.
+    if (g.kind != GalaxyKind.Lenticular) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(Color.White.copy(alpha = 0.85f), core.copy(alpha = 0.75f), Color.Transparent),
+                center = at,
+                radius = r * (0.6f + g.core * 2.4f),
+            ),
+            radius = r * (0.6f + g.core * 2.4f),
+            center = at,
+            blendMode = BlendMode.Plus,
+        )
     }
 }
 
@@ -1239,7 +1377,7 @@ private fun DrawScope.drawGalaxyStage(
     }
 
     // The stars you can enter, drawn over their own galaxy.
-    drawStarMap(stars, clock, flight, focus, arm, spark, gas)
+    drawStarMap(stars, clock, flight, focus, arm, spark, gas, view, pan)
 }
 
 /**
@@ -1268,11 +1406,22 @@ private fun DrawScope.drawStarMap(
     accent: Color,
     highlight: Color,
     secondary: Color,
+    /** The galaxy's own zoom and drag, so the stars travel WITH it. */
+    view: Float,
+    pan: Offset,
 ) {
     val fade = 1f - flight
     stars.forEach { star ->
         val picked = focus != null && focus.branch == star.branch
-        val home = Offset(star.x * size.width, star.y * size.height)
+        // THROUGH THE SHARED TRANSFORM. This used to be a bare
+        // `star.x * size.width`, which took neither the zoom nor the pan — so the
+        // galaxy body scaled and panned out from under its own stars, and the hit
+        // test (doing the same bare division in reverse) stopped agreeing with the
+        // screen the moment anything moved.
+        val (hx, hy) = UniverseMath.onScreen(
+            star.x, star.y, size.width, size.height, pan.x, pan.y, view,
+        )
+        val home = Offset(hx, hy)
         val at: Offset
         val grow: Float
         val alpha: Float
@@ -1296,7 +1445,10 @@ private fun DrawScope.drawStarMap(
 
         // MUCH smaller than the first version. A star is a point with light around
         // it; the previous radii made every one of them a disc.
-        val r = size.minDimension * 0.011f * star.size * star.kind.scale * grow
+        // Scaled by the view as well: a galaxy blown up to four times its size
+        // with the same pinhead stars reads as a picture behind glass.
+        val r = size.minDimension * 0.011f * star.size * star.kind.scale * grow *
+            view.coerceIn(0.7f, 2.2f)
         // FROM THE STAR, NOT FROM THE THEME. This was
         // `lerpColour(accent, highlight, kind.heat)` — the app's two colours mixed
         // by kind, which gives a whole galaxy six possible star colours drawn from

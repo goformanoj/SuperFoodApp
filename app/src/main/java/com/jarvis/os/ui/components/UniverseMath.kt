@@ -313,6 +313,59 @@ object UniverseMath {
      *
      * @param span the shorter side of the frame.
      */
+    /**
+     * Where a star sitting at normalised ([x], [y]) lands on screen.
+     *
+     * **The stars were not attached to their galaxy.** The galaxy body scaled with
+     * the zoom and panned with the drag; the star map drew every star at
+     * `x * width, y * height` and took neither. So pinching pulled the galaxy out
+     * from under its own stars — *"i can zoom the center but the stars don't
+     * zoom"*, *"shouldn't it be attached?"* — and the hit test, which did the same
+     * bare division in reverse, stopped agreeing with what was on screen the
+     * moment anything moved. Zoom in and the stars became unreachable.
+     *
+     * One transform, here, used by the drawing AND by the tap, is the only way the
+     * two cannot drift apart. Returned as a plain pair because this file is
+     * Compose-free on purpose and `Offset` is not.
+     *
+     * @return screen x to screen y.
+     */
+    fun onScreen(
+        x: Float,
+        y: Float,
+        w: Float,
+        h: Float,
+        panX: Float,
+        panY: Float,
+        view: Float,
+    ): Pair<Float, Float> {
+        val cx = w / 2f
+        val cy = h / 2f
+        return (cx + panX + (x * w - cx) * view) to (cy + panY + (y * h - cy) * view)
+    }
+
+    /**
+     * The inverse of [onScreen]: which star position a screen point corresponds to.
+     *
+     * Guarded against a zero [view] because a division by it would put every tap
+     * at infinity and silently stop hit testing rather than crash — the worst kind
+     * of failure, and one this file has already produced once.
+     */
+    fun fromScreen(
+        sx: Float,
+        sy: Float,
+        w: Float,
+        h: Float,
+        panX: Float,
+        panY: Float,
+        view: Float,
+    ): Pair<Float, Float> {
+        val v = if (abs(view) < 1e-4f) 1e-4f else view
+        val cx = w / 2f
+        val cy = h / 2f
+        return ((cx + (sx - cx - panX) / v) / w) to ((cy + (sy - cy - panY) / v) / h)
+    }
+
     fun panLimit(span: Float, view: Float): Float =
         span * 0.5f * (view - 1f).coerceAtLeast(0f)
 

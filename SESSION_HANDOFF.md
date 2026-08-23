@@ -49,6 +49,21 @@ rather than ripped out blind at the end of a large blind-Compose change. It is
 the next cleanup; do not mistake the passing tests for coverage of anything that
 ships.
 
+### One position, computed once
+
+`drawGalaxyStage` scaled by `view` and panned by `pan`; `drawStarMap` did neither;
+the hit test did its own bare division. Three places computing where a star is,
+and only one of them knew about zoom.
+
+> If a thing is **drawn** at a position and **hit-tested** at a position, those
+> must come from one function and its inverse. Two independent computations agree
+> right up until one of them learns about a new variable — which is exactly what
+> adding zoom did here.
+
+`UniverseMath.onScreen` / `fromScreen`, pinned by a round-trip test. Note this is
+the *second* star-tapping bug and it was hidden behind the first: fixing the stale
+`pointerInput` capture made tapping work **at rest**, and nobody had zoomed first.
+
 ### Two rules that have now each been learned twice
 
 **1. A `when` over an enum that returns a whole rendering is a generator with that

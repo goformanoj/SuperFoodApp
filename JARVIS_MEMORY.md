@@ -1,5 +1,65 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (stars adrift) — the map and the tap computed position separately
+
+**Reported.** *"why are stars of each galaxy not zoomable to enter … i can zoom
+the center but the stars don't zoom"*, and *"why are the stars different than the
+background, shouldn't it be attached?"* — which is the same fault described from
+two directions, and described precisely.
+
+**The fault.** `drawGalaxyStage` scaled the galaxy body by `view` and offset it by
+`pan`. `drawStarMap` was never given either: it placed every star at
+`star.x * size.width`, flat. So pinching pulled the galaxy out from under its own
+stars. And the hit test did the same bare division in reverse — `at.x / size.width`
+— so the moment anything moved, the tap tested a position nothing was drawn at.
+**Zoom in and every star is visible and none of them reachable.**
+
+**Why it survived the last star-tapping fix.** That one was a stale
+`pointerInput(Unit)` capture: the tap ran against an empty list. It was fixed and
+tapping worked — *at rest*. Nobody had zoomed first. The two faults are unrelated
+and the second was hidden behind the first.
+
+**The fix is one transform, not two corrections.** `UniverseMath.onScreen` and its
+inverse `fromScreen`, used by the drawing AND by the tap. Two pieces of code
+computing the same position independently will drift the moment one of them learns
+about a new variable — which is exactly what happened when zoom was added.
+
+A round-trip test over five positions × four zooms × three pans pins it, plus one
+that says a star's offset from centre must double when the view does, and one that
+a zero view cannot send every tap to infinity. Returned as a `Pair<Float, Float>`
+because `UniverseMath` is Compose-free on purpose and `Offset` is not.
+
+Star radius scales with the view too, clamped: a galaxy blown up to four times its
+size with the same pinhead stars reads as a picture behind glass.
+
+### The tokens on the orb's rings were the same picture
+
+*"it's hard to distinguish between different galaxies"*. Every one was two halos,
+the same white cross, and a **pure white core** at the same size, with only the
+palette differing. The white core is what did the damage — it is the brightest
+thing in a seventeen-pixel token, so it dominated, and the one axis that did vary
+was drowned by the one that did not.
+
+Each is now a miniature of its own galaxy: a spiral has arms sweeping out, a
+lenticular is a ring with a hole in it (the only one identifiable from the corner
+of the eye), an elliptical is a smooth graded oval that keeps the cross because a
+compact bright thing is what it is, an irregular is lumpy and deliberately
+unbalanced. Size follows the star count — a nine-star galaxy and a five-star one
+were the same dot, which threw away a difference that was already known and
+already meaningful. And the core carries the galaxy's colour.
+
+**At token size the SHAPE does more than the colour**, which is why it is worth
+drawing four different things rather than tinting one.
+
+### On "you didn't fix all the galaxies"
+
+Fair from where it was seen, and worth recording rather than explaining away: the
+eight galaxy axes went in at `7e57585`, which had not been through CI when those
+screenshots were taken. The build on the phone was `9cfc4fa`. The lesson is about
+sequencing, not about the report — a fix nobody can install is not yet a fix, and
+saying "that's next" is worth less than shipping it.
+
+
 ## 2026-08-23 (the two owed) — galaxies that differ, and a sky per place
 
 The two items held back from the variety round, deliberately, so they would not
