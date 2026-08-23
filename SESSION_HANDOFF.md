@@ -2,8 +2,8 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `87e8b7f`, **CI not yet
-confirmed** — `main` is still at `287843a`. Five device-reported faults fixed:
+Branch `claude/phone-glitch-investigation-g6dnhk` merged to `main` at `778f995`
+with the `jarvis-debug-apk` artifact present. Five device-reported faults fixed:
 the Settings crash, the picker lag, the background grid, the star chart, and
 dimensions that were identical.
 
