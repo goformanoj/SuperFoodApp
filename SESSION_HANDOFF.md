@@ -2,8 +2,8 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk`, **CI pending** — `main` is at
-`8673930`, the last green state. The universe is
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `60452fa`, **CI pending** —
+`main` is at `8673930`, the last green state. The universe is
 now four layers you can touch: orb → galaxy → a star's **system** → a **world** with things on it. Every
 layer zooms, the orb turns under a drag, and the theme stops at the orb.
 
@@ -48,6 +48,24 @@ is exactly the "a fixture keeps dead code alive" trap recorded below. Left in
 rather than ripped out blind at the end of a large blind-Compose change. It is
 the next cleanup; do not mistake the passing tests for coverage of anything that
 ships.
+
+### Threading a parameter through Compose: check the DEPTH, not the call sites
+
+Adding a parameter across a widget tree fails in one predictable way: it reaches
+some layer and stops, while the thing that needs it lives a frame below. Grepping
+for call sites finds the *uses*; it does not tell you whether the function holding
+each use declares the parameter.
+
+`amplitude` went `MainActivity` → `JarvisApp` → `HomeContent` and stopped, and
+`HudOrb`/`VoiceWave` are in `HeroSection`, one level down. Two unresolved
+references, one round trip.
+
+> For any parameter threaded through more than two composables, check
+> **containment**, not call sites: every function that mentions the name must
+> either declare it or use it only as a named argument. A few lines of script does
+> this in a second and catches the whole class.
+
+Cheap because Compose cannot be compiled here at all — see below.
 
 ### Where a value LIVES is a performance decision
 

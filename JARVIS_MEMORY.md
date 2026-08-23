@@ -1,5 +1,50 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (build break) — threaded a parameter to the wrong depth
+
+**What broke.** `b753359` failed on two lines:
+
+```
+HomeScreen.kt:720:49  Unresolved reference 'amplitude'.
+HomeScreen.kt:726:31  Unresolved reference 'amplitude'.
+```
+
+**Why.** The `() -> Float` lambda was threaded `MainActivity` → `JarvisApp` →
+`HomeContent` and stopped. But `HomeContent` delegates the hero to a nested
+`HeroSection`, and *that* is the composable holding `HudOrb` and `VoiceWave`. Both
+call sites referenced a name that lived one frame above them.
+
+**No trap here, and it is worth being honest about that.** The `IntSize` breaks
+were a real language collision — two identically-spelled properties of different
+types in one file. This was not. I grepped for the call sites, edited each one,
+and never checked that the function *containing* each one declared the parameter.
+A six-file refactor with a new parameter is exactly where that check matters.
+
+**What was added instead of a resolution to be careful.** A mechanical pass over
+the affected files: for every function that mentions `amplitude`, assert it is
+either in that function's signature or appears only as a named argument to a
+callee. It is weaker than a compiler and it takes a second, and it catches this
+whole class — a parameter threaded to the wrong depth — which is the common
+failure mode of exactly this kind of refactor.
+
+**The diagnosis was never in doubt.** Nothing about the recomposition finding
+changed; this was plumbing failing to reach the last hop. Worth separating,
+because a red build after a big diagnosis invites re-litigating the diagnosis, and
+that would have been wasted effort.
+
+### The running tally, since it now says something
+
+Three build breaks in this stretch. Two were the `IntSize` / `Size` collision,
+now removed structurally by the `span` property rather than left to memory. One —
+this — was carelessness in a wide refactor. **All three were in Compose files.**
+
+The gate compiles `AssistantEngine`, `Cosmos`, `UniverseMath`, `Orb3D` and the
+rest of the pure layer, and it caught the missing `mutableFloatStateOf` stub in
+this very change in about two seconds. It cannot see a single line of Compose.
+Every defect that has reached CI has been on that side of the line, and the ratio
+is not close.
+
+
 ## 2026-08-23 (why the app was never smooth) — a Float in the wrong object
 
 **Reported.** *"what abt the app lagging alot, the app isn't smooth idk why"* —
