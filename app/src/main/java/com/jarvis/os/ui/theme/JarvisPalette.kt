@@ -4,13 +4,6 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * Which geometry the orb draws. Each theme in the user's designs has its own
- * centrepiece, not just its own colours — a hexagonal crystal lattice does not
- * become a filigree disc by recolouring it.
- */
-enum class OrbStyle { Reactor, Filigree, Nebula, Orbit }
-
-/**
  * A selectable look: a full colour set plus the shape of the orb.
  *
  * **Four, down from seven.** Lattice, Prism and Core were removed on 2026-08-19

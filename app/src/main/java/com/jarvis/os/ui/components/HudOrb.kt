@@ -119,7 +119,17 @@ fun HudOrb(
                 style = palette.orbStyle,
                 detail = detail,
                 f = OrbFrame(
-                    radius = this.size.minDimension / 2f * 0.86f,
+                    // Sized so the WIDEST part of this theme's orb, at the worst
+                    // phase of its precession, still lands inside the frame.
+                    //
+                    // It was a flat 0.86 for every theme, which is fine until a
+                    // design puts a ring outside the body: Orbit's disc reached
+                    // 1.46 half-frames once perspective magnified its near side,
+                    // and shipped cut off at both edges. `fitFor` measures that
+                    // per theme and only shrinks a design that would actually
+                    // clip — none of the four does today, so this changes nothing
+                    // on screen and stops the next retune from doing it again.
+                    radius = this.size.minDimension / 2f * fitFor(palette.orbStyle),
                     accent = accent,
                     secondary = palette.secondary,
                     highlight = palette.highlight,

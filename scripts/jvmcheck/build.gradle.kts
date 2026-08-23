@@ -35,8 +35,25 @@ val appTest: File = File(repoRoot, "app/src/test/java")
 // with a resolution error rather than a clear one, so the bar is literally "does
 // it import anything from androidx".
 val UI_PACKAGE = "com/jarvis/os/ui/"
-val PURE_UI_SOURCES = setOf("OrbMath.kt", "UniverseMath.kt")
-val PURE_UI_TESTS = setOf("UniverseMathTest.kt")
+val PURE_UI_SOURCES = setOf(
+    "OrbMath.kt",
+    "UniverseMath.kt",
+    // The orb's 3D maths, the per-theme specs, and the enum that keys them.
+    // OrbStyle was moved out of JarvisPalette.kt purely so these three could be
+    // reached from here — one `Color` import in that file was putting every orb
+    // number out of range of the only gate that runs before CI, and the Orbit
+    // orb shipped clipped at both edges as a direct result.
+    "Orb3D.kt",
+    "Orb3DSpecs.kt",
+    "OrbStyle.kt",
+)
+val PURE_UI_TESTS = setOf(
+    "UniverseMathTest.kt",
+    "OrbitThemeTest.kt",
+    "OrbFitTest.kt",
+    "Orb3DTest.kt",
+    "OrbMathTest.kt",
+)
 
 fun isNonPureUi(element: FileTreeElement, keep: Set<String>): Boolean =
     !element.isDirectory && element.path.contains(UI_PACKAGE) && element.file.name !in keep

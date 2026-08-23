@@ -138,8 +138,13 @@ fun OrbUniverse(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(ThemeArt.backdrop(palette.orbStyle).copy(alpha = 0.60f))
-            .background(Color(0xFF03060E).copy(alpha = 0.86f))
+            // OPAQUE. Both layers were translucent in the first version, and the
+            // home screen showed straight through a dive — "Good afternoon" and
+            // the JARVIS wordmark ghosting over a galaxy, which reads as a
+            // rendering fault rather than as depth. Deep space has nothing behind
+            // it, so neither does this: the theme's own backdrop colour at full
+            // opacity, darkened toward black by a second opaque layer.
+            .background(deepSpace(palette.orbStyle))
             // The tap detector goes FIRST so the transform detector below it is
             // the inner one and sees a second finger before anything else does.
             // The other order lets the double-tap detector spend its timeout
@@ -212,6 +217,7 @@ fun OrbUniverse(
         UniverseHud(
             depth = depth,
             fraction = fraction,
+            here = shells[0],
             palette = palette,
             modifier = Modifier.fillMaxSize(),
         )
@@ -227,6 +233,7 @@ fun OrbUniverse(
 private fun UniverseHud(
     depth: Int,
     fraction: Float,
+    here: ShellSpec?,
     palette: JarvisPalette,
     modifier: Modifier = Modifier,
 ) {
@@ -243,12 +250,32 @@ private fun UniverseHud(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
+            // The place you are actually in, by name. Without this the readout
+            // said only how DEEP you were, and since every level is the same kind
+            // of thing at a different scale, that made a descent of ten look
+            // exactly like a descent of one.
+            if (here != null) {
+                Text(
+                    text = here.designation,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = palette.wordmark,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                )
+                Text(
+                    text = UniverseMath.describe(here),
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
+                    color = palette.accent.copy(alpha = 0.75f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                )
+            }
             Text(
                 text = "DEPTH ${depth.coerceAtLeast(0)}·${(fraction * 100).toInt().toString().padStart(2, '0')}",
                 style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 3.sp),
-                color = palette.accent.copy(alpha = 0.65f),
+                color = palette.accent.copy(alpha = 0.50f),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
         }
         Text(
@@ -306,11 +333,24 @@ private fun DrawScope.drawShell(
         center = at,
     )
 
+    // Gas first, under everything: a broad tinted haze that gives the structure
+    // something to sit IN. Without it a shell is bright specks on black, which is
+    // what "more details" was pointing at — the specks were fine, the space
+    // between them was empty.
+    drawGas(spec, at, radius, alpha, turn, accent, highlight, secondary)
+
     when (spec.kind) {
         ShellKind.Spiral -> drawArms(spec, at, radius, alpha, presence, turn, squash, style, accent, highlight)
         ShellKind.Ringed -> drawDisc(spec, at, radius, alpha, presence, turn, squash, style, accent, highlight)
         ShellKind.Cluster -> drawSwarm(spec, at, radius, alpha, presence, turn, style, accent, highlight)
         ShellKind.Binary -> drawBinary(spec, at, radius, alpha, presence, clock, style, accent, highlight)
+    }
+
+    // Dark lanes cut across the structure after it is drawn, which is the only
+    // order that works: a dust lane is an absence of light, so it has to subtract
+    // from something that is already there.
+    if (spec.lanes > 0 && presence > 0.35f) {
+        drawLanes(spec, at, radius, alpha, presence, turn, squash)
     }
 
     // Orbits and their bodies, on top of whatever the structure was.
@@ -320,6 +360,95 @@ private fun DrawScope.drawShell(
 
     if (core > 0.004f) {
         drawCore(at, radius * spec.coreSize, alpha * core, highlight, accent)
+    }
+}
+
+/**
+ * The gas a structure sits in.
+ *
+ * Five broad tinted veils, offset from the centre and drifting on their own
+ * clocks. This is the cheapest thing in the file and it does more for the look
+ * than anything else in it: bright points on black read as a screensaver, and the
+ * same points inside a coloured cloud read as a place. Drawn under everything and
+ * ending in full transparency, so it never puts an edge anywhere.
+ */
+private fun DrawScope.drawGas(
+    spec: ShellSpec,
+    at: Offset,
+    radius: Float,
+    alpha: Float,
+    turn: Float,
+    accent: Color,
+    highlight: Color,
+    secondary: Color,
+) {
+    val seed = spec.seed * 5171
+    for (i in 0 until 5) {
+        val drift = turn * OrbMath.range(seed + i * 9, 0.10f, 0.30f) + i * 1.7f
+        val off = radius * OrbMath.range(seed + i * 7, 0.05f, 0.55f)
+        val centre = Offset(
+            at.x + cos(drift) * off,
+            at.y + sin(drift * 1.21f) * off * 0.72f,
+        )
+        val size = radius * OrbMath.range(seed + i * 11, 0.55f, 1.35f)
+        val colour = when (i % 3) {
+            0 -> accent
+            1 -> highlight
+            else -> secondary
+        }
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    colour.copy(alpha = alpha * spec.haze * OrbMath.range(seed + i * 3, 0.05f, 0.13f)),
+                    colour.copy(alpha = alpha * spec.haze * 0.03f),
+                    Color.Transparent,
+                ),
+                center = centre,
+                radius = size,
+            ),
+            radius = size,
+            center = centre,
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/**
+ * Dust lanes: dark bands cutting across the structure.
+ *
+ * The one element here drawn with ordinary alpha rather than [BlendMode.Plus],
+ * because it is the only one that takes light AWAY. Every real spiral has these
+ * and they are most of what makes the arms read as arms — an evenly bright disc
+ * has no structure to see, however many motes are in it.
+ */
+private fun DrawScope.drawLanes(
+    spec: ShellSpec,
+    at: Offset,
+    radius: Float,
+    alpha: Float,
+    presence: Float,
+    turn: Float,
+    squash: Float,
+) {
+    val seed = spec.seed * 6733
+    for (i in 0 until spec.lanes) {
+        val f = OrbMath.range(seed + i * 13, 0.34f, 0.92f)
+        val r = radius * f
+        val sweep = turn * (0.6f + f) + OrbMath.unitRandom(seed + i * 5) * OrbMath.TAU
+        val span = OrbMath.range(seed + i * 7, 0.7f, 1.9f)
+        // Drawn as a run of soft dark dabs along an arc, so it fades in and out
+        // along its length instead of ending abruptly.
+        val steps = (12 + presence * 20).toInt()
+        for (k in 0 until steps) {
+            val p = k.toFloat() / (steps - 1)
+            val a = sweep + (p - 0.5f) * span
+            val fade = kotlin.math.sin(p * OrbMath.PI_F)
+            drawCircle(
+                color = Color.Black.copy(alpha = alpha * 0.26f * fade),
+                radius = radius * 0.055f * (0.6f + presence * 0.7f),
+                center = Offset(at.x + cos(a) * r, at.y + sin(a) * r * squash),
+            )
+        }
     }
 }
 
@@ -339,7 +468,7 @@ private fun DrawScope.drawArms(
     // Every scatter below is hashed with this, so two shells on screen at
     // once are two different places rather than the same one twice.
     val scatter0 = spec.seed * 7919
-    val arms = 2 + (abs(spec.armTwist).toInt() % 2)
+    val arms = spec.arms
     val count = (spec.dust * presence * alpha).toInt()
     for (i in 0 until count) {
         val arm = i % arms
@@ -526,33 +655,84 @@ private fun DrawScope.drawSatellite(
         )
     }
 
-    val a = moon.phase + clock * moon.speed
-    // Position in the orbit's own plane, then tipped into the screen's.
-    val ox = cos(a) * r
-    val oy = sin(a) * r * squash
     val rad = tilt * (OrbMath.TAU / 360f)
-    val p = Offset(
-        at.x + ox * cos(rad) - oy * sin(rad),
-        at.y + ox * sin(rad) + oy * cos(rad),
-    )
+    val cr = cos(rad)
+    val sr = sin(rad)
+
+    /** Where the body is at angle [ang], tipped from its own plane into the screen's. */
+    fun placeAt(ang: Float): Offset {
+        val ox = cos(ang) * r
+        val oy = sin(ang) * r * squash
+        return Offset(at.x + ox * cr - oy * sr, at.y + ox * sr + oy * cr)
+    }
+
+    val a = moon.phase + clock * moon.speed
+    val p = placeAt(a)
     // sin(a) > 0 is the half of the orbit nearer the camera.
     val near = 0.5f + sin(a) * 0.5f
     val body = radius * moon.size * (0.65f + near * 0.6f)
     if (body < 0.6f) return
+
+    // The trail: where it has just been, fading out behind it. This is what says
+    // the body is TRAVELLING — a bright dot sitting on an ellipse is ambiguous
+    // about which way it is going, or whether it is going anywhere.
+    if (presence > 0.30f) {
+        val back = if (moon.speed > 0f) -1f else 1f
+        for (k in 1..10) {
+            val t = k / 10f
+            val q = placeAt(a + back * t * 0.55f)
+            drawCircle(
+                color = colour.copy(alpha = alpha * (1f - t) * 0.30f * near),
+                radius = body * (1f - t) * 0.45f,
+                center = q,
+                blendMode = BlendMode.Plus,
+            )
+        }
+    }
+
+    // The glow it casts.
     drawCircle(
         brush = Brush.radialGradient(
             listOf(
-                Color.White.copy(alpha = alpha * (0.35f + near * 0.5f)),
-                colour.copy(alpha = alpha * (0.25f + near * 0.4f)),
+                colour.copy(alpha = alpha * (0.30f + near * 0.35f)),
+                colour.copy(alpha = alpha * 0.10f),
                 Color.Transparent,
             ),
             center = p,
-            radius = body * 2.4f,
+            radius = body * 2.6f,
         ),
-        radius = body * 2.4f,
+        radius = body * 2.6f,
         center = p,
         blendMode = BlendMode.Plus,
     )
+
+    // Close up, it stops being a point of light and becomes a WORLD: a disc lit
+    // from one side with a dark far limb. Below this size the shading is
+    // indistinguishable from a plain dot and costs the same, so it is skipped.
+    if (presence > 0.5f && body > 3.5f) {
+        val lit = Offset(p.x - body * 0.38f, p.y - body * 0.30f)
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    Color.White.copy(alpha = alpha * 0.92f),
+                    colour.copy(alpha = alpha * 0.80f),
+                    Color.Black.copy(alpha = alpha * 0.55f),
+                ),
+                center = lit,
+                radius = body * 1.7f,
+            ),
+            radius = body,
+            center = p,
+        )
+    } else {
+        drawCircle(
+            color = Color.White.copy(alpha = alpha * (0.30f + near * 0.45f)),
+            radius = body * 0.55f,
+            center = p,
+            blendMode = BlendMode.Plus,
+        )
+    }
+
     if (presence > 0.55f && near > 0.85f) {
         flare(p, body * 2.0f, Color.White, alpha * 0.30f)
     }
@@ -599,6 +779,19 @@ private fun DrawScope.drawDeepField(clock: Float, accent: Color) {
             center = Offset(x, y),
         )
     }
+}
+
+/**
+ * The void a dive happens in: the theme's own backdrop pulled most of the way to
+ * black, and fully opaque.
+ *
+ * Opaque is the whole point — see the note at the call site. Themed rather than a
+ * flat black because the four themes are meant to be four different places, and
+ * a shared black void is the one surface that would make them identical again.
+ */
+private fun deepSpace(style: OrbStyle): Color {
+    val base = ThemeArt.backdrop(style)
+    return Color(base.red * 0.30f, base.green * 0.30f, base.blue * 0.30f, 1f)
 }
 
 /** Colour at [fraction] of the way out, from the theme's own measured ramp. */

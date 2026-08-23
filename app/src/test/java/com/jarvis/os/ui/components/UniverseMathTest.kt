@@ -252,6 +252,79 @@ class UniverseMathTest {
         assertEquals(UniverseMath.labelFor(0), UniverseMath.labelFor(UniverseMath.depthOf(UniverseMath.CLOSE_AT)))
     }
 
+    // ---- what a place is called ------------------------------------------
+
+    @Test
+    fun `every shell has a name, and it is the same name every time`() {
+        (0..80).forEach { seed ->
+            val name = UniverseMath.designationFor(seed)
+            assertEquals("a designation must be stable", name, UniverseMath.designationFor(seed))
+            assertTrue("designation '$name' is not catalogue-shaped", name.matches(Regex("[A-Z]{2}-[0-9]{4}")))
+        }
+    }
+
+    @Test
+    fun `names do not read as numbers`() {
+        // I and O in a catalogue number are read as 1 and 0. Cheap to exclude,
+        // impossible to fix once someone has memorised the wrong one.
+        (0..300).forEach { seed ->
+            val name = UniverseMath.designationFor(seed)
+            assertTrue("'$name' contains an ambiguous letter", !name.take(2).contains('I'))
+            assertTrue("'$name' contains an ambiguous letter", !name.take(2).contains('O'))
+        }
+    }
+
+    @Test
+    fun `neighbouring places have different names`() {
+        // The names are the only thing distinguishing one level from the next, so
+        // a collision between adjacent shells would read as not having moved.
+        val names = (0..40).map { UniverseMath.designationFor(it) }
+        names.zipWithNext().forEachIndexed { i, (a, b) ->
+            assertNotEquals("shells $i and ${i + 1} share a designation", a, b)
+        }
+        assertTrue("designations collide far too often", names.toSet().size >= names.size - 1)
+    }
+
+    @Test
+    fun `the description says what the place actually is`() {
+        (0..60).forEach { seed ->
+            val spec = UniverseMath.shellAt(seed)
+            val text = UniverseMath.describe(spec)
+            assertTrue("shell $seed has no description", text.isNotBlank())
+            assertTrue(
+                "shell $seed describes ${spec.satellites.size} bodies as: $text",
+                text.contains("${spec.satellites.size} "),
+            )
+            val shape = when (spec.kind) {
+                ShellKind.Spiral -> "SPIRAL"
+                ShellKind.Ringed -> "RINGED"
+                ShellKind.Cluster -> "SWARM"
+                ShellKind.Binary -> "BINARY"
+            }
+            assertTrue("a ${spec.kind} shell is described as '$text'", text.contains(shape))
+        }
+    }
+
+    @Test
+    fun `one body is a body, not one bodies`() {
+        // The description is on screen the whole time you are in a place, so the
+        // one case where the plural is wrong would be seen constantly.
+        val single = UniverseMath.describe(
+            UniverseMath.shellAt(0).copy(satellites = UniverseMath.shellAt(0).satellites.take(1)),
+        )
+        assertTrue("singular reads wrong: $single", single.contains("1 BODY"))
+    }
+
+    @Test
+    fun `a spiral names how many arms it has`() {
+        (0..60).map { UniverseMath.shellAt(it) }
+            .filter { it.kind == ShellKind.Spiral }
+            .forEach {
+                assertTrue("a spiral with ${it.arms} arms is not a spiral", it.arms >= 2)
+                assertTrue("shell ${it.seed}: ${UniverseMath.describe(it)}", UniverseMath.describe(it).contains("${it.arms}-ARM"))
+            }
+    }
+
     // ---- gestures --------------------------------------------------------
 
     @Test

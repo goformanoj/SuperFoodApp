@@ -1,6 +1,7 @@
 package com.jarvis.os.ui.components
 
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
@@ -151,6 +152,64 @@ object Orb3D {
             out[o + 1] = py * scale
             out[o + 2] = rz
         }
+    }
+
+    /**
+     * The furthest a ring of [radius] projects from the centre, over every phase
+     * of a precession that swings its tilts by [swingX] and [swingY].
+     *
+     * Sampled, not solved, and it runs the SAME projection [ringInto] does rather
+     * than a tidy approximation of it — the whole value of this number is that it
+     * agrees with what is actually drawn. A ring only clips at the worst moment
+     * of its precession, which is a moment no static inspection of the spec would
+     * ever surface: Orbit's widest ring is nominally 1.55 orb radii, and by the
+     * time perspective has magnified its near side it reaches 1.46 half-FRAMES,
+     * against a drawing area of 1.0. Both edges were cut off on the device and
+     * nothing in the numbers said so.
+     *
+     * The result is in orb radii, and it is scale-invariant: the camera, the
+     * focal length and the ring all scale together, so a caller can multiply by
+     * whatever pixel radius it likes.
+     */
+    fun ringExtent(
+        radius: Float,
+        tiltX: Float,
+        tiltY: Float,
+        swingX: Float,
+        swingY: Float,
+        cameraDistance: Float,
+        focal: Float,
+        tiltSteps: Int = 13,
+        angleSteps: Int = 72,
+    ): Float {
+        var worst = 0f
+        val tSteps = max(tiltSteps, 2)
+        val aSteps = max(angleSteps, 8)
+        for (i in 0 until tSteps) {
+            val tx = tiltX - swingX + 2f * swingX * i / (tSteps - 1)
+            val cx = cos(tx)
+            val sx = sin(tx)
+            for (j in 0 until tSteps) {
+                val ty = tiltY - swingY + 2f * swingY * j / (tSteps - 1)
+                val cy = cos(ty)
+                val sy = sin(ty)
+                for (k in 0 until aSteps) {
+                    val a = TAU * k / aSteps
+                    val px = cos(a) * radius
+                    val py0 = sin(a) * radius
+                    val py = py0 * cx
+                    val pz0 = py0 * sx
+                    val rx = px * cy + pz0 * sy
+                    val rz = -px * sy + pz0 * cy
+                    val scale = focal / max(cameraDistance - rz, 0.05f)
+                    val ax = abs(rx * scale)
+                    val ay = abs(py * scale)
+                    if (ax > worst) worst = ax
+                    if (ay > worst) worst = ay
+                }
+            }
+        }
+        return worst
     }
 
     /**

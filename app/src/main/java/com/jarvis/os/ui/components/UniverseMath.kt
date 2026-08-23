@@ -172,8 +172,20 @@ object UniverseMath {
         return ShellSpec(
             seed = seed,
             kind = kind,
+            designation = designationFor(seed),
             coreSize = OrbMath.range(seed * 41 + 5, 0.10f, 0.17f),
             satellites = satellites,
+            // Decided here rather than in the renderer, so the arm count is part
+            // of what a shell IS and can be named in the readout. It was derived
+            // from armTwist inside the draw loop, where nothing else could see it.
+            arms = 2 + (OrbMath.unitRandom(seed * 83 + 19) * 3).toInt(),
+            haze = OrbMath.range(seed * 97 + 23, 0.35f, 1f),
+            lanes = when (kind) {
+                ShellKind.Spiral -> 2 + (OrbMath.unitRandom(seed * 29 + 31) * 3).toInt()
+                ShellKind.Ringed -> 3
+                ShellKind.Cluster -> 0
+                ShellKind.Binary -> 1
+            },
             dust = when (kind) {
                 ShellKind.Spiral -> 220
                 ShellKind.Cluster -> 170
@@ -184,6 +196,43 @@ object UniverseMath {
                 (if (OrbMath.unitRandom(seed * 59 + 12) > 0.5f) 1f else -1f),
             tilt = OrbMath.range(seed * 71 + 13, -0.7f, 0.7f),
         )
+    }
+
+    /**
+     * A catalogue name for the structure at [seed].
+     *
+     * "more descriptive" was the note, and this is most of the answer. The
+     * geometry is self-similar by construction, so a shell twelve levels down and
+     * a shell one level down are the same KIND of thing seen at different scales
+     * — which means the only way a descent feels like it is going somewhere is if
+     * each place is named. A name also makes the dive verifiable by eye: fly down
+     * and back up, and the same designation should come back.
+     *
+     * Two letters and four digits, both from the seed, so it is stable forever
+     * and needs nothing stored.
+     */
+    fun designationFor(seed: Int): String {
+        val a = LETTERS[(OrbMath.unitRandom(seed * 13 + 41) * LETTERS.length).toInt()
+            .coerceAtMost(LETTERS.length - 1)]
+        val b = LETTERS[(OrbMath.unitRandom(seed * 53 + 7) * LETTERS.length).toInt()
+            .coerceAtMost(LETTERS.length - 1)]
+        val n = (OrbMath.unitRandom(seed * 61 + 11) * 9000f).toInt() + 1000
+        return "$a$b-$n"
+    }
+
+    /**
+     * What this place is, in one line: its shape, what it holds, and how it is
+     * built. Shown under the tier name while you are inside it.
+     */
+    fun describe(spec: ShellSpec): String {
+        val bodies = "${spec.satellites.size} " + if (spec.satellites.size == 1) "BODY" else "BODIES"
+        val shape = when (spec.kind) {
+            ShellKind.Spiral -> "${spec.arms}-ARM SPIRAL"
+            ShellKind.Ringed -> "RINGED DISC"
+            ShellKind.Cluster -> "GLOBULAR SWARM"
+            ShellKind.Binary -> "BINARY PAIR"
+        }
+        return "$shape · $bodies"
     }
 
     /** True once the pinch has been dragged back past the top of the ladder. */
@@ -227,6 +276,9 @@ object UniverseMath {
     private const val NEAR_FADE = 1.00f
     private const val FAR_FADE = -1.55f
     private const val FAR_GONE = -1.90f
+
+    /** No I or O: they read as 1 and 0 in a catalogue number. */
+    private const val LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"
 
     private val TIERS = listOf(
         "GALAXY", "CLUSTER", "SYSTEM", "WORLD", "MOON",
@@ -273,9 +325,17 @@ data class ShellSpec(
      */
     val seed: Int,
     val kind: ShellKind,
+    /** Catalogue name, shown in the readout — see [UniverseMath.designationFor]. */
+    val designation: String,
     val coreSize: Float,
     val satellites: List<Satellite>,
     val dust: Int,
     val armTwist: Float,
     val tilt: Float,
+    /** How many arms a spiral winds out of its hub. */
+    val arms: Int,
+    /** How much gas this structure sits in, 0..1. */
+    val haze: Float,
+    /** Dark dust lanes cutting across the structure. */
+    val lanes: Int,
 )

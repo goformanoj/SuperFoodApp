@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.jarvis.os.ui.theme.OrbStyle
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -25,36 +26,6 @@ data class OrbFrame(
     val breathe: Float,
     /** 0..1, live microphone level. */
     val amp: Float,
-)
-
-/** One ring of the orb, in three dimensions. */
-data class Ring3D(
-    /** Fraction of the orb radius. */
-    val radius: Float,
-    /** Resting tilt about X and Y, radians. */
-    val tiltX: Float,
-    val tiltY: Float,
-    /** How fast this ring precesses and spins, as multiples of the master clock. */
-    val precession: Float,
-    val spin: Float,
-    /** 0 = accent, 1 = highlight; blended, so a ring can be any mix. */
-    val warmth: Float,
-    val width: Float,
-    /** Fraction of the ring lit brightly — the travelling arc. 1f lights it all. */
-    val arc: Float = 0.34f,
-    /** Half-thickness of the luminous band, as a fraction of the ring's radius. */
-    val band: Float = 0.10f,
-)
-
-/** Everything a theme needs to build its orb. */
-data class Orb3DSpec(
-    val rings: List<Ring3D>,
-    val motes: Int,
-    val coreSize: Float,
-    /** Radial spokes inside the core, for the mechanical designs. */
-    val spokes: Int = 0,
-    /** Crystal shards standing on the widest ring. */
-    val shards: Int = 0,
 )
 
 /**
@@ -91,8 +62,11 @@ fun DrawScope.drawOrb3D(
 ) {
     val spec = specFor(style)
     val r = f.radius
-    val camera = r * 3.4f
-    val focal = r * 2.55f
+    // From the spec file, not inline literals: `extentFor` measures whether a
+    // theme fits using these exact numbers, and a copy that drifts would let the
+    // fit check clear a ring that then clips.
+    val camera = r * CAMERA_DISTANCE
+    val focal = r * FOCAL
     // Radians: the master clock arrives in degrees.
     val t = f.drift * (Orb3D.TAU / 360f)
 
@@ -117,17 +91,31 @@ fun DrawScope.drawOrb3D(
         drawRing(style, ring, r * breathe, camera, focal, t, detail, accent, highlight, f.amp)
     }
 
-    if (spec.shards > 0) {
-        drawShards(spec, r * breathe, camera, focal, t, detail, accent, highlight, f.amp)
-    }
-
     drawMotes((spec.motes * detail.moteScale).toInt(), r * breathe, camera, focal, t, accent, highlight)
+
+    if (spec.lobes > 0) {
+        drawLobes(spec.lobes, r * breathe, t, accent, highlight, secondary, f.breathe)
+    }
 
     if (spec.spokes > 0) {
         drawSpokes(spec.spokes, r * breathe, camera, focal, t, highlight)
     }
 
-    drawCore(spec.coreSize, r, ThemeArt.at(style, 0f), highlight, secondary, f)
+    // The centre goes on last and differs per theme — see [CoreKind]. Four sets
+    // of rings around one identical glow is what made the themes read as
+    // recolours of each other; the centre is the largest, brightest thing on
+    // screen and it now says which theme this is on its own.
+    val coreColour = ThemeArt.at(style, 0f)
+    when (spec.core) {
+        CoreKind.Spark -> drawSparkCore(spec.coreSize, r, coreColour, highlight, secondary, f)
+        CoreKind.Molten -> drawMoltenCore(spec.coreSize, r, coreColour, accent, highlight, t, f)
+        CoreKind.Diffuse -> drawDiffuseCore(spec.coreSize, r, coreColour, accent, highlight, t, f)
+        CoreKind.World -> drawWorldCore(spec.coreSize, r, style, accent, highlight, t, f)
+    }
+
+    if (spec.embers > 0) {
+        drawEmbers(spec.embers, r, spec.coreSize, t, highlight, accent)
+    }
 }
 
 /**
@@ -160,8 +148,8 @@ private fun DrawScope.drawRing(
     val half = rr * ring.band
     // Precession: the tilt itself turns, which is what makes a ring read as a
     // gyroscope rather than a fixed ellipse with something sliding round it.
-    val tiltX = ring.tiltX + sin(t * ring.precession) * 0.45f
-    val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * 0.55f
+    val tiltX = ring.tiltX + sin(t * ring.precession) * PRECESS_SWING_X
+    val tiltY = ring.tiltY + cos(t * ring.precession * 0.7f) * PRECESS_SWING_Y
     val spin = t * ring.spin
 
     val seg = detail.segments
@@ -255,54 +243,6 @@ private fun DrawScope.drawMotes(
     }
 }
 
-/** Crystal shards standing off the widest ring, for the faceted designs. */
-private fun DrawScope.drawShards(
-    spec: Orb3DSpec,
-    radius: Float,
-    camera: Float,
-    focal: Float,
-    t: Float,
-    detail: OrbDetail,
-    accent: Color,
-    highlight: Color,
-    amp: Float,
-) {
-    val base = spec.rings.maxOf { it.radius } * radius * 0.82f
-    val tilt = 0.55f + sin(t * 0.4f) * 0.22f
-    for (i in 0 until spec.shards) {
-        val a = (i.toFloat() / spec.shards) * Orb3D.TAU + t * 0.5f
-        val tip = Orb3D.rotateX(
-            Vec3(cos(a) * base * 1.30f, sin(a) * base * 1.30f, 0f), tilt,
-        )
-        val l = Orb3D.rotateX(
-            Vec3(cos(a - 0.16f) * base, sin(a - 0.16f) * base, 0f), tilt,
-        )
-        val rr = Orb3D.rotateX(
-            Vec3(cos(a + 0.16f) * base, sin(a + 0.16f) * base, 0f), tilt,
-        )
-        val pt = Orb3D.project(tip, camera, focal)
-        val pl = Orb3D.project(l, camera, focal)
-        val pr = Orb3D.project(rr, camera, focal)
-        val depth = Orb3D.depthFactor((pt.depth + pl.depth + pr.depth) / 3f, base)
-
-        val path = detail.scratch.apply {
-            reset()
-            moveTo(center.x + pt.x, center.y + pt.y)
-            lineTo(center.x + pl.x, center.y + pl.y)
-            lineTo(center.x + pr.x, center.y + pr.y)
-            close()
-        }
-        val colour = if (i % 2 == 0) accent else highlight
-        drawPath(path, colour.copy(alpha = (0.10f + depth * 0.35f)), blendMode = BlendMode.Plus)
-        drawPath(
-            path,
-            colour.copy(alpha = 0.25f + depth * 0.55f + amp * 0.15f),
-            style = Stroke(px(0.6f + depth * 1.1f)),
-            blendMode = BlendMode.Plus,
-        )
-    }
-}
-
 /** Radial spokes in the hub, turning against the rings. */
 private fun DrawScope.drawSpokes(
     count: Int,
@@ -335,8 +275,11 @@ private fun DrawScope.drawSpokes(
     }
 }
 
-/** The reactor core: a hot centre that answers the microphone. */
-private fun DrawScope.drawCore(
+/**
+ * SPARK — the reactor's centre: a hard white point in a tight iris, answering
+ * the microphone. Small, so the rings around it are the subject.
+ */
+private fun DrawScope.drawSparkCore(
     size: Float,
     radius: Float,
     accent: Color,
@@ -369,6 +312,298 @@ private fun DrawScope.drawCore(
     flare(center, cr * 1.5f, Color.White, 0.35f + f.amp * 0.35f)
 }
 
+/**
+ * MOLTEN — the forge's centre: a mass with a crust.
+ *
+ * The distinction that makes it read as *hot metal* rather than as a bright
+ * light is that it has a SURFACE. A glow has no edge and no detail; this has a
+ * dark rim, cracks that open across it, and a bright interior showing through
+ * them. Everything is keyed off one slow clock so the crust seems to shift
+ * rather than flicker.
+ */
+private fun DrawScope.drawMoltenCore(
+    size: Float,
+    radius: Float,
+    deep: Color,
+    accent: Color,
+    highlight: Color,
+    t: Float,
+    f: OrbFrame,
+) {
+    val cr = radius * size * (0.94f + f.breathe * 0.06f + f.amp * 0.16f)
+
+    // The body: bright at the centre, falling to a dark crust at the rim rather
+    // than to transparency. The dark stop is what gives it an edge.
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(
+                Color.White.copy(alpha = 0.92f),
+                highlight.copy(alpha = 0.80f),
+                accent.copy(alpha = 0.55f),
+                deep.copy(alpha = 0.75f),
+            ),
+            center = center,
+            radius = cr,
+        ),
+        radius = cr,
+        center = center,
+    )
+
+    // Cracks: bright seams across the crust, each drifting on its own clock so
+    // the surface never repeats a pose.
+    for (i in 0 until 9) {
+        val a = OrbMath.range(i * 13 + 5, 0f, Orb3D.TAU) + sin(t * OrbMath.range(i * 7 + 2, 0.10f, 0.30f)) * 0.5f
+        val len = cr * OrbMath.range(i * 11 + 3, 0.35f, 0.94f)
+        val from = cr * OrbMath.range(i * 5 + 9, 0.05f, 0.30f)
+        val heat = 0.30f + 0.45f * abs(sin(t * OrbMath.range(i * 3 + 1, 0.20f, 0.55f) + i))
+        drawLine(
+            brush = Brush.linearGradient(
+                listOf(Color.Transparent, highlight.copy(alpha = heat), Color.Transparent),
+                start = Offset(center.x + cos(a) * from, center.y + sin(a) * from),
+                end = Offset(center.x + cos(a) * len, center.y + sin(a) * len),
+            ),
+            start = Offset(center.x + cos(a) * from, center.y + sin(a) * from),
+            end = Offset(center.x + cos(a) * len, center.y + sin(a) * len),
+            strokeWidth = px(0.9f + heat * 1.6f),
+            cap = StrokeCap.Round,
+            blendMode = BlendMode.Plus,
+        )
+    }
+
+    // The heat it throws, outside the body.
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(highlight.copy(alpha = 0.30f + f.amp * 0.25f), Color.Transparent),
+            center = center,
+            radius = cr * 2.4f,
+        ),
+        radius = cr * 2.4f,
+        center = center,
+        blendMode = BlendMode.Plus,
+    )
+}
+
+/**
+ * DIFFUSE — the nebula's centre: layered gas with no surface anywhere.
+ *
+ * The opposite decision to [drawMoltenCore], and deliberately so. Five broad
+ * overlapping veils, each offset a little from the middle and drifting on its
+ * own clock, each ending in full transparency. Nothing here has an edge, which
+ * is the whole identity of the theme — a nebula that resolves to a disc with a
+ * rim is just a planet.
+ */
+private fun DrawScope.drawDiffuseCore(
+    size: Float,
+    radius: Float,
+    deep: Color,
+    accent: Color,
+    highlight: Color,
+    t: Float,
+    f: OrbFrame,
+) {
+    val cr = radius * size * (1f + f.breathe * 0.10f + f.amp * 0.20f)
+    for (i in 0 until 5) {
+        val drift = t * OrbMath.range(i * 9 + 4, 0.08f, 0.22f) + i
+        val off = cr * OrbMath.range(i * 7 + 1, 0.10f, 0.42f)
+        val at = Offset(center.x + cos(drift) * off, center.y + sin(drift * 1.3f) * off * 0.7f)
+        val veil = cr * OrbMath.range(i * 5 + 3, 0.85f, 1.9f)
+        val colour = when (i % 3) {
+            0 -> highlight
+            1 -> accent
+            else -> deep
+        }
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    colour.copy(alpha = 0.20f + f.amp * 0.10f),
+                    colour.copy(alpha = 0.07f),
+                    Color.Transparent,
+                ),
+                center = at,
+                radius = veil,
+            ),
+            radius = veil,
+            center = at,
+            blendMode = BlendMode.Plus,
+        )
+    }
+    // One small bright knot, so the cloud has somewhere to be looking at.
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(Color.White.copy(alpha = 0.55f), highlight.copy(alpha = 0.20f), Color.Transparent),
+            center = center,
+            radius = cr * 0.45f,
+        ),
+        radius = cr * 0.45f,
+        center = center,
+        blendMode = BlendMode.Plus,
+    )
+}
+
+/**
+ * WORLD — the ringed planet: a lit sphere with a terminator and a bright limb.
+ *
+ * The terminator is the whole thing. A flat disc with a radial glow reads as a
+ * light source; a disc lit from one side, dark on the other, with a thin bright
+ * edge where the atmosphere catches the sun, reads as a BODY — and the rings
+ * around it stop being decoration and start being in orbit around something.
+ */
+private fun DrawScope.drawWorldCore(
+    size: Float,
+    radius: Float,
+    style: OrbStyle,
+    accent: Color,
+    highlight: Color,
+    t: Float,
+    f: OrbFrame,
+) {
+    val cr = radius * size * (0.98f + f.breathe * 0.02f + f.amp * 0.08f)
+    // Where the sun is. Turns very slowly, so the world is never posed the same
+    // way twice but never appears to spin either.
+    val sun = t * 0.06f
+    val lit = Offset(center.x - cos(sun) * cr * 0.42f, center.y - sin(sun) * cr * 0.34f)
+
+    // The body: bright on the sunward side, falling to near-black at the far limb.
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(
+                ThemeArt.at(style, 0.05f).copy(alpha = 0.98f),
+                ThemeArt.at(style, 0.35f).copy(alpha = 0.85f),
+                ThemeArt.at(style, 0.75f).copy(alpha = 0.55f),
+                Color.Black.copy(alpha = 0.86f),
+            ),
+            center = lit,
+            radius = cr * 1.55f,
+        ),
+        radius = cr,
+        center = center,
+    )
+
+    // Cloud banding, squashed into latitudes so the sphere has a surface.
+    for (i in 0 until 6) {
+        val y = (i - 2.5f) / 3.2f
+        val w = cr * kotlin.math.sqrt((1f - y * y).coerceAtLeast(0f))
+        if (w <= 1f) continue
+        drawLine(
+            color = highlight.copy(alpha = 0.05f + 0.05f * abs(sin(t * 0.2f + i))),
+            start = Offset(center.x - w, center.y + y * cr),
+            end = Offset(center.x + w, center.y + y * cr),
+            strokeWidth = px(1.4f),
+            cap = StrokeCap.Round,
+            blendMode = BlendMode.Plus,
+        )
+    }
+
+    // The limb: a thin bright rim on the sunward side only, fading round to
+    // nothing. Drawn as short arcs so it can fade — a stroked circle cannot.
+    for (i in 0 until 48) {
+        val a = Orb3D.TAU * i / 48f
+        val facing = ((cos(a - sun) + 1f) / 2f)
+        if (facing < 0.35f) continue
+        val edge = Offset(center.x + cos(a) * cr, center.y + sin(a) * cr)
+        drawCircle(
+            color = highlight.copy(alpha = (facing - 0.35f) * 0.85f),
+            radius = px(1.1f),
+            center = edge,
+            blendMode = BlendMode.Plus,
+        )
+    }
+
+    // The atmosphere it sits in.
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(Color.Transparent, accent.copy(alpha = 0.16f + f.amp * 0.14f), Color.Transparent),
+            center = center,
+            radius = cr * 1.35f,
+        ),
+        radius = cr * 1.35f,
+        center = center,
+        blendMode = BlendMode.Plus,
+    )
+}
+
+/**
+ * Gas lobes: broad soft billows around the centre, for the nebula.
+ *
+ * Flat 2D on purpose, unlike everything else in this file. A cloud has no
+ * geometry to project — giving these depth-shaded 3D positions would make them
+ * read as objects orbiting, which is precisely what a nebula is not.
+ */
+private fun DrawScope.drawLobes(
+    count: Int,
+    radius: Float,
+    t: Float,
+    accent: Color,
+    highlight: Color,
+    secondary: Color,
+    breathe: Float,
+) {
+    for (i in 0 until count) {
+        val orbit = radius * OrbMath.range(i * 11 + 7, 0.30f, 0.92f)
+        val a = OrbMath.unitRandom(i * 5 + 2) * Orb3D.TAU +
+            t * OrbMath.range(i * 3 + 8, 0.05f, 0.18f) * (if (i % 2 == 0) 1f else -1f)
+        val at = Offset(center.x + cos(a) * orbit, center.y + sin(a) * orbit * 0.72f)
+        val puff = radius * OrbMath.range(i * 7 + 4, 0.22f, 0.52f) * (0.92f + breathe * 0.16f)
+        val colour = when (i % 3) {
+            0 -> accent
+            1 -> highlight
+            else -> secondary
+        }
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    colour.copy(alpha = OrbMath.range(i * 13 + 1, 0.08f, 0.20f)),
+                    colour.copy(alpha = 0.04f),
+                    Color.Transparent,
+                ),
+                center = at,
+                radius = puff,
+            ),
+            radius = puff,
+            center = at,
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
+/**
+ * Embers lifting off the forge.
+ *
+ * The only element in any theme that travels in one DIRECTION rather than round
+ * the centre, which is what makes it read as heat rising instead of as more dust
+ * in orbit. Each ember runs its own loop of the master clock, so they leave and
+ * arrive continuously rather than as a pulse.
+ */
+private fun DrawScope.drawEmbers(
+    count: Int,
+    radius: Float,
+    coreSize: Float,
+    t: Float,
+    highlight: Color,
+    accent: Color,
+) {
+    for (i in 0 until count) {
+        val speed = OrbMath.range(i * 7 + 3, 0.10f, 0.26f)
+        // Its own phase through a rise, wrapped, so the field is never in step.
+        val life = Orb3D.wrap01(OrbMath.unitRandom(i * 11 + 5) + t * speed)
+        val lane = OrbMath.range(i * 5 + 1, -1f, 1f)
+        // Rising and spreading, with a slow sideways wander.
+        val up = radius * (coreSize * 0.7f + life * 1.05f)
+        val across = radius * lane * (0.10f + life * 0.42f) +
+            sin(t * 0.6f + i) * radius * 0.03f
+        // Bright at the crust, gone by the top.
+        val heat = (1f - life) * (1f - life)
+        if (heat < 0.02f) continue
+        val colour = if (i % 4 == 0) accent else highlight
+        drawCircle(
+            color = colour.copy(alpha = heat * OrbMath.range(i * 3 + 6, 0.35f, 0.85f)),
+            radius = px(0.5f + heat * 1.5f),
+            center = Offset(center.x + across, center.y - up),
+            blendMode = BlendMode.Plus,
+        )
+    }
+}
+
 private fun lerpColor(a: Color, b: Color, t: Float): Color {
     val k = t.coerceIn(0f, 1f)
     return Color(
@@ -376,107 +611,5 @@ private fun lerpColor(a: Color, b: Color, t: Float): Color {
         green = a.green + (b.green - a.green) * k,
         blue = a.blue + (b.blue - a.blue) * k,
         alpha = 1f,
-    )
-}
-
-/**
- * Per-theme geometry. The references differ in what their rings DO, so the specs
- * differ in tilt, count and precession rather than only in colour.
- */
-// internal, not private, so the motion contract can be unit-tested. The same
-// reason ScreenMatch and the Groq/Gemini parsers were widened: a value-in,
-// value-out function that decides how something behaves should be reachable by a
-// test rather than only by the eye.
-internal fun specFor(style: OrbStyle): Orb3DSpec = when (style) {
-    // Arc Reactor: many rings at steep opposing tilts, churning.
-    OrbStyle.Reactor -> Orb3DSpec(
-        rings = listOf(
-            Ring3D(0.95f, 0.30f, 0.10f, 0.60f, 1.00f, 0.0f, 2.4f, 0.30f),
-            Ring3D(0.80f, -0.55f, 0.40f, -0.85f, -1.35f, 0.9f, 2.8f, 0.26f),
-            Ring3D(0.64f, 0.75f, -0.30f, 1.10f, 1.70f, 0.1f, 2.6f, 0.34f),
-            Ring3D(0.48f, -0.25f, 0.80f, -1.30f, -2.10f, 0.8f, 2.2f, 0.40f),
-            Ring3D(0.33f, 0.50f, 0.20f, 1.60f, 2.60f, 0.2f, 1.8f, 0.50f),
-        ),
-        motes = 60, coreSize = 0.17f,
-    )
-    // Lattice: few rings, near-rigid, with crystal shards on the widest.
-    // Prism: a shell of shards round a tight, fast inner ring.
-    // Forge: many fine coplanar-ish rings, the busiest design.
-    OrbStyle.Filigree -> Orb3DSpec(
-        rings = listOf(
-            Ring3D(0.98f, 0.14f, 0.06f, 0.22f, 0.75f, 0.15f, 1.6f, 0.20f),
-            Ring3D(0.86f, -0.18f, 0.10f, -0.34f, -1.05f, 0.35f, 1.5f, 0.22f),
-            Ring3D(0.72f, 0.24f, -0.12f, 0.48f, 1.35f, 0.10f, 1.7f, 0.26f),
-            Ring3D(0.58f, -0.30f, 0.18f, -0.62f, -1.70f, 0.45f, 1.6f, 0.30f),
-            Ring3D(0.44f, 0.36f, -0.22f, 0.80f, 2.10f, 0.20f, 1.5f, 0.36f),
-            Ring3D(0.30f, -0.40f, 0.26f, -1.00f, -2.60f, 0.55f, 1.4f, 0.44f),
-        ),
-        motes = 40, coreSize = 0.19f, spokes = 24,
-    )
-    // Core: a machine — spokes in the hub, a firm outer cage.
-    // Orbit: one bright world under wide ellipses swung right around it — and the
-    // liveliest of the seven, deliberately.
-    //
-    // The reference is not an assembly of concentric rings like the other themes:
-    // it is a single lit sphere with a few long orbital paths, several passing
-    // well outside the body. So the core is the largest of any theme and the rings
-    // are few, wide, and two of them sit beyond radius 1.0 because in the artwork
-    // the widest orbits clearly clear the sphere.
-    //
-    // MOTION is the point here, so the speeds are not decorative — they follow
-    // real orbital mechanics: the inner ring is the fastest and the widest is the
-    // slowest, the way actual orbits behave. That single choice is what makes the
-    // rings visibly separate, converge and cross rather than turning as one rigid
-    // assembly, and it is why this reads as a system in motion instead of a
-    // spinning graphic. Directions alternate so crossings are head-on, and every
-    // period is a non-round multiple of its neighbour's, so the whole pattern
-    // takes a long time to repeat.
-    //
-    // A first draft set `arc` to 0.80-0.92, which lit almost the whole ring and
-    // left the travelling highlight with nowhere to travel — the least animated
-    // theme of the seven, in the one design that is all about movement. The arcs
-    // are ~0.5 now: enough unlit ring for a bright sweep to be seen running round
-    // it, while depth shading keeps the rest of the ellipse continuous.
-    // A ringed WORLD: one broad disc well clear of the body, and two tighter
-    // rings crossing it.
-    //
-    // Rebuilt 2026-08-19 — "restructure orbit, it's horribly built". The previous
-    // version had FOUR rings at 1.26 / 1.08 / 0.90 / 0.70 around a body of 0.55,
-    // so the innermost ring sat 0.15 from the sphere's edge and the four crowded
-    // into a narrow shell. At thumbnail size that is not a planet with rings, it
-    // is a scribble around a dot — every ring competing with its neighbour for
-    // the same band of screen.
-    //
-    // Three changes, all about SEPARATION rather than detail: one fewer ring, the
-    // widest pushed out to 1.55 so it plainly clears the body, and the core pulled
-    // back from 0.55 to 0.44 so there is a real gap between the sphere and the
-    // first orbit. The signature is now a single broad shallow disc — the thing
-    // that reads as Saturn at any size — with the other two crossing it.
-    OrbStyle.Orbit -> Orb3DSpec(
-        rings = listOf(
-            // The disc. Widest, slowest, shallowest tilt, thinnest band — it is
-            // meant to read as a sheet of dust seen nearly edge-on, not as wire.
-            Ring3D(1.55f, 0.34f, -0.10f, 0.30f, 0.55f, 0.10f, 2.4f, arc = 0.70f, band = 0.035f),
-            // Steeply tilted and counter-turning, so it scissors through the disc.
-            Ring3D(1.12f, -0.52f, 0.38f, -0.74f, -1.32f, 0.55f, 1.5f, arc = 0.52f, band = 0.05f),
-            // Tight and quick, hugging the world without touching it.
-            Ring3D(0.78f, 0.66f, 0.08f, 1.48f, 2.55f, 0.30f, 1.1f, arc = 0.40f, band = 0.04f),
-        ),
-        // The heaviest dust field of any theme — it is a scene in space, and the
-        // motes are what make the volume around the sphere read as occupied.
-        //
-        // The body is still by far the largest of any theme, because the reference
-        // is a SPHERE with rings around it rather than a ring assembly with a spark
-        // at the middle. An earlier build shipped 0.34 and the screenshot showed
-        // exactly what that is: a small dim blob with thin ellipses dominating it.
-        motes = 120, coreSize = 0.44f,
-    )
-    OrbStyle.Nebula -> Orb3DSpec(
-        rings = listOf(
-            Ring3D(1.00f, 0.34f, 0.22f, 0.45f, 0.70f, 0.0f, 2.0f, 0.28f),
-            Ring3D(0.78f, -0.60f, 0.44f, -0.62f, -1.00f, 0.65f, 2.6f, 0.32f),
-            Ring3D(0.52f, 0.70f, -0.36f, 0.95f, 1.55f, 0.25f, 2.2f, 0.40f),
-        ),
-        motes = 90, coreSize = 0.16f,
     )
 }

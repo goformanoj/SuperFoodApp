@@ -3,6 +3,7 @@ package com.jarvis.os.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,12 +23,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.jarvis.os.ui.speech.SpeechScreen
-import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.JarvisPalette
+import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.SurfaceGlass
 import com.jarvis.os.ui.theme.TextPrimary
 import com.jarvis.os.ui.theme.TextSecondary
@@ -83,15 +85,28 @@ fun SettingsScreen(
         // through themes at all", with a screenshot showing one clipped row of
         // themes at the very bottom. Anything permanently above a tab row steals
         // the height that every tab then has to share.
-        Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 10.dp)) {
+        //
+        // The pills take an EQUAL THIRD each and their labels never wrap.
+        // Sized to their own content instead, the row ran out of width and the
+        // last pill wrapped mid-word — "Theme" over "s" — because a Row hands
+        // out space in order and the last child gets whatever is left. Equal
+        // thirds also means adding a fourth section later shrinks all four
+        // evenly rather than breaking only the one on the end.
+        Row(
+            Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Section.entries.forEach { entry ->
                 val selected = entry == section
                 Text(
                     entry.label,
                     style = MaterialTheme.typography.labelLarge,
                     color = if (selected) JarvisTheme.accent else TextSecondary,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
                     modifier = Modifier
-                        .padding(end = 8.dp)
+                        .weight(1f)
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (selected) JarvisTheme.accent.copy(alpha = 0.12f) else JarvisTheme.glass)
                         .border(
@@ -100,7 +115,7 @@ fun SettingsScreen(
                             RoundedCornerShape(20.dp),
                         )
                         .clickable { section = entry }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                 )
             }
         }
