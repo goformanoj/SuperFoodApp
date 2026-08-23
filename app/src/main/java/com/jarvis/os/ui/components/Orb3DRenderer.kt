@@ -400,23 +400,7 @@ internal fun specFor(style: OrbStyle): Orb3DSpec = when (style) {
         motes = 60, coreSize = 0.17f,
     )
     // Lattice: few rings, near-rigid, with crystal shards on the widest.
-    OrbStyle.Lattice -> Orb3DSpec(
-        rings = listOf(
-            Ring3D(0.96f, 0.22f, 0.14f, 0.30f, 0.55f, 0.0f, 2.0f, 0.24f),
-            Ring3D(0.70f, -0.30f, 0.55f, -0.42f, -0.70f, 0.15f, 2.4f, 0.28f),
-            Ring3D(0.44f, 0.60f, -0.20f, 0.55f, 0.95f, 0.85f, 2.0f, 0.36f),
-        ),
-        motes = 34, coreSize = 0.14f, shards = 6,
-    )
     // Prism: a shell of shards round a tight, fast inner ring.
-    OrbStyle.Prism -> Orb3DSpec(
-        rings = listOf(
-            Ring3D(0.98f, 0.18f, 0.28f, 0.38f, 0.60f, 0.9f, 1.8f, 0.22f),
-            Ring3D(0.72f, -0.45f, -0.20f, -0.70f, -1.10f, 0.1f, 2.4f, 0.30f),
-            Ring3D(0.40f, 0.65f, 0.45f, 1.20f, 2.00f, 0.75f, 2.2f, 0.44f),
-        ),
-        motes = 46, coreSize = 0.15f, shards = 10,
-    )
     // Forge: many fine coplanar-ish rings, the busiest design.
     OrbStyle.Filigree -> Orb3DSpec(
         rings = listOf(
@@ -430,14 +414,6 @@ internal fun specFor(style: OrbStyle): Orb3DSpec = when (style) {
         motes = 40, coreSize = 0.19f, spokes = 24,
     )
     // Core: a machine — spokes in the hub, a firm outer cage.
-    OrbStyle.Machine -> Orb3DSpec(
-        rings = listOf(
-            Ring3D(0.97f, 0.26f, 0.18f, 0.24f, 0.45f, 0.85f, 2.2f, 0.22f),
-            Ring3D(0.66f, -0.50f, 0.30f, -0.55f, -1.60f, 0.15f, 3.0f, 0.30f),
-            Ring3D(0.42f, 0.40f, -0.35f, 0.90f, 2.30f, 0.70f, 2.4f, 0.42f),
-        ),
-        motes = 30, coreSize = 0.13f, spokes = 16, shards = 8,
-    )
     // Orbit: one bright world under wide ellipses swung right around it — and the
     // liveliest of the seven, deliberately.
     //
@@ -461,30 +437,40 @@ internal fun specFor(style: OrbStyle): Orb3DSpec = when (style) {
     // theme of the seven, in the one design that is all about movement. The arcs
     // are ~0.5 now: enough unlit ring for a bright sweep to be seen running round
     // it, while depth shading keeps the rest of the ellipse continuous.
+    // A ringed WORLD: one broad disc well clear of the body, and two tighter
+    // rings crossing it.
+    //
+    // Rebuilt 2026-08-19 — "restructure orbit, it's horribly built". The previous
+    // version had FOUR rings at 1.26 / 1.08 / 0.90 / 0.70 around a body of 0.55,
+    // so the innermost ring sat 0.15 from the sphere's edge and the four crowded
+    // into a narrow shell. At thumbnail size that is not a planet with rings, it
+    // is a scribble around a dot — every ring competing with its neighbour for
+    // the same band of screen.
+    //
+    // Three changes, all about SEPARATION rather than detail: one fewer ring, the
+    // widest pushed out to 1.55 so it plainly clears the body, and the core pulled
+    // back from 0.55 to 0.44 so there is a real gap between the sphere and the
+    // first orbit. The signature is now a single broad shallow disc — the thing
+    // that reads as Saturn at any size — with the other two crossing it.
     OrbStyle.Orbit -> Orb3DSpec(
         rings = listOf(
-            // Widest and slowest — the long outer orbit.
-            Ring3D(1.26f, 0.30f, -0.16f, 0.42f, 0.62f, 0.00f, 1.7f, arc = 0.62f, band = 0.05f),
-            // Counter-rotating, so it scissors against the one above.
-            Ring3D(1.08f, -0.44f, 0.34f, -0.71f, -1.18f, 0.55f, 2.0f, arc = 0.58f, band = 0.06f),
-            // Steeply tilted, faster again.
-            Ring3D(0.90f, 0.64f, 0.10f, 1.13f, 1.79f, 0.85f, 1.6f, arc = 0.54f, band = 0.05f),
-            // The tight HUD arc hugging the body: innermost, fastest, counter-spun.
-            Ring3D(0.70f, 0.09f, 0.05f, -1.67f, -2.63f, 0.20f, 1.2f, arc = 0.46f, band = 0.04f),
+            // The disc. Widest, slowest, shallowest tilt, thinnest band — it is
+            // meant to read as a sheet of dust seen nearly edge-on, not as wire.
+            Ring3D(1.55f, 0.34f, -0.10f, 0.30f, 0.55f, 0.10f, 2.4f, arc = 0.70f, band = 0.035f),
+            // Steeply tilted and counter-turning, so it scissors through the disc.
+            Ring3D(1.12f, -0.52f, 0.38f, -0.74f, -1.32f, 0.55f, 1.5f, arc = 0.52f, band = 0.05f),
+            // Tight and quick, hugging the world without touching it.
+            Ring3D(0.78f, 0.66f, 0.08f, 1.48f, 2.55f, 0.30f, 1.1f, arc = 0.40f, band = 0.04f),
         ),
         // The heaviest dust field of any theme — it is a scene in space, and the
         // motes are what make the volume around the sphere read as occupied.
         //
-        // coreSize is far larger than any other theme (next is 0.19) because the
-        // reference is a SPHERE with rings around it, not a ring assembly with a
-        // spark at the middle. The first build shipped 0.34 and the device
-        // screenshot showed exactly what that is: a small dim blob with thin
-        // ellipses dominating it — the rings had become the subject. The body has
-        // to be the biggest, brightest thing on screen for this to read as the
-        // design at all.
-        motes = 120, coreSize = 0.55f,
+        // The body is still by far the largest of any theme, because the reference
+        // is a SPHERE with rings around it rather than a ring assembly with a spark
+        // at the middle. An earlier build shipped 0.34 and the screenshot showed
+        // exactly what that is: a small dim blob with thin ellipses dominating it.
+        motes = 120, coreSize = 0.44f,
     )
-    // Nebula: wide sweeping rings and a heavy star field.
     OrbStyle.Nebula -> Orb3DSpec(
         rings = listOf(
             Ring3D(1.00f, 0.34f, 0.22f, 0.45f, 0.70f, 0.0f, 2.0f, 0.28f),

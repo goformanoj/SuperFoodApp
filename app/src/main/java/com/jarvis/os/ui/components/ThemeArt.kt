@@ -22,10 +22,7 @@ object ThemeArt {
     /** Ten stops, centre outward. */
     fun ramp(style: OrbStyle): List<Color> = when (style) {
         OrbStyle.Reactor -> ARC
-        OrbStyle.Lattice -> LATTICE
-        OrbStyle.Prism -> PRISM
         OrbStyle.Filigree -> FORGE
-        OrbStyle.Machine -> CORE
         OrbStyle.Nebula -> NEBULA
         OrbStyle.Orbit -> ORBIT
     }
@@ -41,10 +38,7 @@ object ThemeArt {
     /** The colour behind the orb, measured from the reference's corners. */
     fun backdrop(style: OrbStyle): Color = when (style) {
         OrbStyle.Reactor -> Color(0xFF1A3543)
-        OrbStyle.Lattice -> Color(0xFF174155)
-        OrbStyle.Prism -> Color(0xFF431E2F)
         OrbStyle.Filigree -> Color(0xFF341A1E)
-        OrbStyle.Machine -> Color(0xFF421F36)
         OrbStyle.Nebula -> Color(0xFF4B2E42)
         // Near-black: the reference is deep space with one lit object in it, so
         // there is no corner colour to measure the way the other six have.
@@ -66,25 +60,10 @@ object ThemeArt {
         Color(0xFF66B6B2), Color(0xFF7ACFC2), Color(0xFF5FB5B0), Color(0xFF94A48F),
         Color(0xFF78B4AC), Color(0xFF45B1B9),
     )
-    private val LATTICE = listOf(
-        Color(0xFF183951), Color(0xFF609AA4), Color(0xFF87BEC0), Color(0xFF86D7DE),
-        Color(0xFF77C6D1), Color(0xFF98C3BF), Color(0xFF95CED2), Color(0xFF79C2C8),
-        Color(0xFF6CC0CB), Color(0xFF56A0B2),
-    )
-    private val PRISM = listOf(
-        Color(0xFF905073), Color(0xFFBA788D), Color(0xFFD89DC9), Color(0xFFD9A1B1),
-        Color(0xFFDDA2B9), Color(0xFFC6829F), Color(0xFF894F6C), Color(0xFF8C5168),
-        Color(0xFF9C5C70), Color(0xFF813C5B),
-    )
     private val FORGE = listOf(
         Color(0xFFC56C3E), Color(0xFFE7A56E), Color(0xFFE1A672), Color(0xFFD79A6A),
         Color(0xFFDA9C6C), Color(0xFFC78559), Color(0xFFAD6D4B), Color(0xFFB16F4D),
         Color(0xFF9C583E), Color(0xFF8E4F39),
-    )
-    private val CORE = listOf(
-        Color(0xFFB86C74), Color(0xFFB2687F), Color(0xFFCC86C8), Color(0xFFD190A6),
-        Color(0xFFD493BB), Color(0xFFBD749C), Color(0xFF8D5674), Color(0xFF96596E),
-        Color(0xFF925472), Color(0xFF8C4367),
     )
 
     /**

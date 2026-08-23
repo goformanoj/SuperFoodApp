@@ -99,36 +99,39 @@ fun ThemeBackdrop(
             ),
         )
 
+        // ONE signature element per theme, and nothing shared between two.
+        //
+        // "make every theme unique, right now all look almost the same" — and the
+        // structure was the reason. Reactor and Lattice both drew `wireGlobe`;
+        // Prism and Machine both drew `nodeShell`; Filigree and Orbit both drew
+        // `hudBrackets`. So of seven themes, three were a neighbour recoloured.
+        // Cutting Lattice, Prism and Core removed the duplicates; giving the four
+        // survivors one distinct world each is what stops it recurring.
         when (palette.orbStyle) {
-            OrbStyle.Reactor, OrbStyle.Lattice ->
-                wireGlobe(focus, minOf(w, h) * 0.62f, drift, palette.accent, dense = palette.orbStyle == OrbStyle.Lattice)
-
-            OrbStyle.Prism, OrbStyle.Machine -> {
-                nodeShell(focus, minOf(w, h) * 0.60f, drift, palette.secondary)
-                groundMesh(h * 0.64f, palette.secondary, rows = 10, columns = 16, alpha = 0.20f)
-            }
-
-            OrbStyle.Filigree -> {
-                warmHaze(focus, minOf(w, h) * 0.70f, palette.accent, palette.highlight)
+            // Arc: a blueprint. Wireframe globe and instrument brackets.
+            OrbStyle.Reactor -> {
+                wireGlobe(focus, minOf(w, h) * 0.62f, drift, palette.accent, dense = false)
                 hudBrackets(palette.accent)
             }
-
+            // Forge: a workshop. Warm haze over a lit floor — no wire anywhere,
+            // because the point of this one is heat rather than instrumentation.
+            OrbStyle.Filigree -> {
+                warmHaze(focus, minOf(w, h) * 0.70f, palette.accent, palette.highlight)
+                groundMesh(h * 0.66f, palette.highlight, rows = 12, columns = 18, alpha = 0.26f)
+            }
+            // Nebula: deep sky. Clouds and a circuit floor, no globe, no brackets.
             OrbStyle.Nebula -> {
                 nebulaClouds(w, h, palette.accent, palette.secondary)
                 circuitFloor(h * 0.66f, palette.accent)
             }
-
-            OrbStyle.Orbit -> {
-                // The element no other theme has: a planet limb across the bottom,
-                // lit along its edge, with city lights on the dark side. It is what
-                // puts the orb in space rather than on a background, and it is the
-                // thing the eye reads first after the orb itself.
-                planetHorizon(w, h, palette.accent, palette.highlight)
-                hudBrackets(palette.accent)
-            }
+            // Orbit: a planet limb across the bottom, and deliberately NOTHING
+            // else. It is the strongest single element of the four and it does
+            // not need help; brackets over it were what made it look like Forge.
+            OrbStyle.Orbit -> planetHorizon(w, h, palette.accent, palette.highlight)
         }
 
-        starField(w, h, palette.highlight, palette.orbStyle == OrbStyle.Nebula, flow)
+        val deepSky = palette.orbStyle == OrbStyle.Nebula || palette.orbStyle == OrbStyle.Orbit
+        starField(w, h, palette.highlight, deepSky, flow)
 
         // A light source below the fold. Orbit already has a lit planet down
         // there and a second glow would fight it.
@@ -245,40 +248,6 @@ private fun DrawScope.wireGlobe(
     }
 }
 
-/** A strut-and-ball geodesic shell, as behind the faceted designs. */
-private fun DrawScope.nodeShell(centre: Offset, radius: Float, t: Float, colour: Color) {
-    val cam = radius * 3.6f
-    val focal = radius * 2.7f
-    val rings = 4
-    for (i in 1..rings) {
-        val phi = (i.toFloat() / (rings + 1)) * Orb3D.TAU / 2f - Orb3D.TAU / 4f
-        val ringR = radius * kotlin.math.cos(phi)
-        val yOff = radius * kotlin.math.sin(phi)
-        val nodes = 14
-        val pts = (0 until nodes).map { n ->
-            val a = (n.toFloat() / nodes) * Orb3D.TAU + t * 0.35f
-            Orb3D.project(
-                Vec3(kotlin.math.cos(a) * ringR, yOff, kotlin.math.sin(a) * ringR),
-                cam, focal,
-            )
-        }
-        pts.forEachIndexed { n, p ->
-            val q = pts[(n + 1) % pts.size]
-            val depth = Orb3D.depthFactor(p.depth, radius)
-            drawLine(
-                colour.copy(alpha = 0.06f + depth * 0.16f),
-                Offset(centre.x + p.x, centre.y + p.y),
-                Offset(centre.x + q.x, centre.y + q.y),
-                px(1f),
-            )
-            drawCircle(
-                colour.copy(alpha = 0.14f + depth * 0.32f),
-                px(1.6f + depth * 1.4f),
-                Offset(centre.x + p.x, centre.y + p.y),
-            )
-        }
-    }
-}
 
 /** Warm concentric haze for the forge. */
 private fun DrawScope.warmHaze(centre: Offset, radius: Float, accent: Color, highlight: Color) {

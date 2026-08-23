@@ -8,14 +8,27 @@ import androidx.compose.ui.graphics.Color
  * centrepiece, not just its own colours — a hexagonal crystal lattice does not
  * become a filigree disc by recolouring it.
  */
-enum class OrbStyle { Reactor, Lattice, Prism, Filigree, Machine, Nebula, Orbit }
+enum class OrbStyle { Reactor, Filigree, Nebula, Orbit }
 
 /**
  * A selectable look: a full colour set plus the shape of the orb.
  *
- * Six, drawn from the designs the user supplied. The orb geometry itself is
- * built in three dimensions per [OrbStyle]; this carries the colours it is drawn
- * in, so no screen reaches for the fixed [Cyan] any more.
+ * **Four, down from seven.** Lattice, Prism and Core were removed on 2026-08-19
+ * at the user's request — "make every theme unique, right now all look almost the
+ * same" — and they were right about the cause. Lattice shared `wireGlobe` with
+ * Arc, and Prism and Core shared `nodeShell` with each other, so three of the
+ * seven were recolours of a neighbour rather than designs of their own. Cutting
+ * them leaves four that each own a distinct centrepiece and a distinct world:
+ *
+ * | Theme  | Orb            | Backdrop signature      |
+ * |--------|----------------|-------------------------|
+ * | Arc    | reactor rings  | wireframe globe         |
+ * | Forge  | filigree core  | forge floor + warm haze |
+ * | Nebula | sweeping rings | nebula clouds           |
+ * | Orbit  | ringed world   | planet limb from orbit  |
+ *
+ * The orb geometry is built in three dimensions per [OrbStyle]; this carries the
+ * colours it is drawn in.
  */
 enum class JarvisPalette(
     val id: String,
@@ -46,30 +59,6 @@ enum class JarvisPalette(
         surface = Color(0xFF0A1A2E),
         orbStyle = OrbStyle.Reactor,
     ),
-    Lattice(
-        id = "lattice",
-        displayName = "Lattice",
-        blurb = "Crystal hexagon, gold circuit traces.",
-        accent = Color(0xFF7DF0FF),
-        secondary = Color(0xFF1B9BD8),
-        highlight = Color(0xFFE0A93A),
-        wordmark = Color(0xFFBDF2FF),
-        background = Color(0xFF06182B),
-        surface = Color(0xFF0B2439),
-        orbStyle = OrbStyle.Lattice,
-    ),
-    Prism(
-        id = "prism",
-        displayName = "Prism",
-        blurb = "Faceted gem in violet and rose gold.",
-        accent = Color(0xFFB98CF0),
-        secondary = Color(0xFF8B5CF6),
-        highlight = Color(0xFFE8A87C),
-        wordmark = Color(0xFFEFB694),
-        background = Color(0xFF160A20),
-        surface = Color(0xFF241333),
-        orbStyle = OrbStyle.Prism,
-    ),
     Forge(
         id = "forge",
         displayName = "Forge",
@@ -81,18 +70,6 @@ enum class JarvisPalette(
         background = Color(0xFF120A07),
         surface = Color(0xFF20120C),
         orbStyle = OrbStyle.Filigree,
-    ),
-    Core(
-        id = "core",
-        displayName = "Core",
-        blurb = "Violet crystal around a turning copper machine.",
-        accent = Color(0xFFA855F7),
-        secondary = Color(0xFFD08B5B),
-        highlight = Color(0xFFE9C0A0),
-        wordmark = Color(0xFFF0CBB0),
-        background = Color(0xFF150A22),
-        surface = Color(0xFF231338),
-        orbStyle = OrbStyle.Machine,
     ),
     Nebula(
         id = "nebula",

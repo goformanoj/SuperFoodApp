@@ -13,12 +13,16 @@ import org.junit.Test
 class JarvisPaletteTest {
 
     @Test
-    fun `there are seven themes, one per supplied design`() {
-        // Six from the original set of reference renders, plus Orbit from the
-        // 2026-08-16 mockup. The count is asserted so a theme cannot be dropped
-        // by accident — the id is persisted, so losing one silently downgrades
-        // whoever had it selected.
-        assertEquals(7, JarvisPalette.entries.size)
+    fun `there are four themes, each with a world of its own`() {
+        // Down from seven on 2026-08-19. Lattice, Prism and Core were cut because
+        // each shared its backdrop geometry with a neighbour — Lattice drew Arc's
+        // wireframe globe, Prism and Core drew the same geodesic shell — so they
+        // were recolours rather than designs. The four that remain each own a
+        // distinct centrepiece AND a distinct world.
+        //
+        // The count is asserted so a theme cannot be dropped by accident: the id
+        // is persisted, so losing one silently downgrades whoever had it selected.
+        assertEquals(4, JarvisPalette.entries.size)
     }
 
     @Test
@@ -130,5 +134,16 @@ class JarvisPaletteTest {
     @Test
     fun `the default is a real entry`() {
         assertTrue(JarvisPalette.Default in JarvisPalette.entries)
+    }
+
+    @Test
+    fun `a theme that was removed falls back instead of crashing`() {
+        // Anyone who had Lattice, Prism or Core selected still has that id in
+        // their preferences. `fromId` must land them somewhere real — a persisted
+        // string outliving the enum it named is the ordinary case after a cut,
+        // not an edge case.
+        listOf("lattice", "prism", "core").forEach {
+            assertEquals("removed id \"$it\" should fall back", JarvisPalette.Default, JarvisPalette.fromId(it))
+        }
     }
 }

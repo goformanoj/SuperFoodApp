@@ -32,13 +32,10 @@ object BubbleColors {
     )
 
     /** Theme ids, in `JarvisPalette` order. */
-    val IDS = listOf("arc", "lattice", "prism", "forge", "core", "nebula", "orbit")
+    val IDS = listOf("arc", "forge", "nebula", "orbit")
 
     private val ARC = Scheme(0xFF22E0F5.toInt(), 0xFF0A84FF.toInt(), 0xFFF5B944.toInt(), 0xFF04101E.toInt())
-    private val LATTICE = Scheme(0xFF7DF0FF.toInt(), 0xFF1B9BD8.toInt(), 0xFFE0A93A.toInt(), 0xFF06182B.toInt())
-    private val PRISM = Scheme(0xFFB98CF0.toInt(), 0xFF8B5CF6.toInt(), 0xFFE8A87C.toInt(), 0xFF160A20.toInt())
     private val FORGE = Scheme(0xFFF0A44B.toInt(), 0xFFC2410C.toInt(), 0xFFFFD79A.toInt(), 0xFF120A07.toInt())
-    private val CORE = Scheme(0xFFA855F7.toInt(), 0xFFD08B5B.toInt(), 0xFFE9C0A0.toInt(), 0xFF150A22.toInt())
     private val NEBULA = Scheme(0xFFC084FC.toInt(), 0xFFE0845C.toInt(), 0xFF7DD3FC.toInt(), 0xFF0F0518.toInt())
     private val ORBIT = Scheme(0xFF29D6FF.toInt(), 0xFF7A5CFF.toInt(), 0xFFB98CFF.toInt(), 0xFF03070F.toInt())
 
@@ -48,10 +45,7 @@ object BubbleColors {
      * user could not have typed is still not worth crashing a window over.
      */
     fun forTheme(id: String): Scheme = when (id) {
-        "lattice" -> LATTICE
-        "prism" -> PRISM
         "forge" -> FORGE
-        "core" -> CORE
         "nebula" -> NEBULA
         "orbit" -> ORBIT
         else -> ARC
