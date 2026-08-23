@@ -335,6 +335,31 @@ class UniverseMathTest {
     }
 
     @Test
+    fun `the view cannot dismiss itself on the frame it opens`() {
+        // The arrival starts OUTSIDE the first shell and flies inward, so its
+        // starting zoom is negative — and the dismissal threshold is also
+        // negative. Put the entry below it and the view closes itself the instant
+        // it opens, which would look exactly like the pinch not working.
+        assertTrue(
+            "the view opens past its own dismissal point " +
+                "(entry ${UniverseMath.ENTRY_ZOOM}, closes at ${UniverseMath.CLOSE_AT})",
+            !UniverseMath.shouldClose(UniverseMath.ENTRY_ZOOM),
+        )
+        assertTrue("the arrival should start outside the first shell", UniverseMath.ENTRY_ZOOM < UniverseMath.START_ZOOM)
+    }
+
+    @Test
+    fun `the arrival still has somewhere to arrive from`() {
+        // If entry and start were the same there would be no inward movement at
+        // all — the page would grow but the camera would sit still, which is the
+        // cross-fade this replaced.
+        assertTrue(
+            "the arrival travels only ${UniverseMath.START_ZOOM - UniverseMath.ENTRY_ZOOM} of a level",
+            UniverseMath.START_ZOOM - UniverseMath.ENTRY_ZOOM > 0.15f,
+        )
+    }
+
+    @Test
     fun `panning is bounded in both directions`() {
         assertEquals(40f, UniverseMath.clampPan(40f, 100f), 1e-4f)
         assertEquals(100f, UniverseMath.clampPan(400f, 100f), 1e-4f)

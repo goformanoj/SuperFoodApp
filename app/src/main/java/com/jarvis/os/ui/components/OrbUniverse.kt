@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +81,12 @@ fun OrbUniverse(
     modifier: Modifier = Modifier,
     palette: JarvisPalette = LocalPalette.current,
     amplitude: Float = 0f,
+    /**
+     * How far through the arrival this is, `0f..1f`, driven by the host so the
+     * page and the thing it grew out of move as one. Used for the entry bloom
+     * and to hold the readout back until there is something to read.
+     */
+    entry: Float = 1f,
 ) {
     val scope = rememberCoroutineScope()
     // One number holds the entire position in the universe. An Animatable rather
@@ -97,6 +104,15 @@ fun OrbUniverse(
     var target by remember { mutableFloatStateOf(UniverseMath.START_ZOOM) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var closing by remember { mutableStateOf(false) }
+    // Until the arrival has finished, a pinch cannot dismiss the view.
+    //
+    // Not defensive: the entrance STARTS below zero and flies inward, and
+    // [UniverseMath.ENTRY_ZOOM] is deliberately kept above [UniverseMath.CLOSE_AT]
+    // so that alone cannot trigger a dismissal. But a pinch landing during the
+    // first half-second would be read against a zoom that is still arriving, and
+    // closing a view the moment it opens is the worst possible answer to a
+    // gesture the user almost certainly meant as "go deeper".
+    var settled by remember { mutableStateOf(false) }
 
     fun close() {
         if (!closing) {
@@ -106,6 +122,17 @@ fun OrbUniverse(
     }
 
     BackHandler(enabled = true) { close() }
+
+    // The arrival, as MOVEMENT rather than as an appearance. The host grows this
+    // page out of the orb; this flies the camera inward at the same time, so the
+    // first thing that happens after the pinch is a shell rushing up to meet you
+    // rather than a picture settling into place. Landing exactly on START_ZOOM
+    // means the dive begins from a known position however it was entered.
+    LaunchedEffect(Unit) {
+        zoom.snapTo(UniverseMath.ENTRY_ZOOM)
+        zoom.animateTo(UniverseMath.START_ZOOM, tween(760, easing = FastOutSlowInEasing))
+        settled = true
+    }
 
     // The clock everything turns on. Long period: each satellite multiplies it by
     // its own speed, so the visible motion comes from the spread, not the rate.
@@ -175,7 +202,7 @@ fun OrbUniverse(
                         val from = if (zoom.isRunning) zoom.value else target
                         target = from + ln(gestureZoom) / LN_SCALE
                         scope.launch { zoom.snapTo(target) }
-                        if (UniverseMath.shouldClose(target)) close()
+                        if (settled && UniverseMath.shouldClose(target)) close()
                     }
                     val limit = minOf(size.width, size.height) * 0.45f
                     pan = Offset(
@@ -212,15 +239,46 @@ fun OrbUniverse(
                     viewport = base,
                 )
             }
+
+            // The bloom of arriving. Brightest at the instant the page appears
+            // and gone by the time it has finished growing — light thrown by
+            // going through something, which is what covers the moment when the
+            // shells are still too small to be read as structure.
+            val bloom = (1f - entry).coerceIn(0f, 1f)
+            if (bloom > 0.01f) {
+                val reach = base * (0.35f + entry * 2.2f)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(
+                            Color.White.copy(alpha = bloom * 0.55f),
+                            palette.highlight.copy(alpha = bloom * 0.35f),
+                            palette.accent.copy(alpha = bloom * 0.12f),
+                            Color.Transparent,
+                        ),
+                        center = eye,
+                        radius = reach,
+                    ),
+                    radius = reach,
+                    center = eye,
+                    blendMode = BlendMode.Plus,
+                )
+            }
         }
 
-        UniverseHud(
-            depth = depth,
-            fraction = fraction,
-            here = shells[0],
-            palette = palette,
-            modifier = Modifier.fillMaxSize(),
-        )
+        // The readout waits for the arrival. Text at full strength over a page
+        // that is still a third of its size and rushing inward reads as an
+        // overlay stuck on top of the animation rather than as part of the place.
+        val readout = ((entry - 0.55f) / 0.45f).coerceIn(0f, 1f)
+        if (readout > 0.01f) {
+            UniverseHud(
+                depth = depth,
+                fraction = fraction,
+                here = shells[0],
+                palette = palette,
+                alpha = readout,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 
@@ -235,6 +293,7 @@ private fun UniverseHud(
     fraction: Float,
     here: ShellSpec?,
     palette: JarvisPalette,
+    alpha: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -246,7 +305,7 @@ private fun UniverseHud(
             Text(
                 text = UniverseMath.labelFor(depth),
                 style = MaterialTheme.typography.titleMedium.copy(letterSpacing = 6.sp),
-                color = palette.highlight,
+                color = palette.highlight.copy(alpha = alpha),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -258,14 +317,14 @@ private fun UniverseHud(
                 Text(
                     text = here.designation,
                     style = MaterialTheme.typography.headlineSmall,
-                    color = palette.wordmark,
+                    color = palette.wordmark.copy(alpha = alpha),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                 )
                 Text(
                     text = UniverseMath.describe(here),
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
-                    color = palette.accent.copy(alpha = 0.75f),
+                    color = palette.accent.copy(alpha = 0.75f * alpha),
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 )
@@ -273,7 +332,7 @@ private fun UniverseHud(
             Text(
                 text = "DEPTH ${depth.coerceAtLeast(0)}·${(fraction * 100).toInt().toString().padStart(2, '0')}",
                 style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 3.sp),
-                color = palette.accent.copy(alpha = 0.50f),
+                color = palette.accent.copy(alpha = 0.50f * alpha),
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
@@ -281,7 +340,7 @@ private fun UniverseHud(
         Text(
             text = "PINCH TO DIVE  ·  DOUBLE-TAP TO FALL  ·  PINCH BACK TO SURFACE",
             style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
-            color = palette.accent.copy(alpha = 0.45f),
+            color = palette.accent.copy(alpha = 0.45f * alpha),
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )

@@ -2,6 +2,8 @@ package com.jarvis.os.ui.home
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -32,12 +34,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowUp
 import androidx.compose.material.icons.filled.Menu
@@ -61,46 +63,54 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.os.calendar.CalendarReader
+import com.jarvis.os.ui.calendar.CalendarScreen
 import com.jarvis.os.ui.chat.ChatScreen
 import com.jarvis.os.ui.components.HudOrb
 import com.jarvis.os.ui.components.OrbUniverse
-import com.jarvis.os.ui.components.pinchToOpen
 import com.jarvis.os.ui.components.ThemeBackdrop
 import com.jarvis.os.ui.components.VoiceWave
+import com.jarvis.os.ui.components.pinchToOpen
 import com.jarvis.os.ui.debug.DiagnosticsScreen
-import com.jarvis.os.ui.calendar.CalendarScreen
 import com.jarvis.os.ui.files.FilesScreen
 import com.jarvis.os.ui.settings.InstructionsScreen
 import com.jarvis.os.ui.settings.SettingsScreen
 import com.jarvis.os.ui.speech.VOICE_SAMPLE
-import com.jarvis.os.voice.Speaker
 import com.jarvis.os.ui.theme.ErrorRed
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.JarvisPalette
+import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.LocalAccent
 import com.jarvis.os.ui.theme.LocalPalette
 import com.jarvis.os.ui.theme.OrbStyle
-import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.SuccessGreen
 import com.jarvis.os.ui.theme.Surface
 import com.jarvis.os.ui.theme.SurfaceGlass
 import com.jarvis.os.ui.theme.TextPrimary
 import com.jarvis.os.ui.theme.TextSecondary
 import com.jarvis.os.voice.OrbState
+import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.VoiceUiState
-import kotlinx.coroutines.launch
 import java.util.Calendar
+import kotlinx.coroutines.launch
 
 /** Drawer destinations. Home is the live voice screen; Chat shows history; others are placeholders. */
 private enum class Dest(val label: String, val icon: ImageVector, val blurb: String) {
@@ -182,6 +192,44 @@ fun JarvisApp(
     // floating on top of it is not immersive, it is a screenshot with chrome.
     var universeOpen by remember { mutableStateOf(false) }
 
+    // Where the orb actually is, and how big the host is, so the dive can be
+    // anchored to the thing that was pinched rather than to the middle of the
+    // screen. The orb sits a little above centre and the difference is visible:
+    // pivoting on the screen centre makes the galaxy arrive from slightly below
+    // the orb, which reads as two separate objects rather than one becoming the
+    // other.
+    var hostSize by remember { mutableStateOf(IntSize.Zero) }
+    var orbCentre by remember { mutableStateOf(Offset.Unspecified) }
+
+    // ONE number drives the whole transition, both directions.
+    //
+    // It was a cross-fade — the galaxy simply appeared over the home screen —
+    // and a cross-fade says "different screen", not "you went inside that".
+    // Here the same progress pushes the home screen up through the camera while
+    // the universe grows out of the orb, so at every instant the two are parts
+    // of one movement instead of two animations that happen to overlap.
+    //
+    // Slower in than out, deliberately: arriving somewhere should take a moment,
+    // leaving should feel like surfacing.
+    val dive by animateFloatAsState(
+        targetValue = if (universeOpen) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (universeOpen) 620 else 380,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "dive",
+    )
+    val divePivot = remember(orbCentre, hostSize) {
+        if (orbCentre.isSpecified && hostSize.width > 0 && hostSize.height > 0) {
+            TransformOrigin(
+                orbCentre.x / hostSize.width,
+                orbCentre.y / hostSize.height,
+            )
+        } else {
+            TransformOrigin.Center
+        }
+    }
+
     // Deliberately an if/else chain rather than two independent handlers: with
     // both registered, which one answers Back depends on composition order, which
     // is not something a reader should have to work out.
@@ -207,123 +255,155 @@ fun JarvisApp(
             )
         },
     ) {
-        Box(modifier = modifier.fillMaxSize().background(palette.background)) {
-            // Behind EVERY destination, not just Home.
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(palette.background)
+                .onSizeChanged { hostSize = it },
+        ) {
+            // Everything the app normally is, in a layer that can be flown into.
             //
-            // It used to live inside HomeContent, which meant the app had one
-            // designed screen and six generic dark lists — you opened Settings
-            // and the world you were just looking at vanished. That gap is most
-            // of what "boring and basic" was describing: not that any single
-            // screen was bad, but that six of them were somewhere else entirely.
-            //
-            // One instance here also costs less than one per screen: the starfield
-            // stays put while destinations change over it, so switching tabs no
-            // longer re-randomises the sky.
-            ThemeBackdrop()
+            // Swelling and fading rather than just fading: a shrinking layer would
+            // read as the screen retreating, and the gesture is the opposite — you
+            // pulled the orb apart and went through it. Alpha runs out ahead of the
+            // scale (x1.6 at the end) so the home screen is gone well before it has
+            // grown enough to look pixellated.
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        if (dive > 0f) {
+                            val swell = 1f + dive * 0.60f
+                            scaleX = swell
+                            scaleY = swell
+                            alpha = (1f - dive * 1.45f).coerceAtLeast(0f)
+                            transformOrigin = divePivot
+                        }
+                    },
+            ) {
+                // Behind EVERY destination, not just Home.
+                //
+                // It used to live inside HomeContent, which meant the app had one
+                // designed screen and six generic dark lists — you opened Settings
+                // and the world you were just looking at vanished. That gap is most
+                // of what "boring and basic" was describing: not that any single
+                // screen was bad, but that six of them were somewhere else entirely.
+                //
+                // One instance here also costs less than one per screen: the starfield
+                // stays put while destinations change over it, so switching tabs no
+                // longer re-randomises the sky.
+                ThemeBackdrop()
 
-            when (current) {
-                Dest.Home -> HomeContent(state, onWake, onInterrupt, onExpand = { universeOpen = true })
-                Dest.Chat -> ChatScreen(state.messages, onClearChat)
-                Dest.Diagnostics -> DiagnosticsScreen(onSubmitCommand = onSubmitCommand)
-                Dest.Settings -> SettingsScreen(
-                    voices = voiceOptions(),
-                    currentVoiceId = currentVoiceId(),
-                    shouldOfferVoiceDownload = shouldOfferVoiceDownload(),
-                    onChooseVoice = onChooseVoice,
-                    onPreviewVoice = { onPreviewVoice(VOICE_SAMPLE) },
-                    onVoiceDownloadOffered = onVoiceDownloadOffered,
-                    palette = palette,
-                    onSelectPalette = onSelectPalette,
-                    backgroundWakeEnabled = backgroundWakeEnabled(),
-                    onSetBackgroundWake = onSetBackgroundWake,
-                    floatingOrbEnabled = floatingOrbEnabled(),
-                    onSetFloatingOrb = onSetFloatingOrb,
-                    onOpenAssistantSettings = onOpenAssistantSettings,
-                )
-                Dest.Instructions -> InstructionsScreen(
-                    initial = customInstructions(),
-                    learned = learnedFacts(),
-                    onSave = onSaveInstructions,
-                    onForget = onForgetFact,
-                )
-                Dest.Calendar -> CalendarScreen()
-                Dest.Files -> FilesScreen()
-                else -> PlaceholderScreen(current)
-            }
+                when (current) {
+                    Dest.Home -> HomeContent(
+                        state = state,
+                        onWake = onWake,
+                        onInterrupt = onInterrupt,
+                        onExpand = { universeOpen = true },
+                        onOrbPlaced = { orbCentre = it },
+                    )
+                    Dest.Chat -> ChatScreen(state.messages, onClearChat)
+                    Dest.Diagnostics -> DiagnosticsScreen(onSubmitCommand = onSubmitCommand)
+                    Dest.Settings -> SettingsScreen(
+                        voices = voiceOptions(),
+                        currentVoiceId = currentVoiceId(),
+                        shouldOfferVoiceDownload = shouldOfferVoiceDownload(),
+                        onChooseVoice = onChooseVoice,
+                        onPreviewVoice = { onPreviewVoice(VOICE_SAMPLE) },
+                        onVoiceDownloadOffered = onVoiceDownloadOffered,
+                        palette = palette,
+                        onSelectPalette = onSelectPalette,
+                        backgroundWakeEnabled = backgroundWakeEnabled(),
+                        onSetBackgroundWake = onSetBackgroundWake,
+                        floatingOrbEnabled = floatingOrbEnabled(),
+                        onSetFloatingOrb = onSetFloatingOrb,
+                        onOpenAssistantSettings = onOpenAssistantSettings,
+                    )
+                    Dest.Instructions -> InstructionsScreen(
+                        initial = customInstructions(),
+                        learned = learnedFacts(),
+                        onSave = onSaveInstructions,
+                        onForget = onForgetFact,
+                    )
+                    Dest.Calendar -> CalendarScreen()
+                    Dest.Files -> FilesScreen()
+                    else -> PlaceholderScreen(current)
+                }
 
-            if (!bottomDashboard) {
-                Icon(
-                    imageVector = Icons.Filled.Menu,
-                    contentDescription = "Open menu",
-                    tint = TextPrimary,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .systemBarsPadding()
-                        .padding(12.dp)
-                        .clip(CircleShape)
-                        .clickable { scope.launch { drawerState.open() } }
-                        .padding(6.dp)
-                        .size(26.dp),
-                )
-            } else {
-                // Home only. Drawn over Settings it landed on top of the theme
-                // picker and read as a rendering fault — every other destination
-                // has its own scrolling layout that owns the bottom of the screen,
-                // and a floating bar over it is not navigation, it is debris.
-                if (current == Dest.Home) {
-                    DashboardBar(
-                        onOpen = { dashboardOpen = true },
-                        modifier = Modifier.align(Alignment.BottomCenter),
+                if (!bottomDashboard) {
+                    Icon(
+                        imageVector = Icons.Filled.Menu,
+                        contentDescription = "Open menu",
+                        tint = TextPrimary,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .systemBarsPadding()
+                            .padding(12.dp)
+                            .clip(CircleShape)
+                            .clickable { scope.launch { drawerState.open() } }
+                            .padding(6.dp)
+                            .size(26.dp),
                     )
                 } else {
-                    // With the bar gone from other screens, the way back is a pull
-                    // down from the top — the gesture that replaces it. Confined to
-                    // a strip so it cannot fight the vertical scrolling below.
-                    Box(
-                        Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth()
-                            .height(72.dp)
-                            .pointerInput(current) {
-                                var travelled = 0f
-                                detectVerticalDragGestures(
-                                    onDragStart = { travelled = 0f },
-                                    onDragEnd = {
-                                        if (travelled > PULL_HOME_PX) current = Dest.Home
-                                    },
-                                ) { change, dragAmount ->
-                                    if (dragAmount > 0f) travelled += dragAmount
-                                    change.consume()
-                                }
+                    // Home only. Drawn over Settings it landed on top of the theme
+                    // picker and read as a rendering fault — every other destination
+                    // has its own scrolling layout that owns the bottom of the screen,
+                    // and a floating bar over it is not navigation, it is debris.
+                    if (current == Dest.Home) {
+                        DashboardBar(
+                            onOpen = { dashboardOpen = true },
+                            modifier = Modifier.align(Alignment.BottomCenter),
+                        )
+                    } else {
+                        // With the bar gone from other screens, the way back is a pull
+                        // down from the top — the gesture that replaces it. Confined to
+                        // a strip so it cannot fight the vertical scrolling below.
+                        Box(
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .fillMaxWidth()
+                                .height(72.dp)
+                                .pointerInput(current) {
+                                    var travelled = 0f
+                                    detectVerticalDragGestures(
+                                        onDragStart = { travelled = 0f },
+                                        onDragEnd = {
+                                            if (travelled > PULL_HOME_PX) current = Dest.Home
+                                        },
+                                    ) { change, dragAmount ->
+                                        if (dragAmount > 0f) travelled += dragAmount
+                                        change.consume()
+                                    }
+                                },
+                        )
+                    }
+
+                    if (dashboardOpen) {
+                        // Tapping away closes, which is what every sheet on the
+                        // platform does and what the Back handler above mirrors.
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.55f))
+                                .clickable { dashboardOpen = false },
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = dashboardOpen,
+                        enter = fadeIn() + slideInVertically { it },
+                        exit = slideOutVertically { it } + fadeOut(),
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    ) {
+                        DashboardPanel(
+                            selected = current,
+                            onSelect = {
+                                current = it
+                                dashboardOpen = false
                             },
-                    )
-                }
-
-                if (dashboardOpen) {
-                    // Tapping away closes, which is what every sheet on the
-                    // platform does and what the Back handler above mirrors.
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .clickable { dashboardOpen = false },
-                    )
-                }
-
-                AnimatedVisibility(
-                    visible = dashboardOpen,
-                    enter = fadeIn() + slideInVertically { it },
-                    exit = slideOutVertically { it } + fadeOut(),
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                ) {
-                    DashboardPanel(
-                        selected = current,
-                        onSelect = {
-                            current = it
-                            dashboardOpen = false
-                        },
-                        onDismiss = { dashboardOpen = false },
-                    )
+                            onDismiss = { dashboardOpen = false },
+                        )
+                    }
                 }
             }
 
@@ -331,15 +411,26 @@ fun JarvisApp(
             // navigation with it. The first draft of this sat inside the
             // `bottomDashboard` branch, which would have given the universe to
             // the Orbit theme alone — the orb is on the home screen of all four.
-            AnimatedVisibility(
-                visible = universeOpen,
-                enter = fadeIn(tween(420)),
-                exit = fadeOut(tween(260)),
-            ) {
+            //
+            // Grown out of the orb rather than faded in over it, pivoting on the
+            // orb's real position: at the first frame it is a third of its size
+            // sitting exactly where the orb was, which is what makes it read as
+            // the orb opening rather than as a new screen arriving. Kept in the
+            // tree only while the transition is live so nothing animates behind
+            // a dismissed dive.
+            if (dive > 0.001f) {
                 OrbUniverse(
                     onClose = { universeOpen = false },
                     palette = palette,
                     amplitude = state.amplitude,
+                    entry = dive,
+                    modifier = Modifier.graphicsLayer {
+                        val grow = 0.32f + 0.68f * dive
+                        scaleX = grow
+                        scaleY = grow
+                        alpha = dive
+                        transformOrigin = divePivot
+                    },
                 )
             }
         }
@@ -511,6 +602,8 @@ private fun HomeContent(
     onWake: () -> Unit = {},
     onInterrupt: () -> Unit = {},
     onExpand: () -> Unit = {},
+    /** The orb's centre in root coordinates — the pivot the dive turns about. */
+    onOrbPlaced: (Offset) -> Unit = {},
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val viewport = maxHeight
@@ -527,6 +620,7 @@ private fun HomeContent(
                 onWake = onWake,
                 onInterrupt = onInterrupt,
                 onExpand = onExpand,
+                onOrbPlaced = onOrbPlaced,
             )
             ScheduleSection()
         }
@@ -540,6 +634,7 @@ private fun HeroSection(
     onWake: () -> Unit = {},
     onInterrupt: () -> Unit = {},
     onExpand: () -> Unit = {},
+    onOrbPlaced: (Offset) -> Unit = {},
 ) {
     val greeting = remember { greetingForHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
     // Show live transcript/reply only during an active conversation; hide when asleep.
@@ -582,7 +677,11 @@ private fun HeroSection(
                 .clickable(enabled = !active || speaking) {
                     if (speaking) onInterrupt() else onWake()
                 }
-                .pinchToOpen(onExpand),
+                .pinchToOpen(onExpand)
+                // Reported upward so the dive can pivot on the orb itself. The
+                // hero scrolls, so this is not a constant — reading it from the
+                // layout is the only way it stays right.
+                .onGloballyPositioned { onOrbPlaced(it.boundsInRoot().center) },
             contentAlignment = Alignment.Center,
         ) {
             HudOrb(orb = state.orb, amplitude = state.amplitude, size = 280.dp)

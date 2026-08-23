@@ -248,6 +248,18 @@ object UniverseMath {
     /** Pinching back out past this closes the view rather than showing nothing. */
     const val CLOSE_AT = -0.45f
 
+    /**
+     * Where the camera starts when the view opens, before flying in to
+     * [START_ZOOM].
+     *
+     * The arrival is a movement rather than an appearance: starting outside the
+     * first shell and rushing inward means the first thing that happens after the
+     * pinch is a structure coming up to meet you. It MUST sit above [CLOSE_AT] —
+     * a view that opens past its own dismissal threshold would close itself on
+     * the first frame, which `UniverseMathTest` pins.
+     */
+    const val ENTRY_ZOOM = -0.28f
+
     // The fade window, in powers of SCALE. Asymmetric on purpose: a shell on its
     // way past the camera is enormous and its edges have long left the screen, so
     // it can hold full brightness later than a distant one can.
