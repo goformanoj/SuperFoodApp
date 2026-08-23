@@ -1,5 +1,76 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (latest) — four layers, and a tap that ran against an empty list
+
+**What was asked.** *"it's not letting me go inside the stars… make all the part
+of the galaxy feature interactive, i should be able to turn the main orb around
+after pinching… everything should be zoomable… each galaxy, each star, and each
+dimension of the star should be different from all the others"*, then the layer
+model: *"1. Jarvis main orb after pinching, view of galaxies 2. inside the
+galaxy, the view different stars 3. any one star, the actual content, the
+planets and everything 4. zooming in on the planets i should find things"*.
+
+**The bug, found by reading rather than by a trace.** Stars could not be clicked
+— and the code was running the whole time, which is what made it worth writing
+down. `pointerInput(Unit)` is created once and NEVER restarted, so its lambda
+captures plain `val`s **by value** from the composition that built it. `stars`
+comes from `remember(galaxy) { … }` and changes every time a galaxy is opened, so
+the gesture was forever hit-testing the empty list from the first frame, before
+any galaxy existed.
+
+What made it invisible: `galaxy != null` reads through a `MutableState` delegate
+and therefore stays **live**. So the guard was correct and current while the data
+inside the guard was stale. A condition that works and a body that cannot is a
+much harder shape to spot than a branch that never runs.
+
+The fix is `rememberUpdatedState` for everything a gesture reads. The general
+rule now in the handoff: inside a non-restarting `pointerInput`, a `remember`ed
+value is a photograph, not a window.
+
+**Why layer three was rebuilt.** It had been the endless self-similar dive, and
+that was the wrong answer to *"the actual content, the planets and everything"*.
+Self-similarity is elegant and tells you nothing — the same structure at every
+scale is somewhere you can only fall THROUGH, never learn. A star system has a
+fixed cast: a sun, some worlds, a belt. Orbits are spaced geometrically rather
+than evenly because evenly spaced orbits read as a target, and the crowding
+toward the star is most of what makes a system look like one; inner worlds run
+faster, which is the single cue that makes it read as mechanism rather than as
+concentric rings.
+
+**Why layer four exists at all.** *"zooming in on the planets i should find
+things"* is a design note about anticlimax. A planet that is only a shaded sphere
+gets no better by being drawn larger — going closer has to REVEAL, or the journey
+ends in nothing. Ten landmark kinds, each restricted to the worlds it suits, so
+finding a derelict station above a shattered planet tells you what happened
+there. They are held back until the view has actually closed in, so arriving
+somewhere and finding something stay two separate moments.
+
+Placed in POLAR coordinates with a `sqrt` radius: inside the disc by
+construction, and spread over its area rather than bunched at the middle. Two
+independent coordinates put a "surface feature" off the side of its own planet
+about a fifth of the time — obvious on a screen, invisible in a diff, and now a
+test.
+
+**Turning the orb.** A drag adds yaw and pitch to every ring's *tilt*, not a
+rotation of the finished picture: the assembly turns in space, rings swing
+through one another, and the galaxies riding them go round the back. A 2D
+rotation of the rendered image spins a flat picture and fools nobody. The turn
+reaches ring geometry, the beads and the hit test from one piece of arithmetic,
+because two copies of that is a bug waiting for whoever retunes one — and the
+symptom would be taps missing by a few degrees with nothing visibly wrong.
+
+**A holder, not Compose state.** Where the worlds were drawn is kept in a plain
+mutable object. The draw phase writes it every frame and the gesture reads it; a
+`MutableState` written during draw and read during composition is an endless
+recomposition loop.
+
+**Debt named rather than hidden.** The shell renderer and `UniverseMath`'s shell
+machinery are now unreachable from the app but still pass 43 tests — the exact
+trap recorded in the entry above it, repeated within a day. Left in deliberately
+rather than deleted blind at the end of a large change, and written down so the
+next session does not mistake green tests for live coverage.
+
+
 ## 2026-08-23 (later) — the orb opens into itself, and colour was the whole problem
 
 **What was asked.** *"build me something more interesting, the dimensions 60-70%

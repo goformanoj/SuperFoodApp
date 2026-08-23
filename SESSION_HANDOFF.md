@@ -2,10 +2,32 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` merged to `main` at `8d3d689`
-with the `jarvis-debug-apk` artifact present. The universe was rebuilt into a
-three-stage hierarchy (orb → galaxy → dimension → worlds) and the theme no longer reaches
-past the orb.
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `9a4d063`, **CI not yet
+confirmed** — `main` is at `8d3d689`. The universe is now four layers you can
+touch: orb → galaxy → a star's **system** → a **world** with things on it. Every
+layer zooms, the orb turns under a drag, and the theme stops at the orb.
+
+### Debt carried deliberately, not hidden
+
+The endless-shell renderer (`drawShell` and its helpers, `UniverseHud`) and
+`UniverseMath`'s shell machinery are **unreachable from the app** now — layer
+three superseded them. They still compile and their 43 tests still pass, which
+is exactly the "a fixture keeps dead code alive" trap recorded below. Left in
+rather than ripped out blind at the end of a large blind-Compose change. It is
+the next cleanup; do not mistake the passing tests for coverage of anything that
+ships.
+
+### The gotcha worth carrying: `pointerInput(Unit)` captures by value
+
+`pointerInput(Unit)` is created ONCE and never restarted. Its lambda closes over
+plain `val`s from the composition that made it, so anything from
+`remember(key) { … }` is frozen at first composition forever. Reads through a
+`MutableState` delegate stay live, which is what makes this so hard to see: the
+condition guarding the branch was correct and current, and the data inside it was
+from the first frame. Stars were untappable for exactly this reason — the tap
+landed, the branch ran, and it searched an empty list.
+
+Use `rememberUpdatedState` for everything a gesture lambda reads.
 
 ### The gotcha worth carrying: a test fixture can keep dead code alive
 
