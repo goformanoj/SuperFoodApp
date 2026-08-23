@@ -2,8 +2,10 @@
 
 ## Current position — 2026-08-23
 
-Branch `claude/phone-glitch-investigation-g6dnhk`, merged to `main` at `81a4b31`
-with the `jarvis-debug-apk` artifact present. The UI round is done: the themes
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `7f4fa3a`, **CI pending**;
+`main` is at `81a4b31` with its artifact present. Do not merge `7f4fa3a` until
+`jarvis-debug-apk` appears for it — Rule 2, and this commit is almost entirely
+Compose, which the off-device gate cannot compile. The UI round is done: the themes
 were cut from seven to four, Orbit was rebuilt, and the orb now opens into an
 endless zoom (`OrbUniverse` + the pure `UniverseMath` behind it).
 
@@ -20,7 +22,26 @@ Backend Phase 1 is still parked on the user: Connect-to-Git in Cloudflare with
 root directory `backend`, `GROQ_API_KEY` and `PROXY_SECRET` as Worker secrets,
 then `POST /admin/migrate`.
 
-### New gotcha — the off-device gate can now see part of `ui/`
+### The gotcha this round — a number only a phone could check
+
+The Orbit orb shipped drawn outside its own frame, and nothing in the spec looked
+wrong: the widest ring is 1.55 orb radii, the orb is drawn at 0.86 of the
+half-frame, and you have to actually multiply to see that 1.33 does not fit. Then
+perspective magnifies the near side of a tilted ring, and the tilts *precess*, so
+the worst case (1.46) happens at a phase no still reading of the numbers would
+ever land on.
+
+The lesson is not "check the arithmetic". It is that **the orb specs were the one
+part of the app the pre-CI gate could not reach, and that is where the bug was** —
+because `OrbStyle` sat in `JarvisPalette.kt` next to a `Color` import, one import
+put every orb number behind jvmcheck's `ui/` exclusion. `OrbStyle.kt` and
+`Orb3DSpecs.kt` are Compose-free now and the geometry tests run here.
+
+When adding a theme or retuning rings: `OrbFitTest` will fail if the design
+overflows, and it also fails if `fitFor` *shrinks* a theme to compensate — the
+intended fix is to retune the rings, not to accept a smaller orb.
+
+### The other gotcha — the off-device gate can now see part of `ui/`
 
 `scripts/jvmcheck` used to exclude `**/com/jarvis/os/ui/**` wholesale. It now
 excludes everything under `ui/` **except** an explicit allow-list of files that

@@ -1,5 +1,72 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (second) — the bug was where the gate could not look
+
+**What was reported.** Three screenshots and six items: the Orbit orb cut off at
+both edges, the Settings "Themes" pill wrapping to "Theme / s", Forge and Nebula
+needing to be better ("loved the arc reactor theme"), orb designs differing only
+in their backdrops, the galaxy needing more detail and description, and the home
+screen visible *through* a dive.
+
+**Why the orb was cut, and why nobody caught it.** The widest Orbit ring is 1.55
+orb radii; the orb is drawn at 0.86 of the half-frame. 1.33 does not fit, and
+perspective then magnifies the near side of a tilted ring, and the tilts precess —
+so the true worst case is 1.46 half-frames against a drawing area of 1.0, at a
+phase that no static reading of the spec would land on.
+
+The interesting part is not the arithmetic. It is **where** the bug was: the orb
+specs were the one part of the app `scripts/jvmcheck` could not reach, because
+`OrbStyle` lived in `JarvisPalette.kt` beside a `Color` import and every spec
+keyed on it therefore sat behind the `ui/` exclusion. One import decided which
+numbers got checked before a push and which ones only got checked by a person
+looking at a phone — and the bug was in the second set. That is the third time
+this project has found a fault hiding in the one place a test could not see.
+
+So the fix is two things, and the second matters more. The ring came in to 1.22,
+which brings the worst case to 1.09 and lets the orb keep its full size rather
+than being shrunk to fit. And `Orb3D.ringExtent` now measures what a spec
+actually reaches by running *the renderer's own projection* over every phase of
+the precession — not a tidy approximation of it, because the whole value of the
+number is that it agrees with what gets drawn. `OrbStyle.kt` and `Orb3DSpecs.kt`
+are Compose-free, so OrbFitTest, OrbitThemeTest, Orb3DTest and OrbMathTest run
+off-device in milliseconds. 51 test classes green before the push.
+
+`OrbFitTest` deliberately fails in **both** directions: if a theme overflows, and
+if `fitFor` shrinks a theme to compensate. A guard that can satisfy itself by
+making everything small is not a guard.
+
+**Why the themes still looked alike.** Same shape of cause as the backdrops a few
+days ago, one layer up. Every theme was tilted rings around a glow, so the accent
+colour carried nearly the whole difference — Forge was six thin fast rings and 24
+hairline spokes (a *filigree*: delicate, cold, near enough to Arc Reactor that
+only colour separated them), and Nebula was Arc Reactor with two fewer rings.
+
+The centre is the biggest, brightest thing on screen, so the centre is now what
+differs: `CoreKind` gives Arc a hard spark, Forge a molten mass with an actual
+crust (dark rim, cracks that open, embers lifting off — the only element in any
+theme that travels in one *direction* rather than around the centre, which is
+what reads as hot rather than lit), Nebula a diffuse core with no surface
+anywhere, and Orbit a lit world with a terminator and a bright limb. Arc was left
+exactly as it was, because it was the one that was already right.
+
+**The galaxy.** The detail that mattered most was the cheapest: gas under
+everything. Bright points on black read as a screensaver; the same points inside
+a coloured cloud read as a place. Dust lanes are the one element drawn with
+ordinary alpha rather than additively, because they are the only thing that takes
+light *away*, and they are most of what makes arms read as arms. For "more
+descriptive": each structure now carries a catalogue designation generated from
+its seed plus a line naming its shape and contents — and since the geometry is
+self-similar by construction, that name is the only thing distinguishing a
+descent of ten levels from a descent of one. It doubles as visible proof the dive
+is reversible: fly down and back up and the same designation returns.
+
+**Two layout faults, both mine, both one line.** The dive's backgrounds were
+translucent at 0.60 and 0.86, so the home screen ghosted through it — deep space
+has nothing behind it. And the Settings pills sized to their own content in a
+`Row`, which hands out width in order and leaves the last child the remainder,
+which is why "Themes" and only "Themes" wrapped.
+
+
 ## 2026-08-23 — an endless zoom, and a gate that could finally check one
 
 **What was asked.** *"remove the themes: lattice, prism and core, restructure
