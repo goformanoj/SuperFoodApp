@@ -2,10 +2,28 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `da52d00`, **green with the
-`jarvis-debug-apk` artifact**, and `main` fast-forwarded to it. The universe is
+Branch `claude/phone-glitch-investigation-g6dnhk`, **CI pending** — `main` is at
+`da52d00`, the last green state. The universe is
 now four layers you can touch: orb → galaxy → a star's **system** → a **world** with things on it. Every
 layer zooms, the orb turns under a drag, and the theme stops at the orb.
+
+### The gotcha this round: a keyed `remember` under a `pointerInput(Unit)`
+
+`pointerInput(Unit)` is created once and never restarted, so it holds whatever it
+captured at first composition. `remember(keys) { mutableStateOf(…) }` builds a
+**new object** when a key changes. Put the two together and the gesture writes to
+a state nobody reads any more — silently, with no warning and no crash.
+
+That is now three instances: a stale `stars` list, a `palette` parameter captured
+by value, and `view`/`yaw`/`pitch` on stage keys. The rule, stated once:
+
+> Anything a gesture reads or writes must be reachable through a handle that
+> outlives every state change — `rememberUpdatedState` for values, a **keyless**
+> `remember` plus a `LaunchedEffect` for anything that needs resetting.
+
+The symptom is worth remembering too, because it named the cause: the only state
+still reachable was the one with no keys, so the only thing a pinch could do was
+move the picture around.
 
 ### Debt carried deliberately, not hidden
 

@@ -1,5 +1,83 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (nothing zoomed) — a keyed `remember` behind a `pointerInput(Unit)`
+
+**Reported.** *"nothing is zoomable now, im not able to do anything"*, then the
+detail that identified it exactly: *"instead of zoomable, they displace, i can
+move them around my screen"*.
+
+**The fault.** `view`, `yaw` and `pitch` were held as
+`remember(galaxy, chosen, world) { mutableFloatStateOf(…) }` — keyed, so the
+stage change could reset them. A keyed `remember` builds a **new state object**
+when a key changes. `pointerInput(Unit)` is created once and holds whatever it
+captured at first composition, forever. So the instant a galaxy opened, the
+Canvas read the new `view` and the pinch went on writing to the abandoned one.
+
+**Why the symptom named the cause.** `pan` is `remember { … }` with *no keys*, so
+it was the one piece of state a gesture could still reach — which is why the only
+thing a pinch could do was slide the scene about. "They displace" was a precise
+bug report.
+
+**This is the third instance of one rule.** The stale `stars` capture, the
+`palette` parameter captured by value, and now this. Anything a gesture reads or
+writes must be reached through a handle that outlives every state change:
+`rememberUpdatedState` for values, a keyless `remember` plus a `LaunchedEffect`
+for anything that needs resetting. A keyed `remember` and a `pointerInput(Unit)`
+in the same composable is a bug waiting to be written.
+
+**And it hid everything else.** *"none of the fixes you claimed make are
+evident"* — correct, and this is why. Landmarks reveal above a view of 1.15,
+worlds grow with the view, the surface detail only reads when close. With the
+zoom dead at 1.0 forever, three of the four layers were showing their least
+interesting frame and nothing could get past it.
+
+### Three real rendering faults underneath it
+
+1. **Nothing was clipped to the disc.** The comment claimed features were
+   "clipped by construction". That is true of where a feature is *centred* and
+   false of where it *ends*: round line caps bulge half a stroke past the limb, a
+   crater centred at 0.80 with radius 0.19 reaches 0.99 and its lit rim goes
+   over, and the ice caps were sized at 1.5x the chord — wider than the planet,
+   hanging out of both sides like ears. One `clipPath` removes the class.
+2. **Light was applied under the surface, not over it.** The body gradient ran
+   first and every band, cap and continent was painted on top at full strength,
+   so the night side was as bright as the day side. Nothing reads as a sphere
+   like that. The terminator is now a pass *over* the finished surface, with a
+   specular bloom to read the curvature against.
+3. **Worlds were about twenty pixels across.** Eight kinds of surface detail
+   drawn into something too small to show any of it. "Low quality" was the scale,
+   not the drawing.
+
+### The one the tests found: most of a system was off the screen
+
+Each orbit is 1.30-1.52x the one inside it — the ratio that makes a system read
+as a mechanism rather than a dartboard. Compounded over eight worlds it reaches
+**8.5**, against a renderer frame of 1. The inner two or three were drawn and
+everything beyond them was outside the screen entirely, and *unreachable*,
+because pinching out past the minimum is how you leave the stage rather than how
+you pull back.
+
+Orbits are now stated as a fraction of the system's own width. Getting there took
+two rejected attempts, both caught off-device in seconds:
+
+- dividing through by the outermost put the innermost world **inside its sun**;
+- compressing the chain with a power law fixed that and broke the pre-existing
+  rule that no two orbits may be close enough to read as evenly spaced rings.
+
+The two constraints leave exactly one window, and it is narrow: at most **seven**
+worlds at **1.26-1.34x**. That is a property of the geometry, not a preference,
+and it is now written down as two tests that pin the ends of it.
+
+A third slip in the same edit: `.coerceAtMost` trailed off the random addend
+rather than the sum, so it capped a term and left the total free. Silent, and the
+test caught it on the next run.
+
+**The gate paid for itself again.** Four faults in the pure layer, none of which
+would have been visible until the APK was on the phone. The Compose half is still
+blind — but every decision moved into `Cosmos.kt` is a decision that stops being
+blind.
+
+
 ## 2026-08-23 (build break) — two `size`s that read identically
 
 **What broke.** `9a4d063` failed CI on one line:

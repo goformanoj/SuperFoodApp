@@ -381,6 +381,61 @@ class CosmosTest {
         return min(d, 1f - d)
     }
 
+    // ── Layer three: a system has to FIT ─────────────────────────────────────
+
+    @Test
+    fun `every system is stated as a fraction of its own width`() {
+        galaxiesFor(6).flatMap { starsIn(it) }.forEach { star ->
+            val worlds = systemFor(star).worlds
+            val widest = worlds.maxOf { it.orbit }
+            assertEquals("${star.designation} outermost orbit", 1f, widest, 0.0005f)
+        }
+    }
+
+    @Test
+    fun `no world is drawn outside the frame`() {
+        // The renderer multiplies `orbit` by a unit sized to the frame, so an
+        // orbit above 1 is a world nobody can ever see: pinching out past the
+        // minimum leaves the stage rather than pulling back to find it. Orbits
+        // used to compound to roughly 8.5 over nine worlds and most of a system
+        // was off the screen.
+        galaxiesFor(6).flatMap { starsIn(it) }.forEach { star ->
+            systemFor(star).worlds.forEach {
+                assertTrue(
+                    "${star.designation} has a world at ${it.orbit}",
+                    it.orbit in 0f..1.0001f,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a system never holds more worlds than its frame can space out`() {
+        // The two constraints below only both hold up to a point: every extra
+        // world multiplies the innermost orbit down by another whole ratio, and
+        // past seven it lands inside the sun however the chain is scaled.
+        galaxiesFor(6).flatMap { starsIn(it) }.forEach { star ->
+            assertTrue(
+                "${star.designation} holds ${systemFor(star).worlds.size} worlds",
+                systemFor(star).worlds.size <= 7,
+            )
+        }
+    }
+
+    @Test
+    fun `the belt sits between two real orbits`() {
+        galaxiesFor(6).flatMap { starsIn(it) }.forEach { star ->
+            val system = systemFor(star)
+            if (system.belt <= 0f) return@forEach
+            val orbits = system.worlds.map { it.orbit }
+            assertTrue(
+                "${star.designation} belt at ${system.belt} is outside its worlds",
+                system.belt > orbits.min() && system.belt < orbits.max(),
+            )
+        }
+    }
+
+
     private fun hueOf(ink: Ink): Float {
         val hi = maxOf(ink.r, ink.g, ink.b)
         val lo = min(min(ink.r, ink.g), ink.b)

@@ -402,17 +402,36 @@ data class SystemSpec(
 )
 
 /** The system inside [star]. */
+/** The most worlds a system can hold and still fit the frame — see [systemFor]. */
+private const val MAX_WORLDS = 7
+
 fun systemFor(star: StarSpec): SystemSpec {
     val seed = star.branch * 7919
     // A blue giant burns its inner system away; a red dwarf holds many close in.
-    val count = when (star.kind) {
-        StarKind.BlueGiant -> 3
-        StarKind.RedDwarf -> 6
-        StarKind.Binary -> 4
-        StarKind.Pulsar -> 3
-        StarKind.Protostar -> 5
-        StarKind.WhiteDwarf -> 3
-    } + (OrbMath.unitRandom(seed + 3) * 3).toInt()
+    // CAPPED, because the chain has to fit the frame AND stay off the sun.
+    //
+    // Every orbit is a fixed multiple of the one inside it, so the innermost is
+    // that multiple to the power of the gaps. Eight worlds at up to 1.52x put the
+    // first one at 5% of the system's width — inside its own star once the whole
+    // thing is scaled to the screen. Seven at up to 1.34x land it at 17%, which
+    // clears the sun with room to spare. Two tests hold the ends of this: one
+    // says nothing sits inside the star, the other says no two orbits are close
+    // enough to read as evenly spaced rings, and between them there is exactly
+    // one window. It is narrow, and it is real.
+    //
+    // The cap goes round the WHOLE sum. Trailing it off the random addend caps
+    // that term alone and leaves the total free, which is a quiet enough
+    // difference that only the test noticed.
+    val count = (
+        when (star.kind) {
+            StarKind.BlueGiant -> 3
+            StarKind.RedDwarf -> 6
+            StarKind.Binary -> 4
+            StarKind.Pulsar -> 3
+            StarKind.Protostar -> 5
+            StarKind.WhiteDwarf -> 3
+        } + (OrbMath.unitRandom(seed + 3) * 3).toInt()
+        ).coerceAtMost(MAX_WORLDS)
 
     var radius = OrbMath.range(seed + 5, 0.20f, 0.30f)
     val worlds = (0 until count).map { i ->
@@ -426,17 +445,38 @@ fun systemFor(star: StarSpec): SystemSpec {
             phase = OrbMath.unitRandom(seed + i * 17) * OrbMath.TAU,
             tilt = OrbMath.range(seed + i * 23, -0.22f, 0.22f),
         )
-        radius *= OrbMath.range(seed + i * 29, 1.30f, 1.52f)
+        radius *= OrbMath.range(seed + i * 29, 1.26f, 1.34f)
         w
     }
+    // NORMALISED, OR MOST OF THE SYSTEM IS OFF THE SCREEN.
+    //
+    // Each orbit is 1.30-1.52x the one inside it, which is the ratio that makes a
+    // system read as a mechanism rather than as a dartboard — but compounded over
+    // nine worlds it reaches roughly 8.5, and the renderer's frame is 1. So the
+    // inner two or three were drawn and everything beyond them was outside the
+    // screen entirely, unreachable: you cannot zoom OUT to find them, because
+    // pinching out past the minimum is how you leave the stage.
+    //
+    // Dividing through by the outermost keeps every ratio exactly as generated
+    // and states the orbits as a fraction of the system's own width, so the
+    // renderer can fit any system to any frame without knowing how many worlds it
+    // holds. The spacing is preserved; only the unit changes.
+    // Divided through by the outermost, which keeps every ratio exactly as it was
+    // generated and simply restates the orbits as a fraction of the system's own
+    // width. The renderer then fits any system to any frame without knowing how
+    // many worlds it holds. Nothing is compressed here — the count and the ratio
+    // range above are already chosen so the raw chain fits.
+    val widest = worlds.maxOf { it.orbit }
+    val fitted = worlds.map { it.copy(orbit = it.orbit / widest) }
+
     val hasBelt = OrbMath.unitRandom(seed + 41) > 0.35f
     return SystemSpec(
         designation = star.designation,
-        worlds = worlds,
-        belt = if (hasBelt && worlds.size > 2) {
+        worlds = fitted,
+        belt = if (hasBelt && fitted.size > 2) {
             // Between two of the outer worlds, which is where one goes.
-            val a = worlds[worlds.size - 2].orbit
-            val b = worlds[worlds.size - 1].orbit
+            val a = fitted[fitted.size - 2].orbit
+            val b = fitted[fitted.size - 1].orbit
             (a + b) / 2f
         } else {
             0f
