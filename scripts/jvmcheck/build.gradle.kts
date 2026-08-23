@@ -30,6 +30,17 @@ val repoRoot: File = rootDir.parentFile.parentFile
 val appMain: File = File(repoRoot, "app/src/main/java")
 val appTest: File = File(repoRoot, "app/src/test/java")
 
+// Compose-free sources under `ui/`, and the tests that cover them. Keep the two
+// lists together: adding a file here that imports androidx breaks the harness
+// with a resolution error rather than a clear one, so the bar is literally "does
+// it import anything from androidx".
+val UI_PACKAGE = "com/jarvis/os/ui/"
+val PURE_UI_SOURCES = setOf("OrbMath.kt", "UniverseMath.kt")
+val PURE_UI_TESTS = setOf("UniverseMathTest.kt")
+
+fun isNonPureUi(element: FileTreeElement, keep: Set<String>): Boolean =
+    !element.isDirectory && element.path.contains(UI_PACKAGE) && element.file.name !in keep
+
 kotlin {
     compilerOptions {
         // Only JDK 21 is present in this environment. CI builds on 17; the
@@ -49,11 +60,27 @@ sourceSets {
     main {
         kotlin.setSrcDirs(listOf(appMain, File(projectDir, "stubs")))
         kotlin.exclude(
-            // Compose + androidx: not resolvable without dl.google.com.
-            "**/com/jarvis/os/ui/**",
             // Pulls in ComponentActivity and the Compose entry point.
             "**/MainActivity.kt",
         )
+        // Compose + androidx are not resolvable without dl.google.com, so `ui/`
+        // is out — EXCEPT the handful of files in it that import no Compose at
+        // all. Those are pure arithmetic that happens to serve the UI, and there
+        // is no reason for the one gate that runs here to be blind to them:
+        // UniverseMath decides where an endless zoom puts every shell, which is
+        // exactly the kind of sign error that is free to catch here and costs a
+        // twenty-minute build to catch in CI.
+        //
+        // A Spec rather than an include pattern, because in Gradle's pattern
+        // sets an exclude always beats an include — "exclude ui/** then include
+        // one file back" silently keeps excluding it.
+        //
+        // The `isDirectory` guard is not defensive, it is required: Gradle asks
+        // the Spec about DIRECTORIES too, and excluding one prunes everything
+        // beneath it. Without the guard, `ui/components` is excluded (its name is
+        // not in the list) and the files inside are never even offered — which
+        // looks exactly like the Spec not working.
+        kotlin.exclude { isNonPureUi(it, PURE_UI_SOURCES) }
     }
     test {
         kotlin.setSrcDirs(listOf(appTest))
@@ -63,9 +90,9 @@ sourceSets {
             "**/*RobolectricTest.kt",
             "**/GroqClientParseTest.kt",
             "**/GeminiClientParseTest.kt",
-            // Tests for the Compose layer, which is excluded from `main` above.
-            "**/com/jarvis/os/ui/**",
         )
+        // Same rule as `main`: the tests for the pure files run here too.
+        kotlin.exclude { isNonPureUi(it, PURE_UI_TESTS) }
     }
 }
 

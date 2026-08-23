@@ -27,4 +27,7 @@ object OrbMath {
     fun range(seed: Int, min: Float, max: Float): Float = min + unitRandom(seed) * (max - min)
 
     const val TAU: Float = (2.0 * PI).toFloat()
+
+    /** Half a turn. Kotlin's own `PI` is a Double, and mixing the two here is noise. */
+    const val PI_F: Float = PI.toFloat()
 }

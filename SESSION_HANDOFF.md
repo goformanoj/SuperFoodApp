@@ -1,5 +1,38 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-08-23
+
+Branch `claude/phone-glitch-investigation-g6dnhk`. The UI round is done: the
+themes were cut from seven to four, Orbit was rebuilt, and the orb now opens into
+an endless zoom (`OrbUniverse` + the pure `UniverseMath` behind it). All of it is
+Compose, so **CI is the first real compile** — check for the `jarvis-debug-apk`
+artifact before believing any of it, per Rule 2.
+
+Backend Phase 1 is still parked on the user: Connect-to-Git in Cloudflare with
+root directory `backend`, `GROQ_API_KEY` and `PROXY_SECRET` as Worker secrets,
+then `POST /admin/migrate`.
+
+### New gotcha — the off-device gate can now see part of `ui/`
+
+`scripts/jvmcheck` used to exclude `**/com/jarvis/os/ui/**` wholesale. It now
+excludes everything under `ui/` **except** an explicit allow-list of files that
+import no Compose (`OrbMath.kt`, `UniverseMath.kt`, and their tests). Two things
+to know before touching it:
+
+- It is a **Spec**, not an include pattern. In Gradle's pattern sets an exclude
+  always beats an include, so "exclude `ui/**`, then include one file back"
+  silently keeps excluding it.
+- The Spec is asked about **directories** as well as files, and excluding a
+  directory prunes everything beneath it. Without the `isDirectory` guard,
+  `ui/components` is excluded because its *name* is not on the allow-list, and
+  the files inside are never offered — which looks exactly like the Spec not
+  working at all. That cost one debugging round.
+
+Adding a file to the allow-list that imports androidx breaks the harness with a
+resolution error rather than a clear one, so the bar is literally: does it import
+anything from `androidx`?
+
+
 > Everything a fresh session (or future me) needs to resume instantly. Update the "Current position" line as work ships.
 > Companion: [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md) · [`PROGRESS.md`](PROGRESS.md) · [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) · [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) · [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md)
 

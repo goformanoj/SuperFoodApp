@@ -2,6 +2,7 @@ package com.jarvis.os.ui.home
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -73,6 +74,8 @@ import androidx.compose.ui.unit.sp
 import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.ui.chat.ChatScreen
 import com.jarvis.os.ui.components.HudOrb
+import com.jarvis.os.ui.components.OrbUniverse
+import com.jarvis.os.ui.components.pinchToOpen
 import com.jarvis.os.ui.components.ThemeBackdrop
 import com.jarvis.os.ui.components.VoiceWave
 import com.jarvis.os.ui.debug.DiagnosticsScreen
@@ -174,6 +177,10 @@ fun JarvisApp(
     // change everyone has to accept.
     val bottomDashboard = palette.orbStyle == OrbStyle.Orbit
     var dashboardOpen by remember { mutableStateOf(false) }
+    // The universe is hosted here rather than inside HomeContent so it covers
+    // the dashboard bar and the drawer too. A full-screen dive with a nav bar
+    // floating on top of it is not immersive, it is a screenshot with chrome.
+    var universeOpen by remember { mutableStateOf(false) }
 
     // Deliberately an if/else chain rather than two independent handlers: with
     // both registered, which one answers Back depends on composition order, which
@@ -215,7 +222,7 @@ fun JarvisApp(
             ThemeBackdrop()
 
             when (current) {
-                Dest.Home -> HomeContent(state, onWake, onInterrupt)
+                Dest.Home -> HomeContent(state, onWake, onInterrupt, onExpand = { universeOpen = true })
                 Dest.Chat -> ChatScreen(state.messages, onClearChat)
                 Dest.Diagnostics -> DiagnosticsScreen(onSubmitCommand = onSubmitCommand)
                 Dest.Settings -> SettingsScreen(
@@ -316,6 +323,20 @@ fun JarvisApp(
                             dashboardOpen = false
                         },
                         onDismiss = { dashboardOpen = false },
+                    )
+                }
+
+                // Last in the Box, so it is drawn over everything — including
+                // the dashboard bar, which would otherwise sit on top of a dive.
+                AnimatedVisibility(
+                    visible = universeOpen,
+                    enter = fadeIn(tween(420)),
+                    exit = fadeOut(tween(260)),
+                ) {
+                    OrbUniverse(
+                        onClose = { universeOpen = false },
+                        palette = palette,
+                        amplitude = state.amplitude,
                     )
                 }
             }
@@ -487,6 +508,7 @@ private fun HomeContent(
     state: VoiceUiState,
     onWake: () -> Unit = {},
     onInterrupt: () -> Unit = {},
+    onExpand: () -> Unit = {},
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val viewport = maxHeight
@@ -497,7 +519,13 @@ private fun HomeContent(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
         ) {
-            HeroSection(state = state, height = viewport, onWake = onWake, onInterrupt = onInterrupt)
+            HeroSection(
+                state = state,
+                height = viewport,
+                onWake = onWake,
+                onInterrupt = onInterrupt,
+                onExpand = onExpand,
+            )
             ScheduleSection()
         }
     }
@@ -509,6 +537,7 @@ private fun HeroSection(
     height: Dp,
     onWake: () -> Unit = {},
     onInterrupt: () -> Unit = {},
+    onExpand: () -> Unit = {},
 ) {
     val greeting = remember { greetingForHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
     // Show live transcript/reply only during an active conversation; hide when asleep.
@@ -540,12 +569,18 @@ private fun HeroSection(
         // every other assistant lets you cut in, and until now this one made you
         // wait out a sentence you had already heard enough of. While listening or
         // thinking there is nothing useful a tap could mean, so it does nothing.
+        //
+        // Pinching it apart opens the universe. Two fingers, so it cannot be
+        // reached by accident and cannot be confused with the tap above — and it
+        // is the gesture the request named: "like how u do with images on a
+        // screen".
         Box(
             modifier = Modifier
                 .clip(CircleShape)
                 .clickable(enabled = !active || speaking) {
                     if (speaking) onInterrupt() else onWake()
-                },
+                }
+                .pinchToOpen(onExpand),
             contentAlignment = Alignment.Center,
         ) {
             HudOrb(orb = state.orb, amplitude = state.amplitude, size = 280.dp)

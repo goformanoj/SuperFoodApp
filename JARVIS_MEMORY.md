@@ -1,5 +1,62 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 — an endless zoom, and a gate that could finally check one
+
+**What was asked.** *"remove the themes: lattice, prism and core, restructure
+orbit, it's horribly built. I want the orbs to be interactive, like if i try and
+expand the orb like how u do with images on a screen, it should be like a galaxy
+kind of thing, i can keep going deeper and deeper… also make every theme unique,
+right now all look almost the same."*
+
+**Why the themes all looked the same, which was not about colour.** In
+`ThemeBackdrop` the seven themes drew from a shared vocabulary and three pairs
+had picked the same element: Reactor and Lattice both drew `wireGlobe`, Prism and
+Machine both drew `nodeShell`, Filigree and Orbit both drew `hudBrackets`. So
+three of seven were a neighbour recoloured, and the accent was doing all the work
+of telling them apart. Cutting to four and giving each one signature element it
+shares with nothing is the actual fix; recolouring would not have touched it.
+
+**Why "deeper and deeper" had to be generated rather than authored.** A ladder of
+hand-built levels is the version that gets found out immediately, because the
+first thing anyone does with a zoom is keep pinching. So there are no levels
+stored anywhere: one continuous `zoom`, four shells drawn at once, and zooming in
+by exactly `1.0` magnifies everything by `SCALE` — which puts the child precisely
+where its parent was. The counter ticks over and the picture is already identical,
+so there is no seam to hide. Content is hashed from **absolute depth**, never from
+the current zoom, which is what makes a dive reversible: pinch back out and you
+arrive in the system you left instead of a freshly rolled one.
+
+**The evidence that mattered.** Compose cannot be compiled in this environment, so
+a renderer written here is written blind. That is the whole reason the arithmetic
+was split out into a pure `UniverseMath` and the excluded-`ui/` rule in
+`scripts/jvmcheck` was narrowed to let it through — and the gate paid for itself
+on its first run, twice:
+
+1. **A shell flickered at every level boundary.** The fade window ended at exactly
+   the extreme the drawn range reaches, so an instant after a seam the innermost
+   shell was at 0.1% opacity while an instant before, its counterpart was not
+   drawn at all. Invisible on its own; it means the drawn set differs either side
+   of *every* boundary, which is the one property the whole scheme rests on. The
+   fix is slack at both ends: a shell must be fully dark for a moment before it is
+   allowed to arrive.
+2. **A core was left burning over the level below it.** The handover finished at
+   level 0, leaving 15% of the glow still lit exactly where the child shell
+   unfolds — small enough to look intentional, and it buries the thing the dive
+   exists to reveal.
+
+Neither is visible in a diff and both are obvious on a phone: the worst possible
+combination, and precisely what a pure-logic gate is for. Same lesson as
+`HotwordOwnershipTest` finding the two-owner drift — the fault was found by
+*running* the rules over their range, not by reasoning about them.
+
+**A Gradle trap worth remembering.** Narrowing the `ui/` exclusion needed a Spec
+rather than an include pattern, because Gradle's pattern sets let an exclude beat
+an include. But the Spec is asked about **directories** too, and excluding one
+prunes everything under it — so `ui/components` was excluded on its own name and
+the allow-listed files inside were never even offered. It presents as "the Spec
+does nothing", which sends you looking in the wrong place.
+
+
 A running log Claude maintains and updates **after every prompt**. It captures
 what was asked, what changed, and key decisions — so nothing is lost between
 sessions (the build container is ephemeral).
