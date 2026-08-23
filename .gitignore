@@ -31,3 +31,8 @@ google-services.json
 
 # OS
 .DS_Store
+
+# Kotlin daemon scratch from scripts/jvmcheck. It writes an errors/*.log here
+# whenever the compile daemon restarts, which is routine and not a failure — but
+# `git add -A` sweeps it into the next commit, and one reached `main` that way.
+.kotlin/
