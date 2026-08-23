@@ -649,6 +649,7 @@ private fun HomeContent(
         ) {
             HeroSection(
                 state = state,
+                amplitude = amplitude,
                 height = viewport,
                 onWake = onWake,
                 onInterrupt = onInterrupt,
@@ -663,6 +664,8 @@ private fun HomeContent(
 @Composable
 private fun HeroSection(
     state: VoiceUiState,
+    /** Mic level as a lambda — it reaches the orb and the wave, and is read in their draw. */
+    amplitude: () -> Float = { 0f },
     height: Dp,
     onWake: () -> Unit = {},
     onInterrupt: () -> Unit = {},
