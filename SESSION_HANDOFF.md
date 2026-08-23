@@ -2,9 +2,9 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `9a4d063`, **CI not yet
-confirmed** — `main` is at `8d3d689`. The universe is now four layers you can
-touch: orb → galaxy → a star's **system** → a **world** with things on it. Every
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `da52d00`, **green with the
+`jarvis-debug-apk` artifact**, and `main` fast-forwarded to it. The universe is
+now four layers you can touch: orb → galaxy → a star's **system** → a **world** with things on it. Every
 layer zooms, the orb turns under a drag, and the theme stops at the orb.
 
 ### Debt carried deliberately, not hidden
