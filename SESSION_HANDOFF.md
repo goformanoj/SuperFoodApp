@@ -1,5 +1,37 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-08-23 (latest)
+
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `87e8b7f`, **CI not yet
+confirmed** — `main` is still at `287843a`. Five device-reported faults fixed:
+the Settings crash, the picker lag, the background grid, the star chart, and
+dimensions that were identical.
+
+The **call-assistant plan is written and parked** in
+`/root/.claude/plans/can-you-explain-me-groovy-spark.md`. It ships after the
+Play Store launch; only its pure logic (CallGuard, CallRouter) is pre-launch
+work, and none of it has started.
+
+### New gotchas
+
+**Two enums with overlapping ids in one lazy list is a crash, not a clash.**
+`JarvisPalette` and `BackdropStyle` both had a `"forge"`. Keyed on `it.id` in a
+single `LazyColumn`, that is a duplicate key, and it throws when the SECOND one
+composes — so it presented as "crashes when you scroll", not as "crashes on
+open". Namespace lazy-list keys whenever two independent id spaces share a list.
+
+**Picker thumbnails must be still — this is the second time.** Seven live orbs
+lagged this screen; the fix was recorded in `HudOrb`; eleven live backdrops then
+lagged it again. Any renderer that goes in a picker needs a frozen mode from the
+start, and the transition must not be *created* when unused, because an ignored
+`rememberInfiniteTransition` still schedules frames.
+
+**Branching a seed does not make two generated places different.** It draws
+different numbers from the same ranges, and self-similar structure then looks
+identical however different the numbers are. Variety has to live in the ranges —
+which shapes are allowed, how dense, how fast — not in the rolls inside them.
+
+
 ## Current position — 2026-08-23 (later)
 
 Branch `claude/phone-glitch-investigation-g6dnhk` @ `902b59e`, **CI not yet

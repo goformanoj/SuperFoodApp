@@ -1,5 +1,59 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (later) — a crash found by reading, and three lessons repeated
+
+**Five faults from one device session**, all reported without a trace, and the
+most instructive thing about them is that three were repeats of lessons this
+project had already written down.
+
+**The crash was findable by reading, and it was an id collision.**
+`JarvisPalette.Forge` has id `"forge"`. `BackdropStyle.ForgeFloor`, added the
+same day in a different file, also has id `"forge"`. Both `items()` calls were
+in one `LazyColumn` keyed on `it.id`, which is a duplicate key — and Compose
+throws when the *second* one composes, so it presented as "crashes as soon as I
+scrolled past the themes" rather than as "crashes on open". That symptom is what
+identified it: a crash on scroll in a lazy list is nearly always a key.
+
+The fix is namespaced keys rather than a renamed id, because the general problem
+is not that these two collided — it is that two independent id spaces were being
+merged into one keyspace with nothing checking them against each other.
+
+**The picker lagged for the second time, for the same reason.** Seven live orbs
+lagged this exact screen; the diagnosis and the fix are written in `HudOrb`'s own
+comments; and eleven live `ThemeBackdrop`s then lagged it again. Writing a lesson
+down next to the code that learned it is not enough when the next feature adds a
+*different* renderer to the same list. The durable form of the rule is about the
+place, not the component: **anything that draws into a picker needs a still
+mode**, and that now exists as a `thumbnail` flag rather than as a note.
+
+**Branching a seed is not the same as making a different place.** The dive gave
+each star its own branch, every test proved the shells differed, and the user
+said all the dimensions looked the same — and they were right. Nine branches
+drew nine sets of numbers from **one set of ranges**, and self-similar geometry
+looks identical however different the numbers are. Variety had to move into the
+ranges: which shapes may form at all, how dense, how many bodies, how fast, how
+far out, and what colour temperature. That is the difference between random and
+*varied*, and the tests had been asserting the wrong property — that two
+dimensions were not byte-identical, when what mattered was whether they were
+distinguishable by eye. They now compare whole dimensions on aggregate.
+
+**The stars.** "These don't look like stars in anyway." Correct, and the fault
+was that each was a large soft radial gradient — which is a photograph of an
+out-of-focus light. A star reads as a star because of a *small, sharp, nearly
+white core* against its halo, and because of the four-point diffraction cross,
+which is the most recognisable feature of a bright star in any photograph and
+was entirely absent. The outline rings made it worse: they read as targeting
+reticles, so the chart looked like UI rather than sky. Radii came down to a
+third, the core became a hard disc, spikes went on everything except the
+protostar, and the rings went.
+
+**The sky behind them was an opaque black rectangle with 150 identical dots.**
+A real field has depth — gas you look *through*, a band where you are looking
+along the galactic disc, and a brightness distribution where most stars are
+faint and a few are bright. Squaring the depth is what produces that
+distribution, and it is the single change that made it stop reading as noise.
+
+
 ## 2026-08-23 (later) — two reverts, ten worlds, and a sky with a choice in it
 
 **What was asked.** Restore Orbit's orb. Fix Nebula's, which was "just weird".
