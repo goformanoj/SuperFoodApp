@@ -1,5 +1,46 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (Cloudflare access) — the migration is done, the Worker is not
+
+The Cloudflare connector was granted, so the backend's state could finally be
+**looked at** rather than assumed. Two facts, both worth having:
+
+| | State |
+|---|---|
+| D1 `jarvis` (`3841685b…`) | Exists, created 2026-08-20. **Zero tables.** |
+| Workers in the account | **None at all.** |
+
+So Phase 1 had not started, rather than half-started.
+
+**The migration is now applied directly.** `d1_database_query` runs SQL against D1
+without any Worker in the way, which means `POST /admin/migrate` was never the only
+route — it was the only route *from a phone*, and a connector is not a phone.
+`users` and `usage_daily` both exist and `sqlite_master` confirms it.
+
+That endpoint keeps its value: it stays the way the schema is applied on any future
+database, it is idempotent (`IF NOT EXISTS` throughout), and `schema.test.mjs`
+still checks `schema.js` and `schema.sql` have not drifted. 48 backend tests pass.
+
+**What the connector cannot do.** It exposes `workers_list`, `workers_get_worker`
+and `workers_get_worker_code` — reads only. There is no deploy, and no way to set a
+Worker secret. Both remaining steps are the user's, and the secret one must stay
+that way regardless: `GROQ_API_KEY` and `PROXY_SECRET` go into the dashboard
+directly and are never pasted into a conversation.
+
+**Left to do, and it is exactly two things:**
+
+1. Workers → Connect to Git → this repo, **root directory `backend`**.
+2. In that Worker's settings, add `GROQ_API_KEY` and `PROXY_SECRET` as secrets.
+
+Then the Worker URL comes back here and the app can be pointed at it.
+
+**Worth noting for later:** a deploy-on-push GitHub Action is the natural analogue
+of the APK build — it is how a phone-only project ships a backend at all. Not added
+yet, because it needs a `CLOUDFLARE_API_TOKEN` repository secret and a workflow
+that fails without one would make CI red, which breaks the rule that a red build
+means a real fault.
+
+
 ## 2026-08-23 (stars adrift) — the map and the tap computed position separately
 
 **Reported.** *"why are stars of each galaxy not zoomable to enter … i can zoom

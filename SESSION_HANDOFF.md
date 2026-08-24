@@ -49,6 +49,20 @@ rather than ripped out blind at the end of a large blind-Compose change. It is
 the next cleanup; do not mistake the passing tests for coverage of anything that
 ships.
 
+### Backend: migrated, not deployed
+
+D1 `jarvis` now has `users` and `usage_daily`, applied straight through the
+Cloudflare connector's `d1_database_query` — no Worker needed. `POST /admin/migrate`
+was never the only route to the schema, only the only route *from a phone*.
+
+Still outstanding, both requiring the dashboard:
+
+1. Workers → **Connect to Git**, root directory `backend`.
+2. Add `GROQ_API_KEY` and `PROXY_SECRET` as that Worker's secrets.
+
+The connector reads Workers (`workers_list`, `workers_get_worker`) and cannot
+deploy or set secrets. The secrets are the user's to enter directly in any case.
+
 ### One position, computed once
 
 `drawGalaxyStage` scaled by `view` and panned by `pan`; `drawStarMap` did neither;
