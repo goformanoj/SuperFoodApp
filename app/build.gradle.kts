@@ -101,6 +101,11 @@ dependencies {
     implementation(composeBom)
 
     implementation("androidx.core:core-ktx:1.15.0")
+    // The splash screen. Android 12+ shows one whether an app asks or not, built
+    // from the launcher icon over the window background — this library is how the
+    // colour, the icon and the exit are chosen rather than inherited, and it
+    // backports the same behaviour to the older versions this app still supports.
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 

@@ -1,5 +1,57 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-25 (splash) — the app already had one, on the wrong colour
+
+**Asked for.** *"our app doesn't have a splash screen, can you make that for me,
+like the page which stays for around a second before the app opens"*.
+
+**What was actually there.** On Android 12 and up **every** app gets a splash
+whether it asks or not — the system builds one from the launcher icon over the
+theme's `windowBackground`. This app had one all along. It used the platform's
+`Theme.Material.NoActionBar` unchanged, whose window background is a **light**
+grey, so every cold start painted a near-white window, held it for as long as the
+process took, then cut to a black app.
+
+So the fault was not a missing splash. It was a **white flash on every launch**,
+which is among the most unfinished things a launch can do, and it had nothing to
+do with the feature being absent. Worth remembering as a shape: *"X doesn't
+exist"* is sometimes *"X exists and is wrong", and the fix differs.
+
+**What was added.** `androidx.core:core-splashscreen`, a `themes.xml` with
+`Theme.Jarvis` (dark window background — this line alone kills the flash) and
+`Theme.Jarvis.Starting` for the launch, and `installSplashScreen()` in
+`MainActivity` **before** `super.onCreate`, because the library installs the
+splash by swapping the activity's theme and the theme must be set before the
+window exists.
+
+### On the "around a second"
+
+Google's guidance is not to pad a splash artificially, and it is right: a splash
+covers work, and time spent looking at a logo is taken from the user. But one that
+vanishes in 90ms on a fast phone does not read as a splash — it reads as a
+flicker, which is worse than none.
+
+The compromise implemented: hold for **650ms or until the app is ready, whichever
+is later**. On a slow cold start it costs nothing, because the app was not ready
+anyway. On a fast one it costs a little over half a second, which is the price of
+the launch looking deliberate. `setKeepOnScreenCondition` is polled every frame,
+so the check is a clock comparison and nothing else.
+
+### Two traps avoided
+
+- **`provider.remove()` is mandatory, not tidy-up.** With a custom exit animation
+  the splash view stays on top of the window until `remove()` is called — omit it
+  and the app runs live underneath a frozen image of its own splash.
+- **No `windowSplashScreenIconBackgroundColor`.** Setting it makes Android draw
+  the icon smaller inside a filled circle, and this adaptive icon already carries
+  its own dark background layer — so the circle would be a second background of
+  the same colour behind the first, paid for in icon size.
+
+The splash colour is a static resource and cannot follow the runtime theme: the
+window is painted before any Kotlin runs. Arc's background is used, so a Forge
+user gets a brief Arc-coloured splash — the correct trade against no colour at all.
+
+
 ## 2026-08-23 (commercial feel) — the app was assembled, not designed
 
 **Reported.** *"the app doesn't give me the feel of a proper commercial ready app,

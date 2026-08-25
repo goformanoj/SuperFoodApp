@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+        The app's own theme.
+
+        `android:windowBackground` is the important line and it is worth being
+        precise about why. Until now the app used the platform's
+        `Theme.Material.NoActionBar` unchanged, whose window background is a
+        LIGHT grey — so every cold start painted a near-white window, held it for
+        as long as the process took to come up, and then cut to a black app. That
+        flash is the single most "unfinished" thing a launch can do, and it was
+        happening on every single launch.
+    -->
+    <style name="Theme.Jarvis" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/launch_background</item>
+    </style>
+
+    <!--
+        The launch theme — what the system paints before the process exists.
+
+        On Android 12 and up every app gets a splash whether it asks for one or
+        not, built from the launcher icon over `windowBackground`. So this app
+        already HAD a splash; it was simply the default one, on the wrong colour.
+        Declaring it is how it stops being an accident.
+
+        `postSplashScreenTheme` is what hands over to the real theme once the
+        activity is up. Without it the splash theme would stay applied for the
+        life of the activity.
+    -->
+    <style name="Theme.Jarvis.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/launch_background</item>
+        <!--
+            No `windowSplashScreenIconBackgroundColor`. Setting it makes Android
+            draw the icon smaller, inside a filled circle — and this adaptive icon
+            already carries its own dark background layer, so the circle would be
+            a second background of the same colour behind the first, at the cost
+            of the icon's size.
+        -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.Jarvis</item>
+        <item name="android:windowBackground">@color/launch_background</item>
+    </style>
+</resources>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The launch colours, and why they are duplicated here.
+
+    Every other colour in this app lives in `JarvisPalette` and is chosen at
+    runtime, because the user picks a theme. The splash cannot wait for that: the
+    window is painted by the system before a single line of Kotlin runs, so its
+    colour has to be a static resource compiled into the APK.
+
+    This is Arc's background — the default theme, and what a first launch shows.
+    Someone running the Forge theme gets a brief Arc-coloured splash, which is the
+    correct trade: the alternative is the window having no colour at all until the
+    process starts, which is the white flash this replaces.
+-->
+<resources>
+    <color name="launch_background">#FF04101E</color>
+</resources>

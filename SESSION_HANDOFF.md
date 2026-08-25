@@ -49,6 +49,23 @@ rather than ripped out blind at the end of a large blind-Compose change. It is
 the next cleanup; do not mistake the passing tests for coverage of anything that
 ships.
 
+### Launch: themes.xml is load-bearing
+
+`Theme.Jarvis` sets `android:windowBackground` to the brand dark. That single line
+is what stops a white flash on cold start — the app used the platform theme's
+light background for its whole life before this.
+
+`Theme.Jarvis.Starting` is the Android 12+ splash, declared rather than inherited.
+`installSplashScreen()` must run **before** `super.onCreate`: the library installs
+the splash by swapping the activity's theme.
+
+> With a custom exit animation, **`provider.remove()` is mandatory**. The splash
+> view sits on top of the window until it is called, so omitting it leaves the app
+> running live underneath a frozen picture of its own splash.
+
+The splash colour is a static resource and cannot follow the chosen theme — the
+window is painted before any Kotlin runs.
+
 ### Shared UI chrome lives in ScreenChrome.kt
 
 `ScreenHeader` and `EmptyState`. Use them; do not hand-roll either.
