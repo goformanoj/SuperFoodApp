@@ -2,6 +2,7 @@ package com.jarvis.os.ui.settings
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -42,7 +43,19 @@ class InstructionsScreenUiTest {
             MaterialTheme { InstructionsScreen(initial = "call me sir", onSave = {}) }
         }
         compose.onNodeWithText("Save").performScrollTo().performClick()
-        compose.onNodeWithText("Saved ✓").assertIsDisplayed()
+        // "Saved", without the tick it used to carry.
+        //
+        // The label is set in `labelLarge`, which is Michroma — a display face
+        // with Latin coverage and no Dingbats, so U+2713 would render as a tofu
+        // box. It only worked before because `titleSmall` was missing from the
+        // Typography and fell back to Roboto, which has the glyph. Widening a
+        // display font's role means every decorative character it now has to
+        // carry is worth checking.
+        //
+        // The confirmation is stronger for it: the button also disables, so the
+        // state is readable without relying on a symbol at all.
+        compose.onNodeWithText("Saved").assertIsDisplayed()
+        compose.onNodeWithText("Saved").assertIsNotEnabled()
     }
 
     @Test

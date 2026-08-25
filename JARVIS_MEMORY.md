@@ -73,6 +73,26 @@ Worth recording as a mistake in kind — I described the feature from its name
 rather than asking what it was for, and produced a confident screen about the
 wrong thing.
 
+### The test that caught a font trap
+
+CI went red on `InstructionsScreenUiTest.Save_shows_the_saved_confirmation`: it
+asserts `"Saved ✓"` and the button now reads `"Saved"`.
+
+The label was right to change, and the reason is sharper than "I tidied it".
+Button labels are `labelLarge`, which is **Michroma** — a display face with Latin
+coverage and no Dingbats. U+2713 would render as a **tofu box**. It only ever
+worked because `titleSmall` was missing from the `Typography` and fell back to
+Roboto, which has the glyph. So the tick was surviving on the very bug this pass
+fixed.
+
+**Widening a display font's role means auditing every decorative character it now
+has to carry.** Checked the rest: `✓`/`✗` in Diagnostics are `bodyMedium`, which
+is Inter — safe. The `·` separators in the universe HUD are already Michroma and
+already render, so Latin-1 punctuation is covered.
+
+The test now asserts `"Saved"` **and** that the button is disabled, which is the
+better confirmation anyway — it does not depend on a symbol at all.
+
 ### And the last row was under the gesture bar
 
 `systemBarsPadding()` on a scrolling column pads the container, not the scroll
