@@ -70,6 +70,44 @@ object Instructions {
     }
 
     /**
+     * What JARVIS has been told, as one sentence.
+     *
+     * The screen shows this at the top, and it is the reason the screen works at
+     * all. A form asks four questions and shows four answers in four boxes; the
+     * user still has to assemble in their head what any of it *does*. One
+     * sentence — "call you Pranjal, keep answers brief, talk casually" — is the
+     * actual outcome, and seeing it change as a choice is made is worth more than
+     * any label above a field.
+     *
+     * Empty when nothing is set, which the screen shows as its empty state rather
+     * than as a sentence about nothing.
+     */
+    fun summary(draft: InstructionsDraft): String {
+        val parts = mutableListOf<String>()
+        val name = draft.callMe.trim()
+        if (name.isNotEmpty()) parts += "call you $name"
+        when (draft.length) {
+            AnswerLength.Brief -> parts += "keep answers short"
+            AnswerLength.Full -> parts += "go into detail"
+            null -> Unit
+        }
+        when (draft.tone) {
+            Tone.Casual -> parts += "talk casually"
+            Tone.Formal -> parts += "stay formal"
+            null -> Unit
+        }
+        if (draft.extra.isNotBlank()) parts += "follow your notes"
+        if (parts.isEmpty()) return ""
+        // Oxford-less join: "a, b and c". Read aloud in the head, which is how a
+        // one-line summary is read.
+        return when (parts.size) {
+            1 -> parts[0].replaceFirstChar { it.uppercase() } + "."
+            else -> (parts.dropLast(1).joinToString(", ") + " and " + parts.last())
+                .replaceFirstChar { it.uppercase() } + "."
+        }
+    }
+
+    /**
      * A stored block back into a draft.
      *
      * Only lines this file writes are claimed; **everything else is preserved

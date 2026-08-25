@@ -78,4 +78,37 @@ class InstructionsDraftTest {
             Instructions.parse(it).callMe
         })
     }
+    @Test
+    fun `nothing set has no summary`() {
+        assertEquals("", Instructions.summary(InstructionsDraft()))
+    }
+
+    @Test
+    fun `one choice reads as a sentence`() {
+        assertEquals("Call you Pranjal.", Instructions.summary(InstructionsDraft(callMe = "Pranjal")))
+    }
+
+    @Test
+    fun `two choices are joined with and`() {
+        assertEquals(
+            "Call you Pranjal and keep answers short.",
+            Instructions.summary(InstructionsDraft("Pranjal", AnswerLength.Brief)),
+        )
+    }
+
+    @Test
+    fun `everything reads as one line`() {
+        assertEquals(
+            "Call you Pranjal, keep answers short, talk casually and follow your notes.",
+            Instructions.summary(
+                InstructionsDraft("Pranjal", AnswerLength.Brief, Tone.Casual, "open cloud means claude"),
+            ),
+        )
+    }
+
+    @Test
+    fun `notes alone still summarise`() {
+        assertEquals("Follow your notes.", Instructions.summary(InstructionsDraft(extra = "anything")))
+    }
+
 }

@@ -1,5 +1,66 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-25 (instructions, properly) — I changed the content and called it a layout
+
+**Reported.** *"YOU DIDNT RESTRUCTURE AND CHANGE THE LAYOUT OF CUSTOM
+INSTRUCTIONS — what questions, this is horrible"*, with a screenshot. Correct on
+both counts, and the screenshot showed two faults I should have caught before
+shipping it.
+
+**What I actually did the first time.** Replaced a free-text box with four
+labelled inputs stacked down the page: name field, chip row, chip row, textarea,
+button. Better *content* — but still a form, still one control per screenful of
+scrolling, still read as a form. Swapping what a form asks is not a layout change.
+
+**And two visible defects in it:**
+
+- **Every field was a box inside a box.** `JarvisCard` draws a border and
+  `OutlinedTextField` draws its own, so each input had two. Plain in the
+  screenshot and obvious in hindsight — a component that provides a container
+  must not be wrapped in another one.
+- **Save was cut off under the gesture bar**, because it was the last item in a
+  scrolling column. How much of the screen's one action you could see depended on
+  where you had scrolled to.
+
+### The shape it should have been
+
+Three changes, and the first is the one that makes the rest possible.
+
+**A summary of what JARVIS is actually told**, at the top, in one sentence:
+"JARVIS will call you Pranjal, keep answers short and talk casually." A form asks
+four questions and shows four answers in four boxes; the user still has to
+assemble the *outcome* in their head. With the outcome stated, the controls below
+only need to be changeable, not self-explanatory — which is what lets them be
+compact. Pure and tested, including the "and" join and the empty case.
+
+**Rows that show their value and open one at a time.** Four short rows, each with
+its current setting on the right, and a control revealed only for the row being
+changed. That is the difference between a list you scan and a form you fill in,
+and it is the same shape as the Settings index that worked.
+
+**Save pinned to the bottom**, outside the scroll.
+
+### The learned facts, which are a privacy surface first
+
+*"i also asked for the old slabs … which allowed you to delete the custom
+instructions Jarvis got by talking to the user"* — they were still there, but
+still in their old design, and that design was poor in three specific ways:
+
+- **Hidden when empty.** This is the only place a user can see what the assistant
+  believes about them, and a section that appears only once it has content means
+  nobody learns it exists until it already knows something. Backwards. It is shown
+  always now, with a line saying what will appear.
+- **No count.** "How much does it know about me" is the first question anyone has
+  here, and scrolling to answer it is a poor substitute for a number.
+- **"Forget" as a red-bordered word on every row** — the same fault as the "On"/
+  "Off" pills: a bordered word that looks like a button without saying what it
+  does. It also made a list of harmless facts look like a list of warnings, and
+  its tap target was 6dp of padding beside body text, for a destructive action.
+  It is a quiet icon in a 40dp target now, with a content description that names
+  the fact — with four rows on screen, "Forget" alone is four identical buttons to
+  a screen reader.
+
+
 ## 2026-08-25 (three real faults) — overlap, a missing verb, and a blank box
 
 Three things reported with evidence: a screenshot of overlapping text, a device

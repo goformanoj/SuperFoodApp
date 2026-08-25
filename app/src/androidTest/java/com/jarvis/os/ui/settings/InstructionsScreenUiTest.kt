@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -16,10 +17,13 @@ import org.junit.runner.RunWith
 /**
  * Compose UI cover for the custom-instructions screen.
  *
- * The screen used to be a free-text box with a menu of sentences to paste into
- * it; it now asks questions and takes taps, composing the one string the model is
- * sent from the answers. These assert that wiring — the chips, the save state and
- * the forget flow — in isolation, with test callbacks and no engine.
+ * The screen has been through two shapes. It was a free-text box with a menu of
+ * sentences to paste into it; then a form of four labelled inputs, which was the
+ * same thing with better content. It is now a summary of what JARVIS has been
+ * told plus compact rows that open one at a time.
+ *
+ * These assert the wiring through that last shape — a row opens, a choice inside
+ * it registers, and the pinned Save reflects whether there is anything to save.
  */
 @RunWith(AndroidJUnit4::class)
 class InstructionsScreenUiTest {
@@ -36,8 +40,11 @@ class InstructionsScreenUiTest {
         compose.setContent {
             MaterialTheme { InstructionsScreen(initial = "", onSave = { savedText = it }) }
         }
+        // The row has to be opened first: only the setting being changed shows a
+        // control, which is what makes this a list rather than a form.
+        compose.onNodeWithText("Answer length").performScrollTo().performClick()
         compose.onNodeWithText("Brief").performScrollTo().performClick()
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performClick()
         compose.runOnIdle {
             assertEquals("Keep answers to one sentence unless I ask for detail.", savedText)
         }
@@ -50,7 +57,9 @@ class InstructionsScreenUiTest {
         compose.setContent {
             MaterialTheme { InstructionsScreen(initial = "Call me sir.", onSave = {}) }
         }
-        compose.onNodeWithText("Saved").performScrollTo().assertIsNotEnabled()
+        // Save is pinned to the bottom rather than scrolled to, so there is
+        // nothing to scroll to it.
+        compose.onNodeWithText("Saved").assertIsNotEnabled()
     }
 
     @Test
@@ -58,8 +67,9 @@ class InstructionsScreenUiTest {
         compose.setContent {
             MaterialTheme { InstructionsScreen(initial = "", onSave = {}) }
         }
+        compose.onNodeWithText("Tone").performScrollTo().performClick()
         compose.onNodeWithText("Casual").performScrollTo().performClick()
-        compose.onNodeWithText("Save").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performClick()
         // "Saved", without the tick it used to carry.
         //
         // The label is set in `labelLarge`, which is Michroma — a display face
@@ -88,7 +98,25 @@ class InstructionsScreenUiTest {
             }
         }
         compose.onNodeWithText(fact).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Forget").performScrollTo().performClick()
+        // By content description, not by label: removal is a quiet icon now
+        // rather than a red-bordered word on every row. The description names the
+        // fact, so a screen reader says which one it removes — with several rows
+        // on screen, "Forget" alone would be four identical buttons.
+        compose.onNodeWithContentDescription("Forget: $fact").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(fact, forgotten) }
+    }
+
+    @Test
+    fun what_JARVIS_has_learned_is_shown_even_when_it_has_learned_nothing() {
+        // Deliberate, and a change from before. This is the only place a user can
+        // see what the assistant believes about them; a section that hides until
+        // it has content means nobody discovers it exists until it already knows
+        // something, which is exactly backwards for a privacy surface.
+        compose.setContent {
+            MaterialTheme {
+                InstructionsScreen(initial = "", learned = emptyList(), onSave = {})
+            }
+        }
+        compose.onNodeWithText("What JARVIS has picked up").performScrollTo().assertIsDisplayed()
     }
 }
