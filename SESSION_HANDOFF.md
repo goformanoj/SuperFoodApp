@@ -49,6 +49,22 @@ rather than ripped out blind at the end of a large blind-Compose change. It is
 the next cleanup; do not mistake the passing tests for coverage of anything that
 ships.
 
+### Shared UI chrome lives in ScreenChrome.kt
+
+`ScreenHeader` and `EmptyState`. Use them; do not hand-roll either.
+
+The header carries the indent past the ☰ the host draws over the top-left corner.
+That fact was written out on three screens with three different numbers before it
+lived in one place, and the mismatched margins were a real part of why the app
+felt homemade.
+
+> **A shared component's default sizing must be safe in every container, not just
+> the first one.** `EmptyState` defaulted to `fillMaxSize`, which fails at measure
+> time inside a `verticalScroll` — and Files is inside one.
+
+Destination `when` in `HomeScreen` is exhaustive on purpose: a new `Dest` fails to
+compile rather than falling through to a placeholder.
+
 ### Backend: migrated, not deployed
 
 D1 `jarvis` now has `users` and `usage_daily`, applied straight through the

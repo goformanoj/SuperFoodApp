@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +32,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import com.jarvis.os.ui.components.EmptyState
+import com.jarvis.os.ui.components.ScreenHeader
 import com.jarvis.os.files.Artifact
 import com.jarvis.os.files.ArtifactStore
 import com.jarvis.os.ui.theme.JarvisTheme
@@ -67,21 +71,17 @@ fun FilesScreen(modifier: Modifier = Modifier) {
             .systemBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(56.dp))
-        Text("Files", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
-        Text(
-            "Things JARVIS has made for you. Ask for a PDF or a set of notes and they " +
-                "appear here. They stay on this phone unless you share one.",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-            modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
+        ScreenHeader(
+            title = "Files",
+            subtitle = "Things JARVIS has made for you. They stay on this phone unless " +
+                "you share one.",
         )
 
         if (files.isEmpty()) {
-            Text(
-                "Nothing yet. Try: \"make a PDF of the important points from our conversation\".",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
+            EmptyState(
+                icon = Icons.Filled.Folder,
+                title = "Nothing here yet",
+                line = "Try: \"make a PDF of the important points from our conversation\".",
             )
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

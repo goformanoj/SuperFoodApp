@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -85,6 +86,8 @@ import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.ui.calendar.CalendarScreen
 import com.jarvis.os.ui.chat.ChatScreen
 import com.jarvis.os.ui.components.HudOrb
+import com.jarvis.os.BuildConfig
+import com.jarvis.os.ui.automation.AutomationScreen
 import com.jarvis.os.ui.components.OrbUniverse
 import com.jarvis.os.ui.components.ThemeBackdrop
 import com.jarvis.os.ui.components.VoiceWave
@@ -113,16 +116,60 @@ import com.jarvis.os.voice.VoiceUiState
 import java.util.Calendar
 import kotlinx.coroutines.launch
 
-/** Drawer destinations. Home is the live voice screen; Chat shows history; others are placeholders. */
-private enum class Dest(val label: String, val icon: ImageVector, val blurb: String) {
-    Home("Home", Icons.Filled.Home, ""),
-    Chat("Chat & memory", Icons.Filled.Forum, "Your conversation and what JARVIS remembers."),
-    Instructions("Custom instructions", Icons.Filled.EditNote, "What JARVIS always knows about you."),
-    Calendar("Calendar", Icons.Filled.CalendarMonth, "Your schedule and events."),
-    Files("Files", Icons.Filled.Folder, "Browse and act on your files."),
-    Automation("Automation", Icons.Filled.Bolt, "Automate taps, typing, and actions."),
-    Settings("Settings", Icons.Filled.Settings, "Voice and appearance."),
-    Diagnostics("Diagnostics", Icons.Filled.BugReport, "Self-checks, a typed command box, and the shareable trace."),
+/**
+ * Drawer destinations, and the group each belongs to.
+ *
+ * A flat list of eight was the structure, and eight peers with no grouping is one
+ * of the surest signs of an app that grew rather than one that was designed —
+ * "Home" and "Diagnostics" presented as equals, with nothing telling the user
+ * which of them they were ever meant to open. Every shipping app of this size
+ * groups: a few things you use, a few you set once, and the support drawer at the
+ * bottom.
+ *
+ * Nothing is removed. Automation keeps its place and is marked, which is how a
+ * product signals an unreleased feature — hiding it would be worse, because a
+ * feature nobody can see cannot be looked forward to.
+ */
+private enum class DrawerGroup(val label: String?) {
+    /** Home alone, above everything, with no heading over it. */
+    Primary(null),
+    Assistant("ASSISTANT"),
+    Preferences("PREFERENCES"),
+    Support("SUPPORT"),
+}
+
+private enum class Dest(
+    val label: String,
+    val icon: ImageVector,
+    val blurb: String,
+    val group: DrawerGroup,
+    /** A short marker shown beside the label, as apps mark a beta or a preview. */
+    val tag: String? = null,
+) {
+    Home("Home", Icons.Filled.Home, "", DrawerGroup.Primary),
+    Chat("Chat & memory", Icons.Filled.Forum, "Your conversation and what JARVIS remembers.", DrawerGroup.Assistant),
+    Calendar("Calendar", Icons.Filled.CalendarMonth, "Your schedule and events.", DrawerGroup.Assistant),
+    Files("Files", Icons.Filled.Folder, "Browse and act on your files.", DrawerGroup.Assistant),
+    Automation(
+        "Automation",
+        Icons.Filled.Bolt,
+        "Automate taps, typing, and actions.",
+        DrawerGroup.Assistant,
+        tag = "SOON",
+    ),
+    Instructions(
+        "Custom instructions",
+        Icons.Filled.EditNote,
+        "What JARVIS always knows about you.",
+        DrawerGroup.Preferences,
+    ),
+    Settings("Settings", Icons.Filled.Settings, "Voice and appearance.", DrawerGroup.Preferences),
+    Diagnostics(
+        "Diagnostics",
+        Icons.Filled.BugReport,
+        "Self-checks, a typed command box, and the shareable trace.",
+        DrawerGroup.Support,
+    ),
 }
 
 /**
@@ -359,7 +406,7 @@ fun JarvisApp(
                     )
                     Dest.Calendar -> CalendarScreen()
                     Dest.Files -> FilesScreen()
-                    else -> PlaceholderScreen(current)
+                    Dest.Automation -> AutomationScreen()
                 }
 
                 if (!bottomDashboard) {
@@ -798,31 +845,6 @@ private fun ScheduleSection() {
 }
 
 @Composable
-private fun PlaceholderScreen(dest: Dest) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(dest.icon, contentDescription = null, tint = LocalAccent.current, modifier = Modifier.size(64.dp))
-        Spacer(Modifier.height(20.dp))
-        Text(dest.label, style = MaterialTheme.typography.displayMedium, color = TextPrimary)
-        Spacer(Modifier.height(10.dp))
-        Text("COMING SOON", style = MaterialTheme.typography.labelSmall, color = LocalAccent.current)
-        Spacer(Modifier.height(16.dp))
-        Text(
-            text = dest.blurb,
-            style = MaterialTheme.typography.bodyLarge,
-            color = TextSecondary,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-@Composable
 private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
     ModalDrawerSheet(drawerContainerColor = JarvisTheme.surface) {
         Spacer(Modifier.height(28.dp))
@@ -839,26 +861,83 @@ private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
             modifier = Modifier.padding(start = 24.dp, bottom = 16.dp),
         )
         HorizontalDivider(color = JarvisTheme.glassBorder)
-        Spacer(Modifier.height(8.dp))
 
-        Dest.entries.forEach { dest ->
-            NavigationDrawerItem(
-                label = { Text(dest.label, style = MaterialTheme.typography.titleMedium) },
-                selected = dest == selected,
-                onClick = { onSelect(dest) },
-                icon = { Icon(dest.icon, contentDescription = dest.label) },
-                colors = NavigationDrawerItemDefaults.colors(
-                    selectedContainerColor = JarvisTheme.glass,
-                    unselectedContainerColor = Color.Transparent,
-                    selectedIconColor = LocalAccent.current,
-                    unselectedIconColor = LocalAccent.current,
-                    selectedTextColor = TextPrimary,
-                    unselectedTextColor = TextPrimary,
-                ),
-                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-            )
+        // Scrollable, because eight items plus headings and a footer no longer fit
+        // a short phone in landscape — and a nav drawer that silently cuts off its
+        // last item is a fault users blame themselves for.
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Spacer(Modifier.height(8.dp))
+            DrawerGroup.entries.forEach { group ->
+                val items = Dest.entries.filter { it.group == group }
+                if (items.isEmpty()) return@forEach
+                // Bound to a local first. Smart-casting a property of another
+                // class is a rule with exceptions, and this file has no compiler
+                // available to it until CI — so the version that cannot fail is
+                // the one worth writing.
+                val heading = group.label
+                if (heading != null) {
+                    Text(
+                        text = heading,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary,
+                        modifier = Modifier.padding(start = 28.dp, top = 18.dp, bottom = 6.dp),
+                    )
+                }
+                items.forEach { dest ->
+                    val tag = dest.tag
+                    NavigationDrawerItem(
+                        label = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(dest.label, style = MaterialTheme.typography.titleMedium)
+                                if (tag != null) {
+                                    Spacer(Modifier.width(8.dp))
+                                    DrawerTag(tag)
+                                }
+                            }
+                        },
+                        selected = dest == selected,
+                        onClick = { onSelect(dest) },
+                        icon = { Icon(dest.icon, contentDescription = dest.label) },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = JarvisTheme.glass,
+                            unselectedContainerColor = Color.Transparent,
+                            selectedIconColor = LocalAccent.current,
+                            unselectedIconColor = LocalAccent.current,
+                            selectedTextColor = TextPrimary,
+                            unselectedTextColor = TextPrimary,
+                        ),
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
         }
+
+        // The version, where every app puts it. Small, but its absence is felt:
+        // it is the line that says somebody ships this on a schedule.
+        HorizontalDivider(color = JarvisTheme.glassBorder)
+        Text(
+            text = "JARVIS OS · v${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary,
+            modifier = Modifier.padding(start = 28.dp, top = 14.dp, bottom = 20.dp),
+        )
     }
+}
+
+/** The marker beside a destination that is not ready — "SOON", a beta, a preview. */
+@Composable
+private fun DrawerTag(text: String) {
+    val accent = LocalAccent.current
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = accent,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(accent.copy(alpha = 0.14f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }
 
 /**

@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.jarvis.os.ui.components.ScreenHeader
 import com.jarvis.os.ui.speech.SpeechScreen
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.GlassBorder
@@ -67,16 +68,10 @@ fun SettingsScreen(
     var section by remember { mutableStateOf(Section.General) }
 
     Column(modifier.fillMaxSize()) {
-        Spacer(Modifier.height(56.dp))
-        Text(
-            "Settings",
-            style = MaterialTheme.typography.headlineSmall,
-            color = TextPrimary,
-            // Indented past the menu icon the host draws at the top-left corner.
-            // Without this the ☰ lands on top of the "S" and reads as a rendering
-            // fault — visible in a device screenshot.
-            modifier = Modifier.padding(start = 56.dp, end = 20.dp),
-        )
+        // The shared header. It carries the indent past the ☰ the host draws in
+        // the corner — a fact that was written out separately on three screens,
+        // with three different numbers, until it lived in one place.
+        ScreenHeader(title = "Settings", modifier = Modifier.padding(horizontal = 20.dp))
 
         // The tab row sits directly under the title and NOTHING sits above it but
         // the title.

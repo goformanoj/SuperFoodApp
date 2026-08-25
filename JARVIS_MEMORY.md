@@ -1,5 +1,84 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-23 (commercial feel) — the app was assembled, not designed
+
+**Reported.** *"the app doesn't give me the feel of a proper commercial ready app,
+it still looks too build for myself"*. No screenshot, no single fault — which is
+the point. This is what a hundred small inconsistencies feel like from outside.
+
+Four things found by reading the screens, each of which a shipped app does
+differently:
+
+### 1. "COMING SOON" in the main menu
+
+Automation was a centred icon over the words COMING SOON. That is the loudest
+possible signal that an app is somebody's side project — not because unreleased
+features are shameful, but because **no shipping product advertises the gap that
+way**. They show the feature as a real screen you cannot use yet.
+
+Kept in the menu, on instruction, and given the treatment products actually use: a
+badge that says IN DEVELOPMENT, then the real capability rows it will have, drawn
+at 45% and carrying **no click handler at all**. A dimmed row that answers a touch
+is worse than no row — that is the trap this deliberately avoids. The screen now
+tells the user what is coming, which is the only good reason to show an unfinished
+feature.
+
+### 2. A flat list of eight destinations
+
+"Home" and "Diagnostics" presented as peers, with nothing to say which the user
+was ever meant to open. Grouped now — ASSISTANT, PREFERENCES, SUPPORT — with Home
+above the headings. Diagnostics stays, on instruction, in SUPPORT where a support
+tool belongs. Automation carries a SOON tag, so the expectation is set before the
+tap rather than after it.
+
+Plus a version footer. Small, and its absence is felt: it is the line that says
+somebody ships this on a schedule.
+
+### 3. The same header, written three times, three different ways
+
+Settings pushed its title 56dp from the left. Chat used a `Row` with a 44dp
+spacer. Calendar and Files pushed 56dp *down* and nothing across. One job, three
+implementations, three results.
+
+**Inconsistent margins are one of the clearest differences between an app that was
+designed and one that grew.** Nobody points at it; it is felt on every navigation.
+One `ScreenHeader` now, and the fact that the title must clear the ☰ the host
+draws in the corner lives in exactly one place.
+
+### 4. Chat looked like a debug transcript
+
+A label over unboxed text, left-aligned for both speakers. Two changes do almost
+all the work of making it read as a conversation: the sides are **shaped
+differently**, and they **sit on different edges**. The user's turn is a filled
+block on the right; JARVIS answers unboxed on the left in the accent, because the
+assistant's voice is the content of the screen and boxing both equally makes
+neither lead.
+
+Empty states got the same treatment — an icon, a title and a quiet instruction,
+rather than a centred grey sentence that reads as "broken" instead of "not started
+yet".
+
+### The bug this nearly shipped
+
+`EmptyState` was written with `fillMaxSize()`. `FilesScreen` is inside a
+`verticalScroll`, and a scrolling column hands its children an **unbounded**
+height — `fillMaxSize` there fails at measure time. The obvious default would have
+taken out a screen.
+
+It defaults to `fillMaxWidth` with vertical padding now; the one caller with a
+bounded box passes `fillMaxSize` itself. Caught by asking what container each call
+site actually sits in, which is the check worth repeating: **a shared component's
+default sizing has to be the one that is safe everywhere, not the one that suits
+the first caller.**
+
+### And the `when` is exhaustive now
+
+`else -> PlaceholderScreen(current)` is gone along with the function. Every
+destination is listed, so adding a ninth fails to compile rather than silently
+landing on a placeholder — the same discipline `BackdropStyle.defaultFor` already
+uses.
+
+
 ## 2026-08-23 (Cloudflare access) — the migration is done, the Worker is not
 
 The Cloudflare connector was granted, so the backend's state could finally be

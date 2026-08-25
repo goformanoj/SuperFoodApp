@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.jarvis.os.ui.components.ScreenHeader
 import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Cyan
@@ -50,14 +51,10 @@ fun CalendarScreen(modifier: Modifier = Modifier) {
             .systemBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(56.dp))
-        Text("Calendar", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
-        Text(
-            "The next seven days, straight from your device calendar. Ask JARVIS to add, " +
-                "move or cancel anything here.",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-            modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
+        ScreenHeader(
+            title = "Calendar",
+            subtitle = "The next seven days, straight from your device calendar. Ask JARVIS " +
+                "to add, move or cancel anything here.",
         )
 
         when {
