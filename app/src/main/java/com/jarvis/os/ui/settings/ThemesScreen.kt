@@ -83,14 +83,23 @@ fun ThemesScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
-            if (!embedded) Spacer(Modifier.height(56.dp))
-            Text("Themes", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
-            Text(
-                "Tap one to switch. Each preview is live — it is the same orb you get.",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
-            )
+            // A COLUMN, and every header on this screen needed one.
+            //
+            // A lazy item's content lambda is not a layout — it is a slot that
+            // takes ONE child. Put three composables in it and all three are
+            // measured at the same origin, so they draw on top of each other. A
+            // screenshot caught "Themes" printed straight through its own
+            // description, and the same fault was in all three headers here.
+            Column {
+                if (!embedded) Spacer(Modifier.height(56.dp))
+                Text("Themes", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
+                Text(
+                    "Tap one to switch. Each preview is live — it is the same orb you get.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 20.dp),
+                )
+            }
         }
 
         items(JarvisPalette.entries, key = { "theme:${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { palette ->
@@ -166,15 +175,17 @@ fun ThemesScreen(
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Spacer(Modifier.height(28.dp))
-            Text("Background", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-            Text(
-                "Every theme arrives with its own. Pick another and it stays until you " +
-                    "change themes again.",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
-            )
+            Column {
+                Spacer(Modifier.height(28.dp))
+                Text("Background", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+                Text(
+                    "Every theme arrives with its own. Pick another and it stays until you " +
+                        "change themes again.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                )
+            }
         }
 
         // "Match theme" is its own row rather than a checkbox, because it is a
@@ -204,15 +215,17 @@ fun ThemesScreen(
         }
 
         item(span = { GridItemSpan(maxLineSpan) }) {
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "A theme changes the orb's shape and motion, the accent colours and the " +
-                    "backdrop it starts with. The background can then be changed on its own. " +
-                    "Both choices are remembered.",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-            )
-            Spacer(Modifier.height(40.dp))
+            Column {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "A theme changes the orb's shape and motion, the accent colours and the " +
+                        "backdrop it starts with. The background can then be changed on its own. " +
+                        "Both choices are remembered.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+                Spacer(Modifier.height(40.dp))
+            }
         }
     }
 }

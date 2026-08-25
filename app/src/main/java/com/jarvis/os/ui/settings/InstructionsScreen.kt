@@ -33,11 +33,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.os.data.UserPreferences
+import com.jarvis.os.data.AnswerLength
+import com.jarvis.os.data.Instructions
+import com.jarvis.os.data.InstructionsDraft
+import com.jarvis.os.data.Tone
 import com.jarvis.os.ui.components.JarvisButton
+import com.jarvis.os.ui.components.JarvisCard
 import com.jarvis.os.ui.components.ScreenHeader
 import com.jarvis.os.ui.components.SectionLabel
 import com.jarvis.os.ui.theme.JarvisTheme
@@ -49,14 +56,6 @@ import com.jarvis.os.ui.theme.SuccessGreen
 import com.jarvis.os.ui.theme.SurfaceGlass
 import com.jarvis.os.ui.theme.TextPrimary
 import com.jarvis.os.ui.theme.TextSecondary
-
-private val EXAMPLES = listOf(
-    "Call me sir.",
-    "Keep answers to one sentence unless I ask for detail.",
-    "I'm in Bangalore — assume IST for times.",
-    "Never send a message without reading it back to me first.",
-    "When I ask for music, use YouTube rather than anything else.",
-)
 
 /**
  * Standing instructions that shape every reply, not just the next one.
@@ -78,73 +77,118 @@ fun InstructionsScreen(
     onForget: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var text by remember(initial) { mutableStateOf(initial) }
-    var saved by remember(initial) { mutableStateOf(false) }
+    // The draft, not the string. The screen edits answers; the string is composed
+    // from them on save. See `InstructionsDraft` for why that is the right shape.
+    var draft by remember(initial) { mutableStateOf(Instructions.parse(initial)) }
+    var saved by remember(initial) { mutableStateOf(true) }
+    fun edit(change: (InstructionsDraft) -> InstructionsDraft) {
+        draft = change(draft)
+        saved = false
+    }
+
+    val composed = Instructions.compose(draft)
+    val overLimit = composed.length > UserPreferences.MAX_INSTRUCTIONS
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            // `navigationBarsPadding` as well: with only `systemBarsPadding` on a
-            // scrolling column the LAST row sat under the gesture bar, which a
-            // screenshot caught mid-sentence.
             .navigationBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
         ScreenHeader(
             title = "Instructions",
-            subtitle = "What JARVIS always knows about you. Sent with every message, " +
-                "so keep it brief.",
+            subtitle = "How JARVIS should talk to you. Sent with every message, so keep it short.",
         )
 
-        // --- The editor you own -------------------------------------------------
+        // ── What to call you ────────────────────────────────────────────────
+        SectionLabel("What should JARVIS call you?")
+        JarvisCard {
+            OutlinedTextField(
+                value = draft.callMe,
+                onValueChange = { name -> edit { it.copy(callMe = name.take(40)) } },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                placeholder = { Text("sir, boss, your name…", color = TextSecondary) },
+                colors = fieldColours(),
+            )
+        }
+
+        // ── How long ────────────────────────────────────────────────────────
         //
-        // Inside a card. It used to be a bare text field on the screen, and on a
-        // bright theme that meant a box outline floating over moving beams with no
-        // surface behind it — the state a screenshot caught. A field is where you
-        // put something; it needs a place to be.
-        SectionLabel("Your instructions", trailing = "${text.length} / ${UserPreferences.MAX_INSTRUCTIONS}")
-        OutlinedTextField(
-            value = text,
-            onValueChange = {
-                if (it.length <= UserPreferences.MAX_INSTRUCTIONS) {
-                    text = it
-                    saved = false
-                }
+        // Chips, not sentences to paste. The old screen offered a menu of
+        // pre-written lines to append into a textarea, which was the design
+        // admitting people would not know what to write — and then answering that
+        // with copy-and-paste. Almost everything anyone wants here is one of a
+        // handful of choices, so they are offered as choices.
+        SectionLabel("How long should answers be?")
+        ChipRow(
+            options = AnswerLength.entries.map { it.label },
+            selected = draft.length?.label,
+            onSelect = { label ->
+                val picked = AnswerLength.entries.firstOrNull { it.label == label }
+                // Tapping the selected chip clears it — there must be a way back
+                // to "no preference", or the first tap is permanent.
+                edit { d -> d.copy(length = if (d.length == picked) null else picked) }
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(180.dp),
-            shape = RoundedCornerShape(14.dp),
-            placeholder = {
-                Text(
-                    "e.g. Call me sir.\nKeep replies short.\nWhen I say \"music\" I mean Spotify.",
-                    color = TextSecondary,
-                )
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary,
-                focusedContainerColor = JarvisTheme.glass,
-                unfocusedContainerColor = JarvisTheme.glass,
-                focusedBorderColor = JarvisTheme.accent,
-                unfocusedBorderColor = JarvisTheme.glassBorder,
-                cursorColor = JarvisTheme.accent,
-            ),
         )
-        Spacer(Modifier.height(14.dp))
-        // Disabled until there is a change to save. A primary action that is
-        // always live invites a tap that does nothing, and "did that work?" is the
-        // question a save button exists to answer.
+
+        // ── What tone ───────────────────────────────────────────────────────
+        SectionLabel("What tone?")
+        ChipRow(
+            options = Tone.entries.map { it.label },
+            selected = draft.tone?.label,
+            onSelect = { label ->
+                val picked = Tone.entries.firstOrNull { it.label == label }
+                edit { d -> d.copy(tone = if (d.tone == picked) null else picked) }
+            },
+        )
+
+        // ── Anything else ───────────────────────────────────────────────────
+        SectionLabel(
+            text = "Anything else",
+            trailing = "${composed.length} / ${UserPreferences.MAX_INSTRUCTIONS}",
+        )
+        JarvisCard {
+            OutlinedTextField(
+                value = draft.extra,
+                onValueChange = { more -> edit { it.copy(extra = more) } },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp),
+                shape = RoundedCornerShape(12.dp),
+                placeholder = {
+                    Text(
+                        "Nicknames for apps, where you live, anything standing.\n" +
+                            "e.g. When I say \"cloud\" I mean Claude.",
+                        color = TextSecondary,
+                    )
+                },
+                colors = fieldColours(),
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
         JarvisButton(
             text = if (saved) "Saved" else "Save",
             onClick = {
-                onSave(text)
+                onSave(composed)
                 saved = true
             },
-            enabled = !saved,
+            // Nothing to save, or too long to send. A primary action that is
+            // always live invites a tap that does nothing.
+            enabled = !saved && !overLimit,
             modifier = Modifier.fillMaxWidth(),
         )
+        if (overLimit) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "That is longer than JARVIS can carry on every message. Trim it a little.",
+                style = MaterialTheme.typography.bodySmall,
+                color = ErrorRed,
+            )
+        }
 
         // --- What JARVIS learned on its own ------------------------------------
         if (learned.isNotEmpty()) {
@@ -160,30 +204,6 @@ fun InstructionsScreen(
                 learned.forEach { fact ->
                     LearnedFactRow(fact = fact, onForget = { onForget(fact) })
                 }
-            }
-        }
-
-        // --- One-tap examples to append ----------------------------------------
-        Spacer(Modifier.height(36.dp))
-        SectionLabel("Add a common one")
-        Text(
-            "Tap to append it to your instructions above.",
-            style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
-            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            EXAMPLES.forEach { example ->
-                ExampleRow(
-                    example = example,
-                    onAdd = {
-                        val addition = if (text.isBlank()) example else "\n$example"
-                        if (text.length + addition.length <= UserPreferences.MAX_INSTRUCTIONS) {
-                            text += addition
-                            saved = false
-                        }
-                    },
-                )
             }
         }
 
@@ -235,31 +255,54 @@ private fun LearnedFactRow(fact: String, onForget: () -> Unit) {
     }
 }
 
-/** A suggestion chip that reads as an action: a leading "+" and a cyan edge. */
+/**
+ * A row of mutually-exclusive choices.
+ *
+ * The screen asks questions now, and a question with three possible answers
+ * should be three things you can tap — not a sentence to copy into a box. Tapping
+ * the selected one clears it, because "no preference" has to be reachable or the
+ * first tap is permanent.
+ */
 @Composable
-private fun ExampleRow(example: String, onAdd: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(JarvisTheme.glass)
-            .border(1.dp, JarvisTheme.accent.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
-            .clickable { onAdd() }
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            "+",
-            style = MaterialTheme.typography.titleMedium,
-            color = JarvisTheme.accent,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(end = 12.dp),
-        )
-        Text(
-            example,
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextPrimary,
-            modifier = Modifier.weight(1f),
-        )
+private fun ChipRow(
+    options: List<String>,
+    selected: String?,
+    onSelect: (String) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        options.forEach { option ->
+            val on = option == selected
+            val accent = JarvisTheme.accent
+            Text(
+                text = option,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (on) accent else TextSecondary,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (on) accent.copy(alpha = 0.14f) else JarvisTheme.card)
+                    .border(
+                        1.dp,
+                        if (on) accent else JarvisTheme.cardBorder,
+                        RoundedCornerShape(20.dp),
+                    )
+                    .clickable { onSelect(option) }
+                    .padding(vertical = 11.dp),
+            )
+        }
     }
 }
+
+/** One set of text-field colours, so the two fields on this screen match. */
+@Composable
+private fun fieldColours() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = TextPrimary,
+    unfocusedTextColor = TextPrimary,
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent,
+    focusedBorderColor = JarvisTheme.accent,
+    unfocusedBorderColor = JarvisTheme.cardBorder,
+    cursorColor = JarvisTheme.accent,
+)

@@ -66,6 +66,23 @@ the splash by swapping the activity's theme.
 The splash colour is a static resource and cannot follow the chosen theme — the
 window is painted before any Kotlin runs.
 
+### A lazy item takes ONE child
+
+`item {}` and `items {}` content lambdas are slots, not layouts. Two composables
+in one are drawn at the same origin, on top of each other. Every header on
+`ThemesScreen` had this and it shipped.
+
+### A prohibition with no replacement does not hold
+
+`SystemPrompt` told the model never to hunt for a file in the phone's Files app.
+It did exactly that, because it had been asked to open a file and had no verb for
+it. `<<OPENFILE|title>>` exists now. When a trace shows the model doing something
+the prompt forbids, ask what it was trying to accomplish and whether it had any
+way to say it.
+
+The prompt is capped at 6,000 chars by a test — it rides on every request. Adding
+an instruction means finding one to remove.
+
 ### Content never sits on the raw backdrop
 
 The backdrop runs at full brightness and is animated. Every screen that carries

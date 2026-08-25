@@ -36,6 +36,7 @@ import com.jarvis.os.data.formatMemory
 import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.files.ArtifactActions
 import com.jarvis.os.files.ArtifactStore
+import androidx.core.content.FileProvider
 import com.jarvis.os.files.ArtifactWriter
 import com.jarvis.os.voice.BargeInListener
 import com.jarvis.os.voice.OrbState
@@ -1218,7 +1219,20 @@ class AssistantEngine(context: Context) {
                 val filesMade = withContext(Dispatchers.IO) {
                     fileRequests.count { ArtifactWriter.write(appContext, it, artifacts) != null }
                 }
-                val parsed = ScreenActions.parse(afterFiles)
+                // OPENING ONE JARVIS ALREADY MADE.
+                //
+                // Handled here, after the writes, so "make it and open it" in a
+                // single reply opens the file that reply just produced rather
+                // than an older one with the same title.
+                //
+                // Before this there was no marker for it at all: a trace shows
+                // the model asked to open a PDF, generating a fourth copy of the
+                // same document and then trying to drive the Files app with a tap
+                // on a filename that no control carried. It missed, recovery took
+                // over, and it tapped a search box labelled "invoice".
+                val (afterOpen, openTitle) = ArtifactActions.parseOpen(afterFiles)
+                if (openTitle != null) openArtifact(openTitle)
+                val parsed = ScreenActions.parse(afterOpen)
                 // "Type it" and "send it" are different instructions and only one
                 // is reversible. The model's search examples all end in a submit,
                 // so it tends to append one — drop it when the user asked only to
@@ -1821,6 +1835,53 @@ class AssistantEngine(context: Context) {
         DebugLog.log(DebugLog.Stage.SPOKE, line)
         set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = line) }
         speakTurn(line)
+    }
+
+    /**
+     * Open a document JARVIS wrote, by the title the user spoke.
+     *
+     * Straight to an `ACTION_VIEW` on the app's own FileProvider — no Files app,
+     * no tapping a label on a screen. The app wrote the file and knows its path;
+     * hunting for its name in another app's UI was only ever a workaround for a
+     * missing capability, and it failed the first time it was tried.
+     */
+    private fun openArtifact(title: String) {
+        val stored = artifacts.list()
+        val index = ArtifactActions.bestMatch(stored.map { it.title }, title)
+        // FAILURES ARE LOGGED, NOT SPOKEN, and that is deliberate.
+        //
+        // Every line this class says goes through `speakTurn`, which claims the
+        // turn as it speaks — the comment there records why: a spoken line whose
+        // turn was never claimed leaves the microphone open to hear JARVIS
+        // himself. This runs mid-reply, while the model's own sentence is already
+        // on its way to the speaker, so saying a second thing here would either
+        // collide with it or strand the turn.
+        //
+        // The trace is the right place for it, and the trace is what gets shared
+        // when something goes wrong.
+        if (index == null) {
+            DebugLog.log(DebugLog.Stage.FILE, "asked to open \"$title\" — no document matches")
+            return
+        }
+        val artifact = stored[index]
+        val file = artifacts.fileFor(artifact)
+        if (!file.exists()) {
+            DebugLog.log(DebugLog.Stage.FILE, "\"${artifact.title}\" is listed but its file is gone")
+            return
+        }
+        try {
+            val uri = FileProvider.getUriForFile(appContext, "${appContext.packageName}.files", file)
+            appContext.startActivity(
+                Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, artifact.kind.mime)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            DebugLog.log(DebugLog.Stage.FILE, "opened \"${artifact.title}\"")
+        } catch (e: Exception) {
+            // Commonly ActivityNotFoundException: a phone with no PDF viewer.
+            DebugLog.log(DebugLog.Stage.FILE, "could not open \"${artifact.title}\": ${e.message}")
+        }
     }
 
     private fun set(block: (VoiceUiState) -> VoiceUiState) {

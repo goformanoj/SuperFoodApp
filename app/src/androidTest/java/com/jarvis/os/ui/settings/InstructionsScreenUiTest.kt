@@ -14,9 +14,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Compose UI cover for the custom-instructions screen — the append / save / forget
- * flows that used to be checkable only by hand on a device. Rendered in isolation
- * with test callbacks, so it asserts the real composable's wiring without the engine.
+ * Compose UI cover for the custom-instructions screen.
+ *
+ * The screen used to be a free-text box with a menu of sentences to paste into
+ * it; it now asks questions and takes taps, composing the one string the model is
+ * sent from the answers. These assert that wiring — the chips, the save state and
+ * the forget flow — in isolation, with test callbacks and no engine.
  */
 @RunWith(AndroidJUnit4::class)
 class InstructionsScreenUiTest {
@@ -25,35 +28,47 @@ class InstructionsScreenUiTest {
     val compose = createComposeRule()
 
     @Test
-    fun tapping_an_example_fills_the_editor_and_Save_reports_it() {
+    fun choosing_an_answer_length_saves_it_as_an_instruction() {
+        // The screen no longer offers sentences to paste into a box; it asks a
+        // question and takes a tap. What reaches the model is still one string,
+        // composed from the answers.
         var savedText: String? = null
         compose.setContent {
             MaterialTheme { InstructionsScreen(initial = "", onSave = { savedText = it }) }
         }
-        // Tapping an example appends it to the (empty) editor…
-        compose.onNodeWithText("Call me sir.").performScrollTo().performClick()
-        // …and Save hands the editor's contents to the callback.
+        compose.onNodeWithText("Brief").performScrollTo().performClick()
         compose.onNodeWithText("Save").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals("Call me sir.", savedText) }
+        compose.runOnIdle {
+            assertEquals("Keep answers to one sentence unless I ask for detail.", savedText)
+        }
+    }
+
+    @Test
+    fun Save_is_inert_until_something_actually_changes() {
+        // Opening the screen and leaving it alone must not offer a save. A
+        // primary action that is always live invites a tap that does nothing.
+        compose.setContent {
+            MaterialTheme { InstructionsScreen(initial = "Call me sir.", onSave = {}) }
+        }
+        compose.onNodeWithText("Saved").performScrollTo().assertIsNotEnabled()
     }
 
     @Test
     fun Save_shows_the_saved_confirmation() {
         compose.setContent {
-            MaterialTheme { InstructionsScreen(initial = "call me sir", onSave = {}) }
+            MaterialTheme { InstructionsScreen(initial = "", onSave = {}) }
         }
+        compose.onNodeWithText("Casual").performScrollTo().performClick()
         compose.onNodeWithText("Save").performScrollTo().performClick()
         // "Saved", without the tick it used to carry.
         //
         // The label is set in `labelLarge`, which is Michroma — a display face
         // with Latin coverage and no Dingbats, so U+2713 would render as a tofu
         // box. It only worked before because `titleSmall` was missing from the
-        // Typography and fell back to Roboto, which has the glyph. Widening a
-        // display font's role means every decorative character it now has to
-        // carry is worth checking.
+        // Typography and fell back to Roboto, which has the glyph.
         //
-        // The confirmation is stronger for it: the button also disables, so the
-        // state is readable without relying on a symbol at all.
+        // The confirmation is stronger without it: the button also disables, so
+        // the state is readable with no symbol at all.
         compose.onNodeWithText("Saved").assertIsDisplayed()
         compose.onNodeWithText("Saved").assertIsNotEnabled()
     }

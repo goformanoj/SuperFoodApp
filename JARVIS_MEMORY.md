@@ -1,5 +1,87 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-25 (three real faults) — overlap, a missing verb, and a blank box
+
+Three things reported with evidence: a screenshot of overlapping text, a device
+trace of a PDF failure, and *"this way of getting custom instructions is
+horrible"*.
+
+### 1. Every header on the Themes screen was drawing on top of itself
+
+A lazy item's content lambda is **not a layout**. It is a slot that takes ONE
+child, so three composables in it are all measured at the same origin and drawn
+over each other. `ThemesScreen` had a `Spacer` and two `Text`s directly inside
+three separate `item {}` blocks, and a screenshot caught "Themes" printed
+straight through its own description.
+
+Not a styling mistake — a layout one, and invisible in code review because the
+block reads exactly like a `Column` body. **Anything inside `item {}` or
+`items {}` with more than one child needs a container.** All three fixed.
+
+### 2. The model had no word for "open the file you just made"
+
+The trace is the whole story. Asked to open a PDF it had written seconds earlier,
+the assistant:
+
+1. emitted `<<FILE>>` again, generating a **fourth copy** of the same document;
+2. then tried `<<OPEN|Files>>` + `<<TAP|WhatsApp Chat Summary.pdf>>`;
+3. the tap found no control with that label, recovery took over, and it tapped a
+   search box labelled **"invoice"**.
+
+The prompt *already forbade* this: *"never open the phone's Files app to hunt —
+tapping about at random opens the wrong one."* It did it anyway, and that is the
+lesson. **A prohibition with no replacement does not hold.** The model was asked
+to do something its vocabulary had no word for, and it improvised with the two
+verbs it had. That is a prompt-design bug, not a model failure.
+
+`<<OPENFILE|title>>` now exists and goes straight to `ACTION_VIEW` through the
+app's own FileProvider — no Files app, no tapping. The app wrote the file and
+knows its path; looking for its name on someone else's screen was only ever a
+workaround.
+
+Matching is pure and tested against the trace's own cases: speech gives back a
+title that is *close*, never exact, so it goes exact → contains → contained →
+word overlap, with ties to the **most recent**, because the same title made four
+times is one document remade and the newest is the one they watched appear. An
+empty title opens the latest, which is how "open it" is actually said.
+
+Failures are logged, not spoken: every line this app says goes through
+`speakTurn`, which claims the turn as it speaks, and this runs while the model's
+own sentence is already on its way to the speaker.
+
+**And the prompt got shorter.** A budget test caps it at 6,000 chars because it
+rides on every request — the first version of this instruction blew through it at
+6,386. Trimming the now-redundant prohibition paid for the new capability twice
+over: the prompt ends up 431 chars *lighter* than before.
+
+### 3. Custom instructions asked for prose and got nothing
+
+A 1000-character empty box, with a list of pre-written sentences underneath to
+paste into it. That list is the tell: **the design already knew people would not
+know what to write, and answered it with copy-and-paste.**
+
+Almost everything anyone wants here is the same three things — what to call me,
+how long answers should be, how formal to be. Those are questions with answers,
+not prose. The screen asks them: a name field, two rows of chips, and one "anything
+else" box for the rest.
+
+The model still receives one string. `InstructionsDraft` composes it from the
+answers and parses it back, so a stored preference shows as a **selected chip**
+rather than as a sentence to recognise. The property that mattered most in the
+tests: **text typed before this screen existed is never lost** — anything the
+parser does not recognise is preserved verbatim, because someone's three careful
+sentences must not vanish because a parser did not understand them.
+
+A test caught me dropping interior blank lines while trimming. Those are the
+user's paragraphing, not the parser's to tidy.
+
+### Still owed, and not started
+
+PDF *quality* (35KB for a page of text, and summaries where full content was
+asked for) and speech accuracy (the trace shows repeated "unsure of a word"). Both
+real, both reported, neither touched this round.
+
+
 ## 2026-08-25 (Play-Store pass) — the backdrop was eating the app
 
 **Reported.** *"these look horrible for a play store app"*, with three
