@@ -6,6 +6,38 @@ Three things reported with evidence: a screenshot of overlapping text, a device
 trace of a PDF failure, and *"this way of getting custom instructions is
 horrible"*.
 
+### Settings, rebuilt as an index rather than restyled
+
+*"restructure means complete layout change"* — fair, and the previous pass had
+been changing foundations while leaving layouts where they were.
+
+Settings was a title, three tab pills, and whatever the selected tab put below
+them. Tabs were the wrong shape and cost real things:
+
+- **Every section shares one screen's height.** The theme picker got a third of a
+  page, which is what produced *"it doesn't give me space to scroll through themes
+  at all"*.
+- **An embedded screen draws its own title inside a page that already has one.**
+  That is how three headers on `ThemesScreen` ended up printed over their own
+  descriptions — the overlap fixed earlier today was a symptom of this layout, not
+  an unrelated bug.
+- **A fourth section would have to steal width from the other three.**
+
+It is an **index with drill-down** now, which is what every settings app on the
+platform is: rows that open a page. Each page gets the whole screen, the pattern
+is one people already know, and sections can be added without cost to the others.
+
+Three things that make it read as native rather than as a list of cards:
+
+- **A chevron on rows that navigate.** Without it a row that opens a page and a
+  row that toggles look identical, and the only way to tell is to tap and find
+  out.
+- **The current value on the row itself** — the theme's name, the chosen voice. An
+  index that shows only labels makes you open a page to discover what is set.
+- **A back arrow as well as the gesture**, and `BackHandler` so the system back
+  closes the page before it leaves Settings. A page you can only leave by knowing
+  a gesture is a page people get stuck on.
+
 ### 0. JARVIS could say its own markers out loud
 
 *"make sure JARVIS doesn't speak anything in `<<>>` and reveal what it thinks
