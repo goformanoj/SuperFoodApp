@@ -2,7 +2,7 @@
 
 ## Current position — 2026-08-23 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `904168b`, **green with the
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `a65df1c`, **green with the
 `jarvis-debug-apk` artifact**, and `main` fast-forwarded to it. The universe is
 now four layers you can touch: orb → galaxy → a star's **system** → a **world** with things on it. Every
 layer zooms, the orb turns under a drag, and the theme stops at the orb.
