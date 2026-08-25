@@ -1269,7 +1269,19 @@ class AssistantEngine(context: Context) {
                 }
                 val spendNote = spendStop?.let { SpendGuard.explain(it) }
                 val plan = parsed.copy(steps = safe)
-                val clean = plan.clean
+                // THE LAST THING BETWEEN THE MODEL AND THE USER.
+                //
+                // Every parser above removes the markers it claims, and only
+                // those. A marker the model invented, misspelled, or ran out of
+                // tokens halfway through is claimed by nobody and reaches the user
+                // — printed on the chat screen and, worse, read aloud. Hearing
+                // "less than less than tap pipe send" is JARVIS showing its
+                // working, and it must never do that.
+                //
+                // Here, because `clean` is what gets displayed AND what gets
+                // spoken: one sweep covers both, and no path added later can go
+                // round it.
+                val clean = Markers.strip(plan.clean)
                 DebugLog.log(
                     DebugLog.Stage.MARKERS,
                     "calendar=${actions.size} screen=${plan.steps.joinToString(", ").ifEmpty { "none" }}",

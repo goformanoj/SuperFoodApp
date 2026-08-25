@@ -6,6 +6,37 @@ Three things reported with evidence: a screenshot of overlapping text, a device
 trace of a PDF failure, and *"this way of getting custom instructions is
 horrible"*.
 
+### 0. JARVIS could say its own markers out loud
+
+*"make sure JARVIS doesn't speak anything in `<<>>` and reveal what it thinks
+ever"* — and the gap was real, not hypothetical.
+
+Every parser removes the markers **it** claims, and only those. Nothing removed a
+marker the model **invented** (`<<SEARCH|…>>`), **misspelled** (`<<TAPP|…>>`),
+gave the **wrong field count**, or **ran out of tokens** halfway through
+(`<<FILE|pdf|Notes` with no close). Any of those passes every parser untouched and
+reaches the user — printed on the chat screen and read aloud by TTS. "Less than
+less than tap pipe send" is the assistant showing its working.
+
+The parsers cannot simply be loosened: a loose one would claim text that merely
+*looks* like a marker and silently drop real words. So they stay strict, and a
+sweep runs after them — by then, anything still wearing `<<…>>` is by definition
+something no parser wanted.
+
+Two placements, deliberately:
+
+- **`Markers.strip` on the settled reply**, which is both what is displayed and
+  what is spoken, so one sweep covers both.
+- **The same patterns in `SpokenText.plain`**, the single path to the speaker.
+  Redundant on purpose: a stray bracket on screen can be ignored, a spoken one
+  cannot be un-heard, and every other guard in this project is placed on the
+  assumption that a choke point catches what an earlier stage missed.
+
+The over-reach guard is tested too: `a shl b` and ordinary prose survive, because
+removing real words is worse than leaving a symbol. An unterminated marker is
+taken **to the end of its line and no further** — the sentence after it is real
+content.
+
 ### 1. Every header on the Themes screen was drawing on top of itself
 
 A lazy item's content lambda is **not a layout**. It is a slot that takes ONE

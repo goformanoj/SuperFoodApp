@@ -66,6 +66,16 @@ the splash by swapping the activity's theme.
 The splash colour is a static resource and cannot follow the chosen theme — the
 window is painted before any Kotlin runs.
 
+### Nothing wearing `<<…>>` reaches the user
+
+Parsers remove only the markers they claim. Invented, misspelled, mis-fielded and
+token-truncated markers pass all of them. `Markers.strip` runs on the settled
+reply and the same patterns run in `SpokenText.plain` — the second is redundant
+and stays that way, because a spoken marker cannot be un-heard.
+
+Do not loosen a parser to catch these. A loose parser claims text that merely
+looks like a marker and drops real words.
+
 ### A lazy item takes ONE child
 
 `item {}` and `items {}` content lambdas are slots, not layouts. Two composables

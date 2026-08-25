@@ -66,6 +66,15 @@ object SpokenText {
         // Horizontal rules read as a run of dashes.
         out = RULE.replace(out, "")
 
+        // MARKERS, again. `Markers.strip` already runs on the reply, but this is
+        // the single path to the speaker and every other guard in this project is
+        // placed on the assumption that a choke point catches what an earlier
+        // stage missed. A marker reaching the SPEAKER is the worst version of the
+        // bug — a user can ignore a stray bracket on screen; they cannot un-hear
+        // "less than less than open pipe files".
+        out = MARKER.replace(out, "")
+        out = OPEN_MARKER.replace(out, "")
+
         // Anything left over: a stray marker the patterns above did not pair up.
         // Reached only when the model emitted unbalanced formatting, which it does.
         out = LONE_MARK.replace(out, "")
@@ -95,6 +104,12 @@ object SpokenText {
 
     /** `---`, `***`, `___` alone on a line. */
     private val RULE = Regex("""(?m)^\s*([-*_])\1{2,}\s*$""")
+
+    /** A complete marker. Never crosses a line, so a stray `<<` cannot eat a paragraph. */
+    private val MARKER = Regex("""<<[^\n<>]*>+""")
+
+    /** One the model ran out of tokens partway through, to the end of its line. */
+    private val OPEN_MARKER = Regex("""<<[^\n]*$""", RegexOption.MULTILINE)
 
     /** A `*` or `` ` `` with no partner left. */
     private val LONE_MARK = Regex("""[*`]""")
