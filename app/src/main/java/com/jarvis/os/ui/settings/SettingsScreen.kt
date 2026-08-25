@@ -26,6 +26,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.jarvis.os.ui.components.ScreenHeader
+import com.jarvis.os.ui.components.SettingSwitchRow
+import com.jarvis.os.ui.components.SettingActionRow
 import com.jarvis.os.ui.speech.SpeechScreen
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.GlassBorder
@@ -66,6 +68,10 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     var section by remember { mutableStateOf(Section.General) }
+    // The switches own their visual state so the thumb moves the instant it is
+    // touched, rather than after the preference has been written and read back.
+    var wakeWord by remember { mutableStateOf(backgroundWakeEnabled) }
+    var floatingOrb by remember { mutableStateOf(floatingOrbEnabled) }
 
     Column(modifier.fillMaxSize()) {
         // The shared header. It carries the indent past the ☰ the host draws in
@@ -124,25 +130,27 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
             ) {
-                AssistantRow(
-                    onOpen = onOpenAssistantSettings,
+                SettingActionRow(
+                    title = "Open with a gesture",
+                    description = "Set JARVIS as your assistant app, then long-press power " +
+                        "to open it instantly — mic ready, no wake word, no battery cost.",
+                    actionLabel = "Set up",
+                    onAction = onOpenAssistantSettings,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
-                FeatureToggle(
-                    title = "Wake word — \"Hey Jarvis\"",
-                    // Trimmed from three sentences. Each of these was wrapping to
-                    // six lines on a phone, which is how three switches managed to
-                    // fill an entire screen.
-                    blurb = "Summon him by voice from any app. On-device, nothing recorded.",
-                    enabled = backgroundWakeEnabled,
-                    onToggle = onSetBackgroundWake,
+                SettingSwitchRow(
+                    title = "Wake word",
+                    description = "Summon him by saying \"Hey Jarvis\" from any app. " +
+                        "On-device, nothing recorded.",
+                    checked = wakeWord,
+                    onCheckedChange = { wakeWord = it; onSetBackgroundWake(it) },
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
-                FeatureToggle(
+                SettingSwitchRow(
                     title = "Floating orb",
-                    blurb = "Keeps him on screen over other apps. Drag to move, tap to talk.",
-                    enabled = floatingOrbEnabled,
-                    onToggle = onSetFloatingOrb,
+                    description = "Keeps him on screen over other apps. Drag to move, tap to talk.",
+                    checked = floatingOrb,
+                    onCheckedChange = { floatingOrb = it; onSetFloatingOrb(it) },
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
                 )
                 Spacer(Modifier.height(24.dp))
@@ -169,91 +177,15 @@ fun SettingsScreen(
     }
 }
 
-/** Guides the user to set JARVIS as the assist app, for mic-free gesture launch. */
-@Composable
-private fun AssistantRow(onOpen: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(JarvisTheme.glass)
-            .border(1.dp, JarvisTheme.glassBorder, RoundedCornerShape(14.dp))
-            .clickable { onOpen() }
-            .padding(16.dp),
-    ) {
-        Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(
-                "Open JARVIS with a gesture",
-                style = MaterialTheme.typography.bodyLarge,
-                color = TextPrimary,
-            )
-            Text(
-                "Set JARVIS as your assistant app, then long-press power (or swipe from a " +
-                    "corner) to open it instantly — mic ready, no wake word, no battery cost.",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-        Text(
-            "Set up",
-            style = MaterialTheme.typography.labelLarge,
-            color = JarvisTheme.accent,
-            modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(JarvisTheme.accent.copy(alpha = 0.12f))
-                .border(1.dp, JarvisTheme.accent, RoundedCornerShape(20.dp))
-                .padding(horizontal = 18.dp, vertical = 8.dp),
-        )
-    }
-}
-
-/**
- * A labelled on/off row.
- *
- * Was `WakeToggle`, hard-coded to one feature, until a second toggle needed the
- * identical row. The text is the only thing that ever differed.
- */
-@Composable
-private fun FeatureToggle(
-    title: String,
-    blurb: String,
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var on by remember { mutableStateOf(enabled) }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(JarvisTheme.glass)
-            .border(1.dp, JarvisTheme.glassBorder, RoundedCornerShape(14.dp))
-            .clickable { on = !on; onToggle(on) }
-            .padding(16.dp),
-    ) {
-        Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = TextPrimary,
-            )
-            Text(
-                blurb,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-        Text(
-            if (on) "On" else "Off",
-            style = MaterialTheme.typography.labelLarge,
-            color = if (on) JarvisTheme.accent else TextSecondary,
-            modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(if (on) JarvisTheme.accent.copy(alpha = 0.12f) else JarvisTheme.glass)
-                .border(1.dp, if (on) JarvisTheme.accent else JarvisTheme.glassBorder, RoundedCornerShape(20.dp))
-                .padding(horizontal = 18.dp, vertical = 8.dp),
-        )
-    }
-}
+// Both rows on this screen come from `Controls.kt` now.
+//
+// They used to be written here: an outlined pill reading "On" or "Off" beside the
+// title, and a second pill reading "Set up". A pill that says "Off" looks like a
+// button, invites a tap, and does not say what tapping will do — and it is not
+// the control Android users already know. A boolean gets a switch on every
+// settings screen on the platform, and matching that is most of the difference
+// between an app that feels native and one that feels drawn.
+//
+// The action row also moved its button BELOW the text. Beside a two-line title it
+// squeezed the title into a column barely wider than the button itself, which is
+// what broke "Open JARVIS with a gesture" across three lines on a real phone.

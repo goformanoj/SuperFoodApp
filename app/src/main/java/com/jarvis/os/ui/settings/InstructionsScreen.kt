@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -36,6 +37,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.os.data.UserPreferences
+import com.jarvis.os.ui.components.JarvisButton
+import com.jarvis.os.ui.components.ScreenHeader
+import com.jarvis.os.ui.components.SectionLabel
 import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.Cyan
@@ -81,22 +85,25 @@ fun InstructionsScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .systemBarsPadding()
+            // `navigationBarsPadding` as well: with only `systemBarsPadding` on a
+            // scrolling column the LAST row sat under the gesture bar, which a
+            // screenshot caught mid-sentence.
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
-        Spacer(Modifier.height(56.dp))
-        Text("Custom instructions", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
-        Text(
-            "What JARVIS always knows about you — nicknames for apps, what to call you, how you " +
-                "like things done. Sent with every message, so keep it brief.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
-            modifier = Modifier.padding(top = 6.dp, bottom = 24.dp),
+        ScreenHeader(
+            title = "Instructions",
+            subtitle = "What JARVIS always knows about you. Sent with every message, " +
+                "so keep it brief.",
         )
 
         // --- The editor you own -------------------------------------------------
-        SectionLabel("Your instructions", "${text.length} / ${UserPreferences.MAX_INSTRUCTIONS}")
-        Spacer(Modifier.height(10.dp))
+        //
+        // Inside a card. It used to be a bare text field on the screen, and on a
+        // bright theme that meant a box outline floating over moving beams with no
+        // surface behind it — the state a screenshot caught. A field is where you
+        // put something; it needs a place to be.
+        SectionLabel("Your instructions", trailing = "${text.length} / ${UserPreferences.MAX_INSTRUCTIONS}")
         OutlinedTextField(
             value = text,
             onValueChange = {
@@ -126,26 +133,18 @@ fun InstructionsScreen(
             ),
         )
         Spacer(Modifier.height(14.dp))
-        Button(
+        // Disabled until there is a change to save. A primary action that is
+        // always live invites a tap that does nothing, and "did that work?" is the
+        // question a save button exists to answer.
+        JarvisButton(
+            text = if (saved) "Saved" else "Save",
             onClick = {
                 onSave(text)
                 saved = true
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (saved) SuccessGreen else JarvisTheme.accent,
-                contentColor = Background,
-            ),
-        ) {
-            Text(
-                if (saved) "Saved ✓" else "Save",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+            enabled = !saved,
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         // --- What JARVIS learned on its own ------------------------------------
         if (learned.isNotEmpty()) {
@@ -198,28 +197,6 @@ fun InstructionsScreen(
     }
 }
 
-/** A small uppercase heading, with an optional right-aligned counter. */
-@Composable
-private fun SectionLabel(text: String, trailing: String? = null) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = JarvisTheme.accent,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 1.5.sp,
-            modifier = Modifier.weight(1f),
-        )
-        if (trailing != null) {
-            Text(trailing, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-        }
-    }
-}
-
-/** A learned fact with an explicit, destructive-looking remove control. */
 @Composable
 private fun LearnedFactRow(fact: String, onForget: () -> Unit) {
     Row(

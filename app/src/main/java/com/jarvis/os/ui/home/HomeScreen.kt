@@ -370,6 +370,22 @@ fun JarvisApp(
                     live = current == Dest.Home,
                 )
 
+                // THE VEIL. Home is the backdrop, so it keeps the scene at full
+                // strength. Every other screen carries text, and text on a
+                // full-brightness animated scene is the fault a Forge screenshot
+                // made undeniable: near-white beams behind 60%-grey descriptions,
+                // and a paragraph nobody could read.
+                //
+                // Not a darker backdrop — the backdrop is right. A veil on the
+                // screens that have something to say.
+                if (current != Dest.Home) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(JarvisTheme.scrim),
+                    )
+                }
+
                 when (current) {
                     Dest.Home -> HomeContent(
                         state = state,

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,10 +19,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.TouchApp
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,11 +41,21 @@ import com.jarvis.os.ui.theme.TextPrimary
 import com.jarvis.os.ui.theme.TextSecondary
 
 /**
- * Automation — designed, and deliberately not working yet.
+ * Automation — JARVIS reaching devices that are not this phone.
  *
- * This was a centred icon over the words "COMING SOON", which is the loudest
- * possible signal that an app is somebody's side project. Every shipping product
- * has unreleased features; almost none of them advertise the gap that way.
+ * **The first version of this screen described the wrong feature.** It talked
+ * about driving apps on the handset — tapping buttons, filling forms — which is
+ * what `ScreenControlService` already does on Home and is not what Automation is
+ * for. Automation is *cross-device*: you speak to the phone in your hand and
+ * something happens on a machine across the room. "Run the build on my desktop."
+ * "Put the living room screen to sleep."
+ *
+ * That distinction is the whole feature, and getting it wrong made the screen
+ * advertise a capability the app already had.
+ *
+ * Before that it was a centred icon over the words "COMING SOON", which is the
+ * loudest possible signal that an app is somebody's side project. Every shipping
+ * product has unreleased features; almost none advertise the gap that way.
  *
  * What real products do instead — and what this now does — is present the feature
  * as a **real screen you cannot use yet**: the actual capabilities, laid out as
@@ -63,11 +75,14 @@ fun AutomationScreen(modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            // Or the last row sits under the gesture bar.
+            .navigationBarsPadding()
             .padding(horizontal = 20.dp),
     ) {
         ScreenHeader(
             title = "Automation",
-            subtitle = "Hands-off routines: JARVIS drives the apps on your phone so you do not have to.",
+            subtitle = "Speak to your phone, and it happens on another machine. " +
+                "Your desktop, your laptop, anything you have paired.",
         )
 
         StatusBadge()
@@ -91,8 +106,8 @@ fun AutomationScreen(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "Arriving in a later update. Nothing here runs yet, and JARVIS will " +
-                "always ask before acting on your behalf.",
+            text = "Arriving in a later update. No device can be paired yet, and " +
+                "nothing here can reach a machine you have not signed in yourself.",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
         )
@@ -141,24 +156,29 @@ private class Capability(
 
 private val CAPABILITIES = listOf(
     Capability(
-        Icons.Filled.TouchApp,
-        "Drive any app",
-        "Open an app, find the right control and tap it — ordering, booking, replying.",
+        Icons.Filled.DesktopWindows,
+        "Run it on your desktop",
+        "\"Start the build on my PC.\" The command leaves this phone and executes there.",
+    ),
+    Capability(
+        Icons.Filled.Devices,
+        "Pair once, reach anywhere",
+        "Sign a device in from JARVIS and it stays available, on the same network or off it.",
+    ),
+    Capability(
+        Icons.Filled.PlayArrow,
+        "Your own commands",
+        "Name a script or a shortcut, and JARVIS learns to run it by the name you gave it.",
     ),
     Capability(
         Icons.Filled.Schedule,
-        "Run on a schedule",
-        "A routine at a time you choose, without being asked each morning.",
+        "On a schedule",
+        "The same routine at a time you choose, on whichever machine should be doing it.",
     ),
     Capability(
-        Icons.Filled.Keyboard,
-        "Type and send",
-        "Compose a message, and confirm before anything leaves the phone.",
-    ),
-    Capability(
-        Icons.Filled.Tune,
-        "Chain steps together",
-        "Several actions as one instruction, stopping the moment something looks wrong.",
+        Icons.Filled.VerifiedUser,
+        "Approved, every time",
+        "Nothing runs on another machine without a confirmation naming the device and the command.",
     ),
 )
 

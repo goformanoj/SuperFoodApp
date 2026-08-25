@@ -1,5 +1,85 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-25 (Play-Store pass) — the backdrop was eating the app
+
+**Reported.** *"these look horrible for a play store app"*, with three
+screenshots on the Forge theme, plus *"i want the font you used to write JARVIS
+to be the font you follow throughout the app"*, and — importantly — **the
+Automation screen described the wrong feature entirely.**
+
+### The screenshots showed one fault, not many
+
+Every screen laid its text **directly onto a full-brightness animated backdrop**.
+On Forge those beams are near-white. So a settings description at 60% grey sat on
+a background brighter than the text, and one screenshot has a whole paragraph that
+simply cannot be read.
+
+And the cards meant to hold that text were `accent.copy(alpha = 0.07f)` — **seven
+percent**. Over a dark scene that is a faint tint; over a bright one it is
+nothing. The Forge settings screenshot shows rows that had vanished, leaving text
+floating over moving beams.
+
+Two fixes, both foundational:
+
+- **A scrim** on every screen that is not Home. Home *is* the backdrop and keeps
+  it at full strength. Everywhere else the scene recedes behind the theme's own
+  background at 82%. A backdrop is scenery; the moment it competes with a sentence
+  it has stopped doing its job, and the answer is not a duller backdrop.
+- **Cards became surfaces** — the theme's real surface colour at 92%, with the
+  accent as a tint rather than as the entire fill. `glass` still exists and points
+  at it, so every existing caller got a readable surface without being touched.
+
+### A third of the app was in a font nobody chose
+
+`bodySmall` is the **most-used style in the codebase** — twenty-eight call sites —
+and it was not in `JarvisTypography` at all. Neither was `titleSmall`. Anything
+missing from a `Typography` does not inherit the theme's family; it **defaults**,
+which means Roboto. So a third of the text in this app was in the platform font
+while the rest was in Michroma, which is a large part of why it read as assembled.
+
+Michroma now carries **everything structural** — titles, section headings, tabs,
+button labels, settings row titles. Inter keeps running prose, and that is a
+decision rather than laziness: Michroma has one weight and is extremely wide, and
+a screenshot already showed "Open JARVIS with a gesture" broken across three lines
+as a *title*. Setting paragraphs in it would make the app harder to read while
+looking more branded — the wrong trade exactly where the words matter. Pairing a
+display face with a text face is what every commercial app does.
+
+### "Off" was a button pretending to be a switch
+
+Booleans were outlined pills reading "On" / "Off". That is wrong twice: a pill
+looks like a button, so it invites a tap without saying what will happen, and it
+is not the control Android users already know. Every settings screen on the
+platform gives a boolean a switch. Matching that convention is most of what
+separates an app that feels native from one that feels drawn.
+
+`Controls.kt` now holds `JarvisCard`, `SettingSwitchRow`, `SettingActionRow`,
+`JarvisButton` and `SectionLabel` — written once, used everywhere. The action row
+also moved its button **below** the text: beside a two-line title it squeezed that
+title into a column barely wider than the button, which is what broke "Open JARVIS
+with a gesture" across three lines.
+
+### Automation described a feature the app already had
+
+The screen talked about driving apps on the handset — tapping buttons, filling
+forms. That is `ScreenControlService`, which already works on Home. **Automation
+is cross-device**: you speak to the phone in your hand and something happens on a
+machine across the room. *"i can give it a command from a phone to run SMTH on my
+desktop"*.
+
+Rewritten to that: run a command on your desktop, pair a device once, name your
+own scripts, run on a schedule, and every one approved by name before it executes.
+Worth recording as a mistake in kind — I described the feature from its name
+rather than asking what it was for, and produced a confident screen about the
+wrong thing.
+
+### And the last row was under the gesture bar
+
+`systemBarsPadding()` on a scrolling column pads the container, not the scroll
+content, so the final row sat beneath the navigation bar — visible mid-sentence in
+a screenshot. `navigationBarsPadding()` on every scrolling screen.
+
+
 ## 2026-08-25 (splash) — the app already had one, on the wrong colour
 
 **Asked for.** *"our app doesn't have a splash screen, can you make that for me,

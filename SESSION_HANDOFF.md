@@ -66,6 +66,27 @@ the splash by swapping the activity's theme.
 The splash colour is a static resource and cannot follow the chosen theme — the
 window is painted before any Kotlin runs.
 
+### Content never sits on the raw backdrop
+
+The backdrop runs at full brightness and is animated. Every screen that carries
+text puts `JarvisTheme.scrim` between the two — Home is the only exception,
+because Home *is* the backdrop.
+
+Cards are `JarvisTheme.card` (the theme's surface at 92%), not a 7% accent wash.
+The old 7% was invisible over a bright theme and is why a Forge screenshot showed
+text floating over moving beams with no rows behind it.
+
+`Controls.kt` holds `JarvisCard`, `SettingSwitchRow`, `SettingActionRow`,
+`JarvisButton`, `SectionLabel`. Use them; a boolean gets a **switch**, never a
+pill that says "Off".
+
+> **Anything missing from `Typography` does not inherit — it defaults to Roboto.**
+> `bodySmall` was undefined and is the most-used style in the app. Add every role
+> that gets used.
+
+`systemBarsPadding()` pads a scrolling column's container, not its content: use
+`navigationBarsPadding()` too or the last row hides under the gesture bar.
+
 ### Shared UI chrome lives in ScreenChrome.kt
 
 `ScreenHeader` and `EmptyState`. Use them; do not hand-roll either.
