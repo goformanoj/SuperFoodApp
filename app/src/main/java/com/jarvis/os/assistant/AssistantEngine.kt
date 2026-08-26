@@ -12,6 +12,8 @@ import androidx.compose.runtime.mutableStateOf
 import com.jarvis.os.ai.Brain
 import com.jarvis.os.ai.agentStep
 import com.jarvis.os.ai.AGENT_PROMPT
+import com.jarvis.os.ai.ANSWER_PROMPT
+import com.jarvis.os.ai.answerStep
 import com.jarvis.os.ai.ModelRouter
 import com.jarvis.os.ai.Tier
 import com.jarvis.os.alarm.AlarmActions
@@ -51,6 +53,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -84,6 +87,24 @@ class AssistantEngine(context: Context) {
     private val playbook = PlaybookStore(appContext)
     /** What the user asked for, kept so a sequence that works can be remembered. */
     private var pendingGoal: String = ""
+
+    /**
+     * The question the user asked ALONGSIDE the action, still unanswered.
+     *
+     * "Open the pw app and tell me if I have any classes today" is two
+     * requests, and until this existed the screen action ate the whole turn.
+     * See [FollowUp] for the trace. Set when a plan has steps, answered once
+     * the steps settle, and cleared in exactly one place — [takePendingQuestion]
+     * — so an answer that itself contains an action cannot loop back here.
+     */
+    private var pendingQuestion: String = ""
+
+    /**
+     * What JARVIS said when it took the action, kept so the follow-up answer can
+     * be suppressed if that sentence already answered the question. Without it
+     * a reply that both answers and acts gets answered twice.
+     */
+    private var pendingSaid: String = ""
     /** Everything done for the current goal — planned and agent — for the history line. */
     private var stepsTaken: List<ScreenStep> = emptyList()
 
@@ -1064,6 +1085,11 @@ class AssistantEngine(context: Context) {
         // the removeCallbacks below and re-armed when it next returns to listening.
         awake = true
         pendingScreen = null
+        // A new utterance supersedes the old one whole — including anything it
+        // left unanswered. Answering a question the user has already moved on
+        // from is the same fault as never answering it.
+        pendingQuestion = ""
+        pendingSaid = ""
         replayingRoute = false
         voice.stopListening()
         main.removeCallbacksAndMessages(null)
@@ -1169,6 +1195,8 @@ class AssistantEngine(context: Context) {
             )
             pendingGoal = userText
             pendingScreen = plan
+            pendingQuestion = FollowUp.pendingFor(userText).orEmpty()
+            pendingSaid = plan.clean
             replayingRoute = true
             // Reset the same counters the model path resets. A replay still runs
             // through the service with recovery enabled, and recovery consults the
@@ -1338,6 +1366,14 @@ class AssistantEngine(context: Context) {
                     pendingGoal = userText
                     stepsTaken = plan.steps
                     agentSteps = 0
+                    // Held whatever the model said, because what it said was
+                    // written BEFORE the action ran — "Opening the weekly
+                    // schedule now" is an acknowledgement, not an answer. The
+                    // one case it would be an answer is caught later, by
+                    // showing the model its own sentence and letting it stay
+                    // quiet rather than repeat itself.
+                    pendingQuestion = FollowUp.pendingFor(userText).orEmpty()
+                    pendingSaid = spoken
                 }
                 addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
                 DebugLog.log(DebugLog.Stage.SPOKE, spoken)
@@ -1553,6 +1589,11 @@ class AssistantEngine(context: Context) {
                         )
                     }
                 }
+                // The steps are over. If the request also asked a question,
+                // this is the moment the screen can answer it — the trace's
+                // "View Weekly Schedule" tap ended exactly here and said
+                // nothing for the next ten seconds.
+                main.post { answerFromScreen() }
             }
         } else {
             // Opens only. Launching an app needs no accessibility permission, and
@@ -1571,7 +1612,13 @@ class AssistantEngine(context: Context) {
             // re-planning around one would put a second loop on the screen.
             val service = ScreenControlService.instance
             if (service != null) {
-                service.runSteps(plan.steps, recover = false)
+                // The callback is here only for the follow-up answer. This is
+                // the branch the trace took: <<OPEN|pw>> and nothing else, so
+                // an app opened and the question that asked for it was never
+                // answered at all.
+                service.runSteps(plan.steps, recover = false) { _, _ ->
+                    main.post { answerFromScreen() }
+                }
             } else {
                 // No accessibility service bound, so nothing can read what is in
                 // front. Launching blind is still better than refusing — this is
@@ -1582,6 +1629,10 @@ class AssistantEngine(context: Context) {
                 for (step in plan.steps) {
                     if (step is ScreenStep.Open) AppLauncher.launch(appContext, step.app, aliases)
                 }
+                // Nothing can read the screen, so nothing can answer from it.
+                // Called for the clear: a question left set here would be
+                // answered against whatever the NEXT command put on screen.
+                main.post { answerFromScreen() }
             }
         }
         return ScreenOutcome.DISPATCHED
@@ -1787,7 +1838,13 @@ class AssistantEngine(context: Context) {
                     AgentMove.Done -> {
                         DebugLog.log(DebugLog.Stage.SCREEN, "errand done after $agentSteps steps")
                         setTaskRunning(false)
-                        say("That's done.")
+                        // "That's done." is the right thing to say for an errand
+                        // that DID something. For one that was run to find
+                        // something out, it is the wrong sentence entirely — the
+                        // answer is on the screen the loop just reached. The
+                        // fallback keeps the old line for everything else, and
+                        // for an answer that never arrives.
+                        answerFromScreen(fallback = "That's done.")
                     }
                     is AgentMove.Ask -> {
                         DebugLog.log(DebugLog.Stage.SCREEN, "errand stopped to ask: ${move.question}")
@@ -1821,6 +1878,128 @@ class AssistantEngine(context: Context) {
                 }
             }
         }
+    }
+
+    /**
+     * Takes the outstanding question, if any, clearing it as it goes.
+     *
+     * THE CLEAR IS THE POINT. It happens here and nowhere else, so a follow-up
+     * answer cannot set up another follow-up: read once, and the field is empty
+     * whatever happens next. Every other guard against looping is a policy;
+     * this one is structural.
+     */
+    private fun takePendingQuestion(): Pair<String, String>? {
+        val question = pendingQuestion
+        val said = pendingSaid
+        pendingQuestion = ""
+        pendingSaid = ""
+        return if (question.isBlank()) null else question to said
+    }
+
+    /**
+     * Answers the question the user asked alongside the action, now that the
+     * action has run and the screen shows its result.
+     *
+     * From a device trace (2026-08-26): "can you open the pw app and tell me if
+     * i have any classes today" opened the app and said nothing. Asked again, it
+     * tapped "View Weekly Schedule" and said nothing. Only "you didn't reply to
+     * me" got an answer — and that answer came back in the same second, from a
+     * screen that had been sitting there since. Everything needed was on the
+     * phone; nothing ever looked.
+     *
+     * Called from every place a screen action finishes. Doing nothing is the
+     * common case and costs a field read.
+     */
+    private fun answerFromScreen(fallback: String? = null) {
+        val token = errandToken
+        // Says [fallback] instead, when there is one. Every path out of this
+        // function goes through here, so the errand loop can hand over its
+        // "That's done." and be certain SOMETHING is still said if the answer
+        // never arrives. Silence is what this whole function exists to fix.
+        fun giveUp(why: String) {
+            DebugLog.log(DebugLog.Stage.THINK, "follow-up: $why")
+            if (fallback != null && token == errandToken) say(fallback)
+        }
+        val pending = takePendingQuestion()
+        if (pending == null) {
+            if (fallback != null) say(fallback)
+            return
+        }
+        val (question, said) = pending
+        if (!Brain.hasKey()) return giveUp("no key")
+        DebugLog.log(DebugLog.Stage.THINK, "action done — still owed an answer to \"$question\"")
+        // The action has been dispatched, not finished drawing. A tap on "View
+        // Weekly Schedule" returns the moment the tap lands; the schedule it
+        // opens is a network call away. Reading now gets the screen the user was
+        // already looking at, which is precisely the answer they did not need.
+        main.postDelayed({
+            scope.launch {
+                // Keep looking while the app is still drawing. The settle
+                // delay above covers a tap inside an app already open; a cold
+                // start is seconds, not milliseconds, and reading its splash
+                // would produce a confident answer about nothing. Same test the
+                // errand loop uses, for the same reason.
+                var screen = ""
+                var waits = 0
+                while (true) {
+                    screen = withContext(Dispatchers.IO) {
+                        ScreenControlService.instance?.describeScreen().orEmpty()
+                    }
+                    if (!AgentLoop.looksUnrendered(screen) || waits >= FOLLOW_UP_MAX_WAITS) break
+                    waits++
+                    DebugLog.log(
+                        DebugLog.Stage.THINK,
+                        "follow-up: still drawing, looking again ($waits/$FOLLOW_UP_MAX_WAITS)",
+                    )
+                    delay(RENDER_WAIT_MS)
+                }
+                if (screen.isBlank()) {
+                    main.post { giveUp("nothing readable on screen") }
+                    return@launch
+                }
+                val answer = try {
+                    withTimeout(AGENT_STEP_TIMEOUT_MS) {
+                        Brain.generate(
+                            messages = listOf(
+                                ChatTurn(ChatTurn.USER, answerStep(question, screen, said)),
+                            ),
+                            context = "",
+                            systemOverride = ANSWER_PROMPT,
+                            tier = Tier.SMART,
+                        )
+                    }
+                } catch (e: Exception) {
+                    main.post { giveUp("answer failed: ${e.message ?: e.javaClass.simpleName}") }
+                    return@launch
+                }
+                // Markers stripped rather than run. This is a reader: an action
+                // it emitted would be a second, unasked-for command, and acting
+                // on one is how a single answer turns into an errand.
+                val line = Markers.strip(answer).trim()
+                val bare = line.trimEnd('.', ' ')
+                main.post {
+                    if (token != errandToken) {
+                        DebugLog.log(DebugLog.Stage.THINK, "follow-up dropped — a newer command took over")
+                        return@post
+                    }
+                    // The model was shown what it had already said and offered
+                    // the chance to stay quiet. Taking it means the question was
+                    // answered on the way past, and silence is the right output.
+                    if (bare.isBlank() || bare.equals(NOTHING_TO_ADD, ignoreCase = true)) {
+                        giveUp("already answered, staying quiet")
+                        return@post
+                    }
+                    // An unsolicited answer must not land on top of the user
+                    // mid-sentence. A fallback is not unsolicited — it replaces
+                    // a line the errand loop was going to say anyway.
+                    if (fallback == null && turn.phase != TurnPhase.IDLE) {
+                        DebugLog.log(DebugLog.Stage.THINK, "follow-up dropped — a turn is already under way")
+                        return@post
+                    }
+                    say(line)
+                }
+            }
+        }, FOLLOW_UP_SETTLE_MS)
     }
 
     /**
@@ -1945,6 +2124,22 @@ class AssistantEngine(context: Context) {
         // returns to sleep and needs "Hey JARVIS" again. Long enough to think
         // between follow-ups, short enough that it isn't left wide open.
         const val SLEEP_AFTER_MS = 18_000L
+
+        // How long to let a screen settle before reading it for a follow-up
+        // answer. A tap returns as soon as it lands; the screen it opens can be
+        // a network call away, and reading too early returns the screen the user
+        // was already looking at. Longer than [RENDER_WAIT_MS] because there is
+        // no second look here — one read, one answer.
+        const val FOLLOW_UP_SETTLE_MS = 1_400L
+
+        // What the answering model says when its own earlier sentence already
+        // answered the question. Matched in code, never spoken.
+        const val NOTHING_TO_ADD = "NOTHING"
+
+        // Extra looks at a screen that is still drawing, before answering from
+        // it anyway. Five of these on top of the settle delay is ~4.4s, which
+        // covers a cold start; past that, a sparse screen is the real screen.
+        const val FOLLOW_UP_MAX_WAITS = 5
 
         // Shown while asleep, so the screen says how to get JARVIS's attention.
         const val WAKE_HINT = "Say “Hey JARVIS”"
