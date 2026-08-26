@@ -2,8 +2,8 @@
 
 ## Current position — 2026-08-26 (latest)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `5915741`. `main` is at
-`aa94947`; fast-forward once the artifact appears for `5915741`.
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `c437ab7`, **green with the
+`jarvis-debug-apk` artifact** for `5915741`, and `main` fast-forwarded to it.
 
 The round's work: **JARVIS now answers the question the action was for.** A trace
 showed it opening an app and tapping through to an answer without ever speaking
