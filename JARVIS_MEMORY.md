@@ -1,5 +1,83 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-26 — it did the action and never answered the question
+
+**Reported.** A device trace, pasted with no commentary. It did not need any:
+
+```
+16:07:52  HEARD   (voice) can you open the pw app and tell me if i have any classes today
+16:07:55  REPLY   Groq/FAST: <<OPEN|pw>>
+16:07:56  SCREEN  running Open(app=pw)
+16:08:21  HEARD   (voice) do i have classes today
+16:08:24  REPLY   Groq/SMART: Opening the weekly schedule now.<<TAP|View Weekly Schedule>>
+16:08:28  SCREEN  step 1/1 Tap(label=View Weekly Schedule)
+16:08:38  HEARD   (voice) you didn't reply to me
+16:08:38  REPLY   Groq/SMART: There are no classes scheduled for today.
+```
+
+**Nothing failed.** The app opened, the tap landed, the plan was right both
+times. And the answer, when it finally came, took **no time at all** — same
+second as the complaint, from a screen that had been sitting there since
+16:08:28. Everything needed was on the phone. Nothing ever looked.
+
+### Why
+
+`executeScreen` has two completion paths and neither does anything afterwards.
+The errand path hands off to `driveErrand`; the sequence path's `runSteps`
+callback writes to the `Playbook` and returns. The errand loop's one terminal
+line is `say("That's done.")` — the right sentence for an errand that **did**
+something, and the wrong sentence entirely for one run to **find something out**.
+
+So the model's job ended when the markers were parsed, and a request that
+carried a question as well as an action lost the question.
+
+### The half I would have missed
+
+The obvious fix detects a compound: *open X **and tell me** Y*. That covers
+16:07:52 and **not** 16:08:21 — where the user asked a bare question with no
+action in it at all and the *model* decided a tap was how to answer it. The
+silence there is identical and the cause is the same. Both shapes have to be
+caught, and the second one is invisible if you only look at what the user said.
+
+`FollowUp.pendingFor` handles both: the compound tail, or the whole utterance
+when it is a question the model answered with steps.
+
+### What made it delicate
+
+This runs after **every** command, so a false positive is not a missed answer —
+it is an unasked-for second sentence, every time, forever. That is worse than
+the bug. The classifier is therefore biased hard toward silence:
+
+- **actions before question words**, because nearly every spoken command is
+  dressed as one (*"can you open…"*, *"could you play…"*) and is answered by
+  acting, not by talking;
+- **report phrases before actions**, because the two collide — *"find out when
+  it starts"* is a question whose first word is in the action list;
+- **first person only** — *"tell **me**"* is a question, *"tell **her** I'll be
+  late"* is an errand, and reading the second as the first would have JARVIS
+  answering a message it was supposed to send;
+- an auxiliary needs a pronoun, so *"have a look"* is not a question;
+- three-word floor, because *"tell me"* alone says nothing about **what**, and a
+  model handed that will answer something nobody asked.
+
+### Two things worth keeping
+
+**Clear in one place.** `takePendingQuestion()` reads and clears together. An
+answer that itself contains an action therefore cannot set up another follow-up
+— not by policy, structurally.
+
+**Show the model what it already said.** The reply that took the action was
+written *before* the action ran, so it is nearly always an acknowledgement
+("Opening the weekly schedule now") rather than an answer. Nearly. The prompt is
+given that sentence and may reply `NOTHING`, which is checked in code, so the one
+case where the model both answered and acted does not get answered twice.
+
+**And it waits.** A tap returns the moment it lands; the screen it opens can be a
+network call away. Reading immediately returns the screen the user was already
+looking at — precisely the answer they did not need. 1.4s to settle, then up to
+five more looks while `AgentLoop.looksUnrendered` says the app is still drawing.
+
+
 ## 2026-08-25 (instructions, properly) — I changed the content and called it a layout
 
 **Reported.** *"YOU DIDNT RESTRUCTURE AND CHANGE THE LAYOUT OF CUSTOM

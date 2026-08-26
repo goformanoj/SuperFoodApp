@@ -1,6 +1,49 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-08-23 (latest)
+## Current position — 2026-08-26 (latest)
+
+Branch `claude/phone-glitch-investigation-g6dnhk` @ `5915741`. `main` is at
+`aa94947`; fast-forward once the artifact appears for `5915741`.
+
+The round's work: **JARVIS now answers the question the action was for.** A trace
+showed it opening an app and tapping through to an answer without ever speaking
+it — the answer arrived only when the user complained, off a screen that had been
+ready for ten seconds. `FollowUp` (pure, tested against the trace's own lines)
+names what is still outstanding after an action; `answerFromScreen` reads the
+settled screen and says it.
+
+### The gotcha this round: a completion path that completes nothing
+
+Both of `executeScreen`'s exits are silent by construction — one hands off to the
+errand loop, the other writes to the `Playbook` and returns — and the errand
+loop's terminal line is a fixed `"That's done."`. Nothing was broken; there was
+simply no code anywhere that looked at a screen an action had produced.
+
+> When an action is a *means*, finishing it is not finishing the request. Ask
+> what the user was going to do with the screen once it arrived — and if the
+> answer is "read it", something has to read it.
+
+### The detection rule: the user is not the only one who splits a request
+
+*"Open X and tell me Y"* is a compound in the utterance. *"Do I have classes
+today"* answered with a tap is a compound the **model** created. Both leave a
+question unanswered after the steps run, and only the first is visible in what
+the user said. A detector built from the user's words alone catches half of it.
+
+### Cost of a false positive
+
+This fires after every command, so an over-eager detector adds an unasked-for
+sentence to every single turn — worse than the silence it replaces. That is why
+`FollowUp` checks actions before question words, report phrases before actions,
+demands first person (*"tell me"* yes, *"tell her"* no), and refuses anything
+under three words.
+
+**Still owed:** PDF content quality (35KB for a page; summarised a 540-char
+fragment when asked for a whole chat, never scrolled), speech accuracy
+("unsure of a word" recurs in traces), a layout pass on Chat and Files, and the
+Cloudflare Worker (D1 migrated; the Worker is not deployed).
+
+## Earlier position — 2026-08-23
 
 Branch `claude/phone-glitch-investigation-g6dnhk` @ `aa94947`, **green with the
 `jarvis-debug-apk` artifact**, and `main` fast-forwarded to it. The universe is
