@@ -102,8 +102,29 @@ inside a Claude session rather than only on a device.
 - **E5 — billing:** Play Billing / RevenueCat, free-tier daily cap enforced in the proxy.
 - **E6 — launch:** internal → closed test (12 testers × 14 days) → production.
 
+### Part H — JARVIS AI (our own tuned model) ⏸️ **parked 2026-08-26, nothing built**
+
+Full plan: [`JARVIS_AI_PLAN.md`](JARVIS_AI_PLAN.md). A small model fine-tuned on
+this app's own traffic, on device, for the marker/agent work — hosted model kept
+for conversation and document writing. **A foundation model from scratch is not
+in scope and never will be**; the plan says why in its first section.
+
+- **Phase 0 — keep the data.** `DebugLog` is memory-only, capped at 300 entries,
+  never written to disk, so every labelled example is deleted on restart.
+  **Pure, small, gates off-device, and the only item here that gets more
+  expensive by waiting.** Do this one regardless of the rest.
+- **Phase 0b — manufacture the data** (synthetic screens, APK string resources,
+  the emulator rig in `androidTest/e2e/`, distillation). No phone needed.
+- **Phase 1 — prove it offline**, judged by the app's own parsers. **Hard gate:**
+  if it does not beat `gpt-oss-20b` on marker accuracy, stop and ship nothing.
+- **Phases 2–4** — on-device runtime, capability routing with escalation, and the
+  commercial change. Only on the far side of Phase 1's number.
+
+Independent of Part E: training does **not** wait for the backend.
+
 ### Later ⏸️
 - Proper wake word (Porcupine / openWakeWord); streaming replies; device skills via real intents (alarms/timers, SMS/calls with confirm, wifi/torch/DND/media); vision (screenshot → model).
+- **Call assistant** — appendix in [`JARVIS_AI_PLAN.md`](JARVIS_AI_PLAN.md); deferred to after the first Play Store launch.
 
 ## Prioritization principle
 Reliable / API-backed features before brittle screen-poking. Keep a known-good baseline; when patches pile up and it's still broken, **reset** to the last working version instead of over-patching. Simulate the human (tap/swipe/type) when an app's "proper" interface is missing or lies.

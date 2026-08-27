@@ -1,5 +1,87 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-26 (afternoon) — "can we build our own AI" — planned, parked, nothing built
+
+**Asked.** *"can we build our own ai, called Jarvis ai, which will have all the
+features… we will cut down on our groq or any ai's api, and can earn clean
+profits"*, then two sharper follow-ups that were the real questions.
+
+Nothing was implemented. The plan is [`JARVIS_AI_PLAN.md`](JARVIS_AI_PLAN.md),
+moved into the repo so it survives the session. What follows is why it says what
+it says, since that is the part that would otherwise be lost.
+
+### The half that is not possible, said plainly
+
+A model in the class of the `gpt-oss-120b` the backend serves was pretrained on
+trillions of tokens across thousands of GPUs. Millions of dollars and a
+full-time team. That is a **capital** problem, not a scope problem, and no
+sequencing makes it smaller. Saying so took one paragraph and saved the rest of
+the conversation.
+
+### The half that is — and the codebase had already measured it
+
+`ai/ModelRouter.kt` records, from three device traces, that `llama-3.1-8b`
+returned **no markers on a single command**, so every command escalated anyway.
+I had read that comment before as a reason not to route. It is also, read the
+other way, the strongest argument **for** fine-tuning: it is a **zero-shot**
+failure on a **structured-output** task, and the file's own closing line invites
+the retry — *"git history has them if the experiment is ever worth repeating
+against a stronger small model."*
+
+The distinction that makes the whole plan work:
+
+> The model does not need to know the phone. It needs to produce a **format**.
+
+`renderScreen()` already hands it `App: X. On screen: [a] field:"b" [Send]` fresh
+on every turn — it is choosing from a menu it was just given, not recalling what
+WhatsApp looks like. So the tuned model's job is **translation, not recall**,
+which is what small models are good at and precisely what the untuned 8B failed.
+
+### The user's two follow-ups were both better than my framing
+
+**"how can it know abt the phone… because the current ai answers based on its
+data"** — the right answer is that it doesn't and must not, and the app is
+*already* built that way. Worth noting that the one time it did answer from
+memory, the fix was structural, not a better model: a Blinkit trace tapping
+`Search` in an app whose box is labelled *"Search for atta, dal, coke and more"*
+is why `driveErrand` looks before every move instead of planning up front.
+
+**"can we train on whatsapp, facebook… without me physically doing it on my
+phone"** — yes, and it should be the **bulk** of the data, which I had not said.
+Synthetic screens are free, unlimited and **auto-labelled by the app's own
+parsers**; APK string resources give the real label vocabulary without operating
+an account; and `androidTest/e2e/A11yProbeTest.kt` already boots an API-34
+emulator with the accessibility service enabled — the harvesting rig exists.
+Real traces then matter for a different job: **synthetic teaches the format,
+traces teach the surprises.** No generator would have invented *"Search for atta,
+dal, coke and more"*.
+
+Also a premise worth correcting: none of this waits for the backend.
+
+### What I got wrong first, and corrected
+
+I led with cost. The Groq bill is **zero** — free tier, no billing attached — so
+there was nothing to cut, and the argument was weak on its own terms. The strong
+one is privacy: `buildContext()` sends `describeScreen()` on **every turn**, so
+the contents of whatever app is in front — messages, balances, schedules — go to
+a third-party US API. That is a Data Safety declaration of *Messages / Personal
+info, shared with third parties*, on an app that already needs an accessibility
+service. On-device screen turns delete it. That is worth more at review time
+than the tokens are on the balance sheet.
+
+### The one urgent item, and it is not the model
+
+`debug/DebugLog.kt` is memory-only, capped at 300 entries, never written to disk.
+Every `HEARD → REPLY → MARKS → SCREEN` sequence is a labelled training example
+**with the outcome attached** — `runSteps`'s `(ok, ranClean)`, whether recovery
+fired, whether the user immediately rephrased — which is better than anything
+scraped. All of it is deleted on every restart.
+
+**You cannot fine-tune on data you threw away.** Phase 0 costs nothing, changes
+no user-visible behaviour, and is the only part of this plan that gets more
+expensive by waiting. It should ship whether or not the rest ever does.
+
+
 ## 2026-08-26 — it did the action and never answered the question
 
 **Reported.** A device trace, pasted with no commentary. It did not need any:

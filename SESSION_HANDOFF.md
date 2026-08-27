@@ -1,16 +1,41 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-08-26 (latest)
+## Current position — 2026-08-26 (latest, handed off)
 
-Branch `claude/phone-glitch-investigation-g6dnhk` @ `c437ab7`, **green with the
-`jarvis-debug-apk` artifact** for `5915741`, and `main` fast-forwarded to it.
+Branch `claude/phone-glitch-investigation-g6dnhk`, **green with the
+`jarvis-debug-apk` artifact** for `5915741`, and `main` fast-forwarded.
+Working tree clean. **Nothing is half-built — this is a clean stopping point.**
 
-The round's work: **JARVIS now answers the question the action was for.** A trace
+### Start here next session
+
+**1. [`JARVIS_AI_PLAN.md`](JARVIS_AI_PLAN.md) — parked, nothing built.** Our own
+fine-tuned model, on device, for the marker/agent work. Read the plan before
+re-deriving any of it; the reasoning is in
+[`JARVIS_MEMORY.md`](JARVIS_MEMORY.md) under 2026-08-26 (afternoon).
+
+**The one item in it that is urgent on its own** and worth doing even if the
+rest never happens: `debug/DebugLog.kt` is memory-only, capped at 300 entries,
+never written to disk — so every labelled `HEARD → REPLY → MARKS → SCREEN`
+example, **with its outcome attached**, is deleted on every restart. You cannot
+fine-tune on data you threw away, and it is the only part of the plan that gets
+more expensive by waiting. Phase 0 is small, pure, and gates off-device.
+
+**2. Still owed from earlier, all reported by the user, none started:**
+
+| Item | What the evidence showed |
+|---|---|
+| **PDF content quality** | 35KB for a page of text; summarised a 540-char on-screen fragment when asked for a whole chat, having never scrolled |
+| **Speech accuracy** | *"unsure of a word"* recurs across traces |
+| **Chat and Files layout** | never had the pass that Settings and Instructions got |
+| **Cloudflare Worker** | D1 migrated and confirmed; the Worker is **not** deployed. Two dashboard steps are the user's — see [`BACKEND_PLAN.md`](BACKEND_PLAN.md) |
+
+### What shipped this session
+
+**JARVIS now answers the question the action was for** (`5915741`). A trace
 showed it opening an app and tapping through to an answer without ever speaking
-it — the answer arrived only when the user complained, off a screen that had been
-ready for ten seconds. `FollowUp` (pure, tested against the trace's own lines)
-names what is still outstanding after an action; `answerFromScreen` reads the
-settled screen and says it.
+it — the answer arrived only when the user complained, off a screen that had
+been ready for ten seconds. New pure `FollowUp` names what is still outstanding
+after an action; `answerFromScreen` reads the settled screen and says it.
 
 ### The gotcha this round: a completion path that completes nothing
 
@@ -37,11 +62,6 @@ sentence to every single turn — worse than the silence it replaces. That is wh
 `FollowUp` checks actions before question words, report phrases before actions,
 demands first person (*"tell me"* yes, *"tell her"* no), and refuses anything
 under three words.
-
-**Still owed:** PDF content quality (35KB for a page; summarised a 540-char
-fragment when asked for a whole chat, never scrolled), speech accuracy
-("unsure of a word" recurs in traces), a layout pass on Chat and Files, and the
-Cloudflare Worker (D1 migrated; the Worker is not deployed).
 
 ## Earlier position — 2026-08-23
 
