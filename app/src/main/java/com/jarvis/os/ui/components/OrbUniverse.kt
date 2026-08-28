@@ -13,7 +13,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,7 +57,6 @@ import com.jarvis.os.ui.theme.LocalPalette
 import com.jarvis.os.ui.theme.OrbStyle
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -99,19 +97,11 @@ fun OrbUniverse(
     entry: Float = 1f,
 ) {
     val scope = rememberCoroutineScope()
-    // One number holds the entire position in the universe. An Animatable rather
-    // than a plain Float because the same value has to be draggable by a pinch
-    // AND flown by a double-tap, and those cannot be two separate states without
-    // them disagreeing the moment you do both.
+    // The dive position within a dimension. An Animatable rather than a plain
+    // Float because it is both snapped by a gesture and flown by the entry
+    // animation, and those cannot be two separate states without them disagreeing
+    // the moment both run.
     val zoom = remember { Animatable(UniverseMath.START_ZOOM) }
-    // Where the pinch has got to, held separately from what is on screen.
-    //
-    // `snapTo` is a suspend function, so a gesture callback cannot apply it and
-    // read the result in the same frame — reading `zoom.value` to compute the
-    // next position would keep reading the value from before the launches that
-    // are still queued, and a fast pinch would silently drop most of its travel.
-    // The accumulator is updated synchronously; the Animatable only renders it.
-    var target by remember { mutableFloatStateOf(UniverseMath.START_ZOOM) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var closing by remember { mutableStateOf(false) }
     // Until the arrival has finished, a pinch cannot dismiss the view.
@@ -189,7 +179,6 @@ fun OrbUniverse(
             }
             chosen != null -> {
                 chosen = null
-                target = UniverseMath.START_ZOOM
                 scope.launch { zoom.snapTo(UniverseMath.START_ZOOM) }
             }
             galaxy != null -> galaxy = null
@@ -214,7 +203,6 @@ fun OrbUniverse(
         }
         settled = false
         zoom.snapTo(UniverseMath.ENTRY_ZOOM)
-        target = UniverseMath.START_ZOOM
         // The two run together: the map falls away as the dimension comes up.
         enterStar.snapTo(0f)
         scope.launch { enterStar.animateTo(1f, tween(900, easing = FastOutSlowInEasing)) }
@@ -316,150 +304,125 @@ fun OrbUniverse(
             // it, so neither does this: the theme's own backdrop colour at full
             // opacity, darkened toward black by a second opaque layer.
             .background(deepSpace(palette.orbStyle))
-            // The tap detector goes FIRST so the transform detector below it is
-            // the inner one and sees a second finger before anything else does.
-            // The other order lets the double-tap detector spend its timeout
-            // deciding while a pinch is already under way.
+            // ZOOM IS THE ONLY WAY IN. Tapping is gone — "i only want everything
+            // accessible only by zoom, endless zoom". A galaxy, a star and a
+            // world are all entered the same way now: put the fingers on the
+            // thing and pinch it larger until you fall into it; pinch back out to
+            // leave. One gesture vocabulary, no click anywhere.
             .pointerInput(Unit) {
-                detectTapGestures(
-                    // On the map a single tap PICKS a star. Inside a dimension a
-                    // single tap means nothing, so it stays inert there rather
-                    // than doing something arbitrary.
-                    onTap = { at ->
+                detectTransformGestures { centroid, panChange, gestureZoom, _ ->
+                    val w = size.width.toFloat()
+                    val h = size.height.toFloat()
+                    val cx = w / 2f
+                    val cy = h / 2f
+                    // TWO FINGERS ZOOM. A pinch moves gestureZoom off 1; a single
+                    // pointer reports exactly 1, so the branch below it is a drag.
+                    // Split this way, a pinch never doubles as a shove — the fault
+                    // that once made a scene slide sideways as it scaled.
+                    if (gestureZoom > 0f && abs(gestureZoom - 1f) >= PAN_ZOOM_LOCK) {
+                        val newView = UniverseMath.zoomView(view, gestureZoom)
+                        // The REALISED ratio, after the ceiling clamps it, so the
+                        // focal point stays put even on the frame the pinch caps.
+                        val k = if (view > 1e-4f) newView / view else 1f
+                        // On the flat stages the thing under the fingers has to
+                        // STAY under the fingers as it grows, or "pinch directly
+                        // on it" is a lie — so the pan follows the focal point. The
+                        // orb is a 3D assembly drawn about its own centre and does
+                        // not pan; there the zoom is centred and only the CHOICE of
+                        // which galaxy to dive into comes from where the fingers are.
+                        if (galaxy != null) {
+                            val limit = UniverseMath.panLimit(span, newView)
+                            pan = Offset(
+                                UniverseMath.clampPan(
+                                    UniverseMath.focalPan(pan.x, centroid.x, cx, k), limit),
+                                UniverseMath.clampPan(
+                                    UniverseMath.focalPan(pan.y, centroid.y, cy, k), limit),
+                            )
+                        }
+                        view = newView
                         when {
-                            // On a world: a tap does nothing — the things on the
-                            // surface are found by looking, not by hunting.
-                            world != null -> Unit
-                            // In a system: touch a world to go and stand off it.
-                            chosen != null -> {
-                                var best: WorldOrbit? = null
-                                // `span`, not `size.anything`: see its doc. The
-                                // two `size`s in this file read identically and
-                                // are different types, and reaching for the raw
-                                // one inside a gesture has broken the build
-                                // three times.
-                                var bestD = span * 0.12f
-                                placedWorlds.at.forEach { (w, p) ->
-                                    val d = (p - at).getDistance()
-                                    if (d < bestD) {
-                                        bestD = d
-                                        best = w
+                            // Pinched to the ceiling and still pushing in: fall
+                            // into whatever is nearest the fingers. If that is
+                            // empty space nothing is entered and the view simply
+                            // holds — you can only dive into something that is
+                            // actually there. `settled` keeps a pinch landing
+                            // mid-arrival from entering before the last one has.
+                            settled && UniverseMath.shouldEnter(view, gestureZoom) -> {
+                                when {
+                                    // A world is the deepest place; nothing further.
+                                    world != null -> Unit
+                                    // In a system: fall onto the nearest world.
+                                    // `span`, not any raw `size`: the two `size`s
+                                    // in this file are different types and reaching
+                                    // for one in a gesture has broken the build
+                                    // three times.
+                                    chosen != null -> {
+                                        var best: WorldOrbit? = null
+                                        var bestD = span * 0.30f
+                                        placedWorlds.at.forEach { (wld, p) ->
+                                            val d = (p - centroid).getDistance()
+                                            if (d < bestD) {
+                                                bestD = d
+                                                best = wld
+                                            }
+                                        }
+                                        best?.let { world = it; pan = Offset.Zero; view = 1f }
+                                    }
+                                    // In a galaxy: fall into the nearest star. The
+                                    // INVERSE of what the star map draws, so zoom
+                                    // and pan are undone before the star is found.
+                                    galaxy != null -> {
+                                        val (nx, ny) = UniverseMath.fromScreen(
+                                            centroid.x, centroid.y, w, h, pan.x, pan.y, view,
+                                        )
+                                        UniverseMath.starAt(liveStars, nx, ny)?.let {
+                                            chosen = it
+                                            pan = Offset.Zero
+                                            view = 1f
+                                        }
+                                    }
+                                    // On the orb: fall into the nearest galaxy
+                                    // riding the rings.
+                                    else -> {
+                                        val hit = galaxyAt(
+                                            galaxies = liveGalaxies,
+                                            spec = liveSpec,
+                                            clock = clock,
+                                            yaw = yaw,
+                                            pitch = pitch,
+                                            at = centroid,
+                                            centre = Offset(cx, cy),
+                                            radius = span / 2f *
+                                                fitFor(liveStyle) * ORB_STAGE_ZOOM * view,
+                                        )
+                                        hit?.let { galaxy = it; pan = Offset.Zero; view = 1f }
                                     }
                                 }
-                                if (best != null) {
-                                    world = best
-                                    pan = Offset.Zero
-                                }
                             }
-                            // Inside a galaxy: pick a star.
-                            galaxy != null -> {
-                                // The INVERSE of what the star map draws. A bare
-                                // `at.x / size.width` ignored zoom and pan, so
-                                // zooming in left every star visible and none of
-                                // them reachable.
-                                val (nx, ny) = UniverseMath.fromScreen(
-                                    at.x, at.y,
-                                    size.width.toFloat(), size.height.toFloat(),
-                                    pan.x, pan.y, view,
-                                )
-                                UniverseMath.starAt(liveStars, nx, ny)?.let { chosen = it }
-                            }
-                            // On the orb: pick one of the bodies riding its rings.
-                            else -> {
-                                val hit = galaxyAt(
-                                    galaxies = liveGalaxies,
-                                    spec = liveSpec,
-                                    clock = clock,
-                                    yaw = yaw,
-                                    pitch = pitch,
-                                    at = at,
-                                    centre = Offset(size.width / 2f, size.height / 2f),
-                                    radius = span / 2f *
-                                        fitFor(liveStyle) * ORB_STAGE_ZOOM * view,
-                                )
-                                if (hit != null) galaxy = hit
-                            }
+                            // Pinched below the floor and still pulling out: leave
+                            // this stage. The same gesture, mirrored — one way back
+                            // up rather than two.
+                            view <= UniverseMath.MIN_VIEW + 0.001f && gestureZoom < 1f -> surface()
                         }
-                    },
-                    // A dive per double-tap, because a phone held one-handed
-                    // cannot pinch, and this is the whole feature.
-                    onDoubleTap = {
-                        if (chosen != null) {
-                            target = floor(zoom.value) + 1f
-                            scope.launch {
-                                zoom.animateTo(target, tween(900, easing = FastOutSlowInEasing))
-                            }
-                        }
-                    },
-                )
-            }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, panChange, gestureZoom, _ ->
-                    // EVERY STAGE RESPONDS. It used to be only the dimension —
-                    // the orb and the galaxy were pictures you could look at and
-                    // nothing else, which is why they felt like screens rather
-                    // than places.
-                    run {
-                        // EVERY stage scales the same way. There is one gesture
-                        // vocabulary across all four layers now — pinch to zoom,
-                        // drag to move or turn, tap to go in, pinch out to leave —
-                        // rather than the dive meaning something different from
-                        // everything above it.
-                        if (gestureZoom > 0f) {
-                            view = (view * gestureZoom).coerceIn(MIN_VIEW, MAX_VIEW)
-                            // Zooming back out has to RECLAIM the travel it lent.
-                            // Otherwise a scene panned to the edge at 3x stays
-                            // stranded there when the zoom comes back to 1, which
-                            // is the displacement complaint by another route.
+                    } else if (abs(gestureZoom - 1f) < PAN_ZOOM_LOCK) {
+                        // ONE FINGER MOVES: it turns the orb, or pans a flat stage.
+                        if (galaxy == null) {
+                            // TURNING THE ORB — a real rotation of the whole
+                            // assembly, so the rings swing through each other and
+                            // the galaxies riding them go round the back.
+                            yaw -= panChange.x / w * TURN_PER_WIDTH
+                            pitch = (pitch - panChange.y / h * TURN_PER_WIDTH)
+                                // Clamped, or the orb tumbles past its poles.
+                                .coerceIn(-1.2f, 1.2f)
+                        } else {
+                            // The allowance is the OVERHANG: at a view of 1 the
+                            // content fits, the limit is zero, and nothing can be
+                            // shoved off centre.
                             val limit = UniverseMath.panLimit(span, view)
                             pan = Offset(
-                                UniverseMath.clampPan(pan.x, limit),
-                                UniverseMath.clampPan(pan.y, limit),
+                                UniverseMath.clampPan(pan.x + panChange.x, limit),
+                                UniverseMath.clampPan(pan.y + panChange.y, limit),
                             )
-                            // Pinching well past the minimum is how you leave —
-                            // the same gesture that surfaces out of a dive, so
-                            // there is one way back up rather than two.
-                            if (view <= MIN_VIEW + 0.001f && gestureZoom < 1f) surface()
-                        }
-                        // ONE FINGER MOVES, TWO FINGERS ZOOM.
-                        //
-                        // `detectTransformGestures` reports the centroid's travel
-                        // as pan on the SAME frame it reports a zoom, and two
-                        // fingers pulling apart never do so symmetrically — so a
-                        // pinch was shoving the scene sideways at the same time it
-                        // scaled it. With the zoom broken (above) that drift was
-                        // the only thing that ever happened, and a pinch read as
-                        // "drag the picture about".
-                        //
-                        // A single pointer reports a zoom of exactly 1, so this
-                        // costs a one-finger drag nothing and stops a pinch from
-                        // doing two jobs at once.
-                        if (abs(gestureZoom - 1f) < PAN_ZOOM_LOCK) {
-                            if (galaxy == null) {
-                                // TURNING THE ORB. "i should be able to turn the
-                                // main orb around after pinching" — a drag is a
-                                // real rotation of the whole assembly, not a pan
-                                // of a flat picture, so the rings swing through
-                                // each other and the galaxies riding them go
-                                // round the back.
-                                yaw -= panChange.x / size.width * TURN_PER_WIDTH
-                                pitch = (pitch - panChange.y / size.height * TURN_PER_WIDTH)
-                                    // Clamped, or the orb tumbles past its poles
-                                    // and there is no way to tell which way up it
-                                    // was.
-                                    .coerceIn(-1.2f, 1.2f)
-                            } else {
-                                // The allowance is the OVERHANG, not a flat
-                                // fraction of the frame. At a view of 1 the
-                                // content fits and there is nothing to look
-                                // around, so the limit is zero and the scene
-                                // cannot be shoved off centre at all.
-                                val limit = UniverseMath.panLimit(span, view)
-                                pan = Offset(
-                                    UniverseMath.clampPan(pan.x + panChange.x, limit),
-                                    UniverseMath.clampPan(pan.y + panChange.y, limit),
-                                )
-                            }
                         }
                     }
                 }
@@ -599,9 +562,9 @@ fun OrbUniverse(
                     subtitle = inGalaxy?.let { "${it.kind.label}  ·  ${it.stars} STARS" }
                         ?: "${galaxies.size} GALAXIES ON ${galaxies.size} RINGS",
                     hint = if (inGalaxy == null) {
-                        "TOUCH A LIGHT ON THE RINGS  ·  EACH ONE IS A GALAXY"
+                        "PINCH IN ON A GALAXY TO DIVE IN  ·  DRAG TO TURN THE ORB"
                     } else {
-                        "TOUCH A STAR TO ENTER ITS DIMENSION  ·  PINCH BACK"
+                        "PINCH IN ON A STAR TO ENTER IT  ·  PINCH OUT TO GO BACK"
                     },
                     tint = inGalaxy?.palette?.spark?.toColor() ?: palette.highlight,
                     accent = inGalaxy?.palette?.arm?.toColor() ?: palette.accent,
@@ -621,7 +584,7 @@ fun OrbUniverse(
                     hint = if (standing != null) {
                         standing.planet.kind.summary.uppercase()
                     } else {
-                        "TOUCH A WORLD TO GO AND SEE IT  ·  PINCH BACK"
+                        "PINCH IN ON A WORLD TO LAND  ·  PINCH OUT TO GO BACK"
                     },
                     tint = ink?.spark?.toColor() ?: palette.highlight,
                     accent = ink?.arm?.toColor() ?: palette.accent,
@@ -699,7 +662,7 @@ private fun UniverseHud(
             )
         }
         Text(
-            text = "PINCH TO DIVE  ·  DOUBLE-TAP TO FALL  ·  PINCH BACK TO LEAVE",
+            text = "PINCH IN TO DIVE  ·  PINCH OUT TO LEAVE",
             style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
             color = palette.accent.copy(alpha = 0.45f * alpha),
             textAlign = TextAlign.Center,
@@ -875,9 +838,8 @@ private val PointerInputScope.span: Float
 
 private const val ORB_STAGE_ZOOM = 1.55f
 
-/** How far a stage may be zoomed. Below the minimum, the gesture leaves instead. */
-private const val MIN_VIEW = 0.55f
-private const val MAX_VIEW = 4.5f
+// The zoom range of a stage — floor (pinch out to leave) and ceiling (pinch in
+// to enter) — now lives in UniverseMath, where it is pure and tested off device.
 
 /** A full drag across the screen turns the orb by about this much, in radians. */
 private const val TURN_PER_WIDTH = 3.4f

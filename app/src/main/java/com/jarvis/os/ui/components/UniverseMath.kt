@@ -369,6 +369,62 @@ object UniverseMath {
     fun panLimit(span: Float, view: Float): Float =
         span * 0.5f * (view - 1f).coerceAtLeast(0f)
 
+    // ── Zoom is the only way in ──────────────────────────────────────────
+    //
+    // Tapping is gone. A galaxy, a star, a world are all entered the same
+    // way now: you put your fingers on the thing and pinch it larger until
+    // you fall into it, and pinch back out to leave. Two pieces of that are
+    // arithmetic and belong here, away from the renderer the device is the
+    // first ever to compile — a sign error in either is an hour on a phone.
+
+    /** The floor of a stage's zoom. Below it, a pinch-out leaves the stage. */
+    const val MIN_VIEW = 0.55f
+
+    /**
+     * The ceiling of a stage's zoom, and the trigger to enter. A structure
+     * pinched to this size fills enough of the screen that falling into it is
+     * seamless — and nothing is allowed past it, so a pinch over empty space
+     * simply stops rather than diving into nothing.
+     */
+    const val ENTER_VIEW = 5.5f
+
+    /** The view scale after one pinch step, held inside a stage's range. */
+    fun zoomView(view: Float, gestureZoom: Float): Float =
+        (view * gestureZoom).coerceIn(MIN_VIEW, ENTER_VIEW)
+
+    /**
+     * The new pan that keeps the focal point of a pinch fixed on screen.
+     *
+     * "Pinch directly on it" only works if the point between the two fingers
+     * does not move while everything around it grows. The content is drawn as
+     * `center + pan + (p - center) * view` (see [onScreen]); holding a screen
+     * point [focus] still while the view scales by [k] forces exactly this pan.
+     * Derived once here so the drawing and the gesture cannot drift apart — the
+     * same reason [onScreen] and [fromScreen] are a pair.
+     *
+     * [k] is the REALISED scale, `newView / oldView` after [zoomView] clamps it,
+     * not the raw gesture zoom: when a pinch is capped at [ENTER_VIEW] the pan
+     * has to use the capped ratio or the focal point slides on the last frame.
+     * One axis at a time; call it for x and again for y.
+     *
+     * @param center half the frame on this axis — the pivot the view scales about.
+     */
+    fun focalPan(pan: Float, focus: Float, center: Float, k: Float): Float =
+        pan * k + (focus - center) * (1f - k)
+
+    /**
+     * Whether this pinch step should ENTER the structure under the fingers.
+     *
+     * Only when zooming IN ([gestureZoom] > 1) and the view has reached the top
+     * of the stage. The direction guard matters: a view already at the ceiling
+     * must not enter on the next drag or the first pinch-out — only on a genuine
+     * push further in. What is actually entered is decided by the renderer, from
+     * whatever structure is nearest the focal point at this instant; if that is
+     * nothing, the view just holds at [ENTER_VIEW].
+     */
+    fun shouldEnter(view: Float, gestureZoom: Float): Boolean =
+        gestureZoom > 1f && view >= ENTER_VIEW - 1e-3f
+
     /** Where a fresh dive starts: shell 0, filling the screen. */
     const val START_ZOOM = 0f
 

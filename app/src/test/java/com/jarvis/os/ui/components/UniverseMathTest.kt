@@ -684,4 +684,85 @@ class UniverseMathTest {
         assertTrue("y went to infinity", by.isFinite())
     }
 
+    // ── Zoom is the only way in ─────────────────────────────────────────────
+
+    @Test
+    fun `pinching on a point keeps that point pinned while everything grows`() {
+        // THE property behind "pinch directly on it": the layout point under the
+        // fingers must land back under the fingers after the view scales and the
+        // pan follows. If it drifts, the thing you aimed at slides away as it
+        // grows — which is exactly what makes a zoom-to-enter feel broken.
+        val w = 1080f
+        val h = 2400f
+        val cx = w / 2f
+        val cy = h / 2f
+        listOf(200f to 400f, 900f to 1800f, 540f to 1200f).forEach { (fx, fy) ->
+            listOf(0.7f, 1f, 2.5f).forEach { view ->
+                listOf(0f to 0f, 150f to -220f).forEach { (px, py) ->
+                    // The layout point currently under the focal screen point.
+                    val (lx, ly) = UniverseMath.fromScreen(fx, fy, w, h, px, py, view)
+                    // A pinch-in step, and the pan that should hold the focus put.
+                    val g = 1.4f
+                    val newView = UniverseMath.zoomView(view, g)
+                    val k = newView / view
+                    val npx = UniverseMath.focalPan(px, fx, cx, k)
+                    val npy = UniverseMath.focalPan(py, fy, cy, k)
+                    // The same layout point must still project to the focal point.
+                    val (sx, sy) = UniverseMath.onScreen(lx, ly, w, h, npx, npy, newView)
+                    assertClose("focus x drifted (view=$view pan=$px)", fx, sx, 0.05f)
+                    assertClose("focus y drifted (view=$view pan=$py)", fy, sy, 0.05f)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `the focus stays pinned even when the pinch is capped at the ceiling`() {
+        // The last frame of a dive-in is the dangerous one: the raw gesture would
+        // push past ENTER_VIEW, zoomView caps it, and the pan MUST use the capped
+        // ratio or the target slides on the very frame you commit to entering it.
+        val w = 1000f
+        val h = 2000f
+        val fx = 700f
+        val fy = 500f
+        val view = UniverseMath.ENTER_VIEW - 0.2f
+        val (lx, ly) = UniverseMath.fromScreen(fx, fy, w, h, 40f, -30f, view)
+        val g = 3f // would blow past the ceiling on its own
+        val newView = UniverseMath.zoomView(view, g)
+        assertClose("view must cap at the ceiling", UniverseMath.ENTER_VIEW, newView, 1e-3f)
+        val k = newView / view
+        val npx = UniverseMath.focalPan(40f, fx, w / 2f, k)
+        val npy = UniverseMath.focalPan(-30f, fy, h / 2f, k)
+        val (sx, sy) = UniverseMath.onScreen(lx, ly, w, h, npx, npy, newView)
+        assertClose("focus x drifted at the cap", fx, sx, 0.05f)
+        assertClose("focus y drifted at the cap", fy, sy, 0.05f)
+    }
+
+    @Test
+    fun `you enter only by pushing further in at the ceiling`() {
+        // A genuine pinch-in once the view is maxed enters. Nothing else does:
+        // not a view mid-range, and not a pinch-OUT that happens to start from
+        // the ceiling (that one is leaving, and must be free to).
+        assertTrue("a real push-in at the ceiling enters",
+            UniverseMath.shouldEnter(UniverseMath.ENTER_VIEW, 1.2f))
+        assertTrue("mid-zoom never enters",
+            !UniverseMath.shouldEnter(2f, 1.4f))
+        assertTrue("a pinch-out from the ceiling leaves, it does not enter",
+            !UniverseMath.shouldEnter(UniverseMath.ENTER_VIEW, 0.8f))
+        assertTrue("standing still at the ceiling does not enter",
+            !UniverseMath.shouldEnter(UniverseMath.ENTER_VIEW, 1f))
+    }
+
+    @Test
+    fun `a stage's zoom cannot escape its own range`() {
+        assertClose("floor holds", UniverseMath.MIN_VIEW,
+            UniverseMath.zoomView(UniverseMath.MIN_VIEW, 0.2f), 1e-4f)
+        assertClose("ceiling holds", UniverseMath.ENTER_VIEW,
+            UniverseMath.zoomView(UniverseMath.ENTER_VIEW, 4f), 1e-4f)
+        assertTrue("the floor is a real leaving point below rest",
+            UniverseMath.MIN_VIEW < 1f)
+        assertTrue("the ceiling is well above rest so entering is deliberate",
+            UniverseMath.ENTER_VIEW > 2f)
+    }
+
 }
