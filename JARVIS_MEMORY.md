@@ -1,5 +1,46 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-28 — the universe is entered by zoom alone, no taps
+
+**Asked.** *"the galaxies we have built have to be continuous, rn i have click
+and everything, i only want everything accessible only by zoom, endless zoom, u
+can zoom into the galaxies or stars or planets to enter it."*
+
+**What was there.** The four layers already existed (orb → a galaxy on the orb's
+rings → a star's system → a world), but each was crossed by a **tap** — plus a
+double-tap "dive". The genuinely-continuous `UniverseMath` shell machinery was,
+and still is, **dead code** (the docs already said so); what the user actually
+navigated was four discrete tap-stages. So "endless zoom" here meant *make the
+one verb that crosses into a layer be zoom*, not *add infinite fractal
+sub-levels* — the user named galaxies/stars/planets, which is the real content.
+
+**The one decision that shaped the code.** With tapping gone, something has to
+choose *which* of five galaxies or nine stars a zoom enters. Asked, the user
+chose **"pinch directly on it"** over "centre it then zoom" and "auto-nearest".
+That answer is what forced focal-point zoom: the point between the fingers must
+stay pinned while everything around it grows, or the aim is a lie.
+
+**Why the math went into `UniverseMath` and not the renderer.** Same reason as
+every prior round: `OrbUniverse` is Compose and the device is the first thing
+that ever compiles it, so a sign error there costs an on-device hour. The fixed
+point is one line — `pan' = pan·k + (focus−center)·(1−k)` — and it is exact:
+worked out on paper the `pan·k` terms cancel and the focus lands back on itself
+for **any** scale ratio, which is what lets the clamped last frame (the pinch
+capped at `ENTER_VIEW` as you commit) not slide. Pinned by a round-trip test
+through the existing `onScreen`/`fromScreen` pair, plus the enter-threshold and
+its **direction guard** (a pinch-OUT that happens to start at the ceiling must
+leave, not enter). `gradle -p scripts/jvmcheck test` — green.
+
+**The renderer change, and its one honest limit.** `OrbUniverse` lost both tap
+handlers; the pinch's focal point now feeds the *same* `galaxyAt`/`starAt`/world
+hit-tests the taps used. Flat stages pan to hold the focus; the 3D orb zooms
+centred but still selects by finger position. **Nothing under the fingers ⇒ the
+zoom holds** — a nice property that falls out for free: you can only fall into
+something that is actually there. What CI and the device still own: whether the
+gesture compiles at all, and the *feel* — how far one pinch travels, and the
+small pop at each entry where the stage swaps (the star entry keeps its 900ms
+flight; orb→galaxy and system→world are instant for now, a candidate polish).
+
 ## 2026-08-26 (afternoon) — "can we build our own AI" — planned, parked, nothing built
 
 **Asked.** *"can we build our own ai, called Jarvis ai, which will have all the

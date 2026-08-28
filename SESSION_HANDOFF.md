@@ -1,5 +1,41 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-08-28 (latest)
+
+Branch `claude/session-notes-explanations-i59yr7` @ `48d2c7a`, **CI-pending** —
+`main` is still at `2b41193` and must NOT be fast-forwarded until the
+`jarvis-debug-apk` artifact appears for `48d2c7a` (Rule 2). The universe is now
+navigated by **zoom alone**: every tap is gone, and you pinch IN on a galaxy /
+star / world to fall into it and pinch OUT to leave. Working tree clean.
+
+### Start here next session
+
+1. **Confirm the artifact for `48d2c7a`**, then fast-forward `main` and push.
+2. **Device look at the feel** — this is Compose, so CI only proves it compiles.
+   Watch two things: how far one pinch travels before it enters (tune
+   `UniverseMath.ENTER_VIEW`, currently 5.5), and the seam at entry — the star
+   entry keeps its 900ms flight but orb→galaxy and system→world swap instantly,
+   which may want a short bloom to match.
+3. Then the earlier queue still stands (JARVIS_AI Phase 0 = keep the DebugLog
+   data; PDF quality; speech accuracy; the Worker deploy, which is the user's).
+
+### The gotcha this round: aim only works if the focus is a fixed point
+
+"Pinch directly on it" is the whole feature, and it is one equation:
+`pan' = pan·k + (focus−center)·(1−k)` where `k` is the **realised** scale
+(`newView/oldView` *after* the ceiling clamps it — use the raw gesture zoom and
+the target slides on the exact frame you commit to entering). The `pan·k` terms
+cancel algebraically, so the focus lands back on itself for any `k`; that is why
+it survives the clamped frame. It went in `UniverseMath` (pure, tested through
+the existing `onScreen`/`fromScreen` round trip) rather than the renderer,
+because the renderer is Compose and the device is its first compiler.
+
+> The endless-zoom `UniverseMath` **shell** machinery (`shellAt`, `SHELLS`,
+> `UniverseHud`) is still dead code and was NOT what this change touched. What
+> the user navigates is the four discrete stages in `OrbUniverse`; "endless
+> zoom" meant *make zoom the only way across them*, not *add infinite
+> sub-levels*. The shell cleanup remains a separate job.
+
 ## Current position — 2026-08-26 (latest, handed off)
 
 Branch `claude/phone-glitch-investigation-g6dnhk`, **green with the
