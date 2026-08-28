@@ -2,22 +2,50 @@
 
 ## Current position — 2026-08-28 (latest)
 
-Branch `claude/session-notes-explanations-i59yr7` @ `48d2c7a`, **CI-pending** —
+Branch `claude/session-notes-explanations-i59yr7` @ `040d1a9`, **CI-pending** —
 `main` is still at `2b41193` and must NOT be fast-forwarded until the
-`jarvis-debug-apk` artifact appears for `48d2c7a` (Rule 2). The universe is now
-navigated by **zoom alone**: every tap is gone, and you pinch IN on a galaxy /
-star / world to fall into it and pinch OUT to leave. Working tree clean.
+`jarvis-debug-apk` artifact appears (Rule 2). Since the last handoff, three things
+landed on the branch: the universe is navigated by **zoom** (with **tap** also
+restored), the orb stage is **smaller** (pickable), and JARVIS now understands and
+replies in **up to two languages** of five. Working tree clean.
+
+### The one thing explicitly asked for and NOT done: the design overhaul
+
+*"I WANT THE DESIGN WAY WAY BETTER, FUTURISTIC AND STICKING MORE TO THE THEME OF
+THE USER."* Not started, on purpose. It is a large, subjective, Compose-only
+rewrite of the most heavily-documented rendering in the app, and the repo's own
+rule is that improvements to a liked design must be **additive**, not a re-derive
+(the Orbit/Forge revert scars). **Next move: put a visual mock in front of the
+user first** — the design/artifact tooling can show a futuristic on-theme
+galaxy-select concept cheaply, get their reaction, then port to Kotlin. Note the
+tension to resolve WITH them: "stick more to the theme" partly conflicts with the
+hard-won *"past the orb, the theme stops"* decision (dimensions got their own
+colours precisely because theme-coloured ones "all looked the same"). Ask what
+"theme" means here — the chrome/typography/transitions, or the content colours.
 
 ### Start here next session
 
-1. **Confirm the artifact for `48d2c7a`**, then fast-forward `main` and push.
-2. **Device look at the feel** — this is Compose, so CI only proves it compiles.
-   Watch two things: how far one pinch travels before it enters (tune
-   `UniverseMath.ENTER_VIEW`, currently 5.5), and the seam at entry — the star
-   entry keeps its 900ms flight but orb→galaxy and system→world swap instantly,
-   which may want a short bloom to match.
-3. Then the earlier queue still stands (JARVIS_AI Phase 0 = keep the DebugLog
+1. **Confirm the artifact** for the branch head, then fast-forward `main` and push.
+2. **Device look at the feel** (all Compose, CI only proves it compiles):
+   - Universe: pinch travel before entry (`UniverseMath.ENTER_VIEW`, 5.5) and the
+     entry seam (orb→galaxy and system→world swap instantly; may want a bloom).
+   - Orb size (`ORB_STAGE_ZOOM`, 1.15) — is picking a galaxy comfortable now?
+   - **Languages**: STT in Hindi/Arabic/French/German; and that a Hindi/Arabic
+     reply is SPOKEN in the right voice (needs the language's TTS data installed —
+     Speaker falls back to US English if missing). Only real on a phone (Rule 5).
+3. The design overhaul (above) — mock first.
+4. Then the earlier queue still stands (JARVIS_AI Phase 0 = keep the DebugLog
    data; PDF quality; speech accuracy; the Worker deploy, which is the user's).
+
+### Gotcha this round: the off-device gate has an older android.jar than the build
+
+`scripts/jvmcheck` compiles every non-`ui` source, which is how it caught the new
+`RecognizerIntent` language-detection extras (`EXTRA_ENABLE_LANGUAGE_DETECTION`
+and siblings) — **API-33 constants that jvmcheck's `android.jar` does not carry**,
+even though the real compileSdk-36 build does. Fixed by spelling the stable
+platform string keys as local `const val`s in `VoiceController` (guarded to API
+33+ anyway). If you add another recent-API framework constant to a non-`ui` file,
+expect the same, and do the same.
 
 ### The gotcha this round: aim only works if the focus is a fixed point
 

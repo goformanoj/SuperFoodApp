@@ -1,5 +1,60 @@
 # JARVIS OS — Build Memory
 
+## 2026-08-28 (later) — two-language support, and orb/tap follow-ups
+
+**Asked, three things in one breath.** *"the main orb is way too big for me to
+pick a galaxy… keep both options in that, tap and zoom… I WANT THE DESIGN WAY WAY
+BETTER, FUTURISTIC AND STICKING MORE TO THE THEME"* — then, interrupting: *"add a
+language feature which allows Jarvis to interpret other languages… hindi, arabic,
+french, german, english… max two language, and the user can select their two
+preferred languages."*
+
+**Done: the orb follow-ups.** Restored single-tap entry alongside the pinch, and
+pulled `ORB_STAGE_ZOOM` from 1.55 to 1.15 (at 1.55 the widest ring reached ~1.33x
+the frame, off both edges — which is precisely "too big to pick a galaxy").
+
+**Done: two languages.** The key realisation, and the thing that kept the feature
+small: **the interpretation is already free.** The hosted model understands and
+writes Hindi, Arabic, French, German and English fluently; nothing needs
+translating. So the feature is three pieces of wiring, and the model is told, in
+one line injected through `buildContext`, to *reply in the language the user just
+used*. That line goes through the context and not the `SYSTEM_PROMPT` constant on
+purpose — the constant has a 6,000-char cap with a test on it, and a per-user
+string does not belong under a shared cap.
+
+**The two decisions worth keeping:**
+
+1. **STT can only half-deliver "understand either", and honestly so.** Android's
+   recogniser takes one language; only API 33+ can *detect* among an allowed set.
+   So `VoiceController` listens in the primary and, on 33+ with a second chosen,
+   enables detection over the two — and below 33 the secondary rides on the
+   model's own understanding of whatever transcript comes back. Stated plainly
+   rather than pretended around, because speech is device-only and the docs
+   already flag speech accuracy as a live issue.
+2. **The speaking voice is chosen from the reply's SCRIPT, and that is pure.**
+   Speaking a Devanagari or Arabic reply through an English voice is not an accent,
+   it is noise — the worst failure of the whole feature. Those two scripts are
+   unmistakable in Unicode, so `spokenLanguageFor` detects them directly; the
+   three Latin languages cannot be told apart from characters and fall back to the
+   primary, never a wrong non-Latin guess. Pure, so the ranges are pinned by a
+   test rather than found on a phone.
+
+**The off-device gate earned its keep twice.** It compiles every non-`ui` source,
+so it caught (a) that `RecognizerIntent.EXTRA_LANGUAGE_SWITCH_ALLOWED` and its two
+siblings are API-33 constants absent from jvmcheck's older `android.jar` — fixed
+by spelling the stable platform string keys locally, which also keeps the real
+build (compileSdk 36) working and the block guarded to 33+; and (b) that the whole
+`AssistantEngine`/`Speaker`/`VoiceController`/`UserPreferences` wiring compiles and
+all tests pass. Only the four Compose files (`SettingsScreen`, new
+`LanguagesScreen`, `HomeScreen`, `MainActivity`) are CI-first, as always.
+
+**Still open, and NOT started: the design overhaul.** *"WAY WAY BETTER,
+FUTURISTIC, STICKING MORE TO THE THEME."* Deliberately not begun blind: it is a
+large, subjective, Compose-only rewrite of heavily-documented rendering, and this
+repo has a scar for exactly that ("a revert request means revert, not re-derive";
+improvements to a liked design should be additive). The right next move is a
+visual mock to react to before touching the renderers — noted for the user.
+
 ## 2026-08-28 — the universe is entered by zoom alone, no taps
 
 **Asked.** *"the galaxies we have built have to be continuous, rn i have click
