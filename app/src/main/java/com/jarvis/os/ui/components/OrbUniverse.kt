@@ -13,6 +13,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -304,11 +305,62 @@ fun OrbUniverse(
             // it, so neither does this: the theme's own backdrop colour at full
             // opacity, darkened toward black by a second opaque layer.
             .background(deepSpace(palette.orbStyle))
-            // ZOOM IS THE ONLY WAY IN. Tapping is gone — "i only want everything
-            // accessible only by zoom, endless zoom". A galaxy, a star and a
-            // world are all entered the same way now: put the fingers on the
-            // thing and pinch it larger until you fall into it; pinch back out to
-            // leave. One gesture vocabulary, no click anywhere.
+            // TWO WAYS IN, both wanted: "keep both options in that, tap and zoom".
+            // A tap enters the thing under the finger straight away; a pinch grows
+            // it until you fall into whichever one is under your fingers. Pinch
+            // out to leave. The tap detector goes FIRST so the transform detector
+            // below is the inner one and sees a second finger before the tap does.
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { at ->
+                        when {
+                            // On a world nothing is below; the surface is read, not
+                            // hunted.
+                            world != null -> Unit
+                            // In a system: the nearest world to the tap.
+                            chosen != null -> {
+                                var best: WorldOrbit? = null
+                                var bestD = span * 0.12f
+                                placedWorlds.at.forEach { (wld, p) ->
+                                    val d = (p - at).getDistance()
+                                    if (d < bestD) {
+                                        bestD = d
+                                        best = wld
+                                    }
+                                }
+                                best?.let { world = it; pan = Offset.Zero; view = 1f }
+                            }
+                            // In a galaxy: the nearest star. The INVERSE of what
+                            // the star map draws, so zoom and pan are undone first.
+                            galaxy != null -> {
+                                val (nx, ny) = UniverseMath.fromScreen(
+                                    at.x, at.y,
+                                    size.width.toFloat(), size.height.toFloat(),
+                                    pan.x, pan.y, view,
+                                )
+                                UniverseMath.starAt(liveStars, nx, ny)?.let {
+                                    chosen = it; pan = Offset.Zero; view = 1f
+                                }
+                            }
+                            // On the orb: the nearest galaxy riding the rings.
+                            else -> {
+                                val hit = galaxyAt(
+                                    galaxies = liveGalaxies,
+                                    spec = liveSpec,
+                                    clock = clock,
+                                    yaw = yaw,
+                                    pitch = pitch,
+                                    at = at,
+                                    centre = Offset(size.width / 2f, size.height / 2f),
+                                    radius = span / 2f *
+                                        fitFor(liveStyle) * ORB_STAGE_ZOOM * view,
+                                )
+                                hit?.let { galaxy = it; pan = Offset.Zero; view = 1f }
+                            }
+                        }
+                    },
+                )
+            }
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, panChange, gestureZoom, _ ->
                     val w = size.width.toFloat()
@@ -562,9 +614,9 @@ fun OrbUniverse(
                     subtitle = inGalaxy?.let { "${it.kind.label}  ·  ${it.stars} STARS" }
                         ?: "${galaxies.size} GALAXIES ON ${galaxies.size} RINGS",
                     hint = if (inGalaxy == null) {
-                        "PINCH IN ON A GALAXY TO DIVE IN  ·  DRAG TO TURN THE ORB"
+                        "TAP OR PINCH A GALAXY TO DIVE IN  ·  DRAG TO TURN THE ORB"
                     } else {
-                        "PINCH IN ON A STAR TO ENTER IT  ·  PINCH OUT TO GO BACK"
+                        "TAP OR PINCH A STAR TO ENTER IT  ·  PINCH OUT TO GO BACK"
                     },
                     tint = inGalaxy?.palette?.spark?.toColor() ?: palette.highlight,
                     accent = inGalaxy?.palette?.arm?.toColor() ?: palette.accent,
@@ -584,7 +636,7 @@ fun OrbUniverse(
                     hint = if (standing != null) {
                         standing.planet.kind.summary.uppercase()
                     } else {
-                        "PINCH IN ON A WORLD TO LAND  ·  PINCH OUT TO GO BACK"
+                        "TAP OR PINCH A WORLD TO LAND  ·  PINCH OUT TO GO BACK"
                     },
                     tint = ink?.spark?.toColor() ?: palette.highlight,
                     accent = ink?.arm?.toColor() ?: palette.accent,
@@ -836,7 +888,13 @@ private class WorldPlacements {
 private val PointerInputScope.span: Float
     get() = minOf(size.width, size.height).toFloat()
 
-private const val ORB_STAGE_ZOOM = 1.55f
+// How large the orb is drawn on its own stage, before any pinch. At 1.55 the
+// widest ring reached ~1.33x the frame — off both edges — so the galaxies riding
+// it sat at the screen's corners and were awkward to aim at ("the main orb is way
+// too big for me to pick a galaxy"). Pulled in so the whole assembly, rings and
+// all, sits inside the frame with margin to spare; still clearly enlarged versus
+// the home orb. A feel constant — tune on device.
+private const val ORB_STAGE_ZOOM = 1.15f
 
 // The zoom range of a stage — floor (pinch out to leave) and ceiling (pinch in
 // to enter) — now lives in UniverseMath, where it is pure and tested off device.
