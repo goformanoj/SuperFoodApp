@@ -45,6 +45,8 @@ import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.SpokenText
 import com.jarvis.os.voice.Transcript
+import com.jarvis.os.voice.LanguagePrefs
+import com.jarvis.os.voice.languagePromptLine
 import com.jarvis.os.voice.VoiceController
 import com.jarvis.os.voice.WakeWord
 import com.jarvis.os.voice.VoiceUiState
@@ -301,6 +303,9 @@ class AssistantEngine(context: Context) {
                 onSpokenDone()
             }
         }
+        // Push the user's saved languages into the recogniser and the speaker, and
+        // re-push whenever the setting changes (see [setLanguages]).
+        applyLanguages()
         // The executor asks the model which on-screen option a <<PICK>> means. It
         // lives here because the engine owns the AI clients; the service only
         // knows what is on screen.
@@ -761,6 +766,23 @@ class AssistantEngine(context: Context) {
     fun saveCustomInstructions(text: String) {
         userPrefs.customInstructions = text
         DebugLog.log(DebugLog.Stage.THINK, "custom instructions updated (${text.trim().length} chars)")
+    }
+
+    /** The user's up-to-two languages, for the settings screen. */
+    fun languagePrefs(): LanguagePrefs = userPrefs.languagePrefs
+
+    /** Persist a language choice and apply it to listening and speaking at once. */
+    fun setLanguages(prefs: LanguagePrefs) {
+        userPrefs.languagePrefs = prefs
+        applyLanguages()
+        DebugLog.log(DebugLog.Stage.THINK, "languages set to ${prefs.serialize()}")
+    }
+
+    /** Reads the saved languages and hands them to the recogniser and the speaker. */
+    private fun applyLanguages() {
+        val prefs = userPrefs.languagePrefs
+        voice.languagePrefs = prefs
+        speaker.languagePrefs = prefs
     }
 
     /**
@@ -1475,6 +1497,14 @@ class AssistantEngine(context: Context) {
         // length is capped where they are entered.
         val standing = formatMemory(userPrefs.customInstructions, userPrefs.learnedFacts())
 
+        // Which language(s) to understand and answer in. Injected through the
+        // CONTEXT rather than the system prompt so it does not eat into the
+        // prompt's character budget, and only when the user has moved off the
+        // English-only default — the model needs no instruction to speak English.
+        val language = userPrefs.languagePrefs
+            .takeIf { it != LanguagePrefs.DEFAULT }
+            ?.let { languagePromptLine(it) }
+
         // Speech-to-text is imperfect. When the recogniser was unsure of a word,
         // its near misses are offered here so the model can prefer the reading
         // that fits — rather than acting on a word that was plainly mis-heard.
@@ -1490,6 +1520,7 @@ class AssistantEngine(context: Context) {
                 "identify the exact event from this list.",
             screenContext,
             misheard,
+            language,
             standing,
         ).filter { it.isNotBlank() }.joinToString("\n\n")
     }

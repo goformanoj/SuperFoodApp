@@ -5,6 +5,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.Icons
@@ -50,6 +51,7 @@ import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.SurfaceGlass
 import com.jarvis.os.ui.theme.TextPrimary
 import com.jarvis.os.ui.theme.TextSecondary
+import com.jarvis.os.voice.LanguagePrefs
 import com.jarvis.os.voice.Speaker
 
 /**
@@ -70,6 +72,7 @@ import com.jarvis.os.voice.Speaker
  */
 private enum class Detail(val title: String) {
     Voice("Voice"),
+    Languages("Languages"),
     Appearance("Appearance"),
 }
 
@@ -93,6 +96,8 @@ fun SettingsScreen(
     floatingOrbEnabled: Boolean = true,
     onSetFloatingOrb: (Boolean) -> Unit = {},
     onOpenAssistantSettings: () -> Unit = {},
+    languagePrefs: LanguagePrefs = LanguagePrefs.DEFAULT,
+    onSetLanguages: (LanguagePrefs) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var open by remember { mutableStateOf<Detail?>(null) }
@@ -118,6 +123,11 @@ fun SettingsScreen(
                     onSelect = onChooseVoice,
                     onPreview = onPreviewVoice,
                     onDownloadOffered = onVoiceDownloadOffered,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Detail.Languages -> LanguagesScreen(
+                    current = languagePrefs,
+                    onSelect = onSetLanguages,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Detail.Appearance -> ThemesScreen(
@@ -160,6 +170,14 @@ fun SettingsScreen(
         )
 
         SectionLabel("How JARVIS listens")
+        NavRow(
+            icon = Icons.Filled.Language,
+            title = "Languages",
+            // The chosen pair on the row, so the index says what is set. Up to two.
+            value = languagePrefs.understood.joinToString("  ·  ") { it.label },
+            onClick = { open = Detail.Languages },
+        )
+        Spacer(Modifier.height(10.dp))
         SettingSwitchRow(
             title = "Wake word",
             description = "Summon him by saying \"Hey Jarvis\" from any app. On-device, nothing recorded.",

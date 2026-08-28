@@ -1,6 +1,7 @@
 package com.jarvis.os.data
 
 import android.content.Context
+import com.jarvis.os.voice.LanguagePrefs
 import org.json.JSONArray
 
 /**
@@ -22,6 +23,16 @@ class UserPreferences(context: Context) {
     var themeId: String
         get() = prefs.getString(KEY_THEME, "").orEmpty()
         set(value) = prefs.edit().putString(KEY_THEME, value).apply()
+
+    /**
+     * The up-to-two languages JARVIS understands and replies in. Stored as the
+     * ordered tag list ("en-US,hi-IN"); an empty or unrecognised store parses back
+     * to English-only, so the app is monolingual until the user chooses otherwise.
+     * Drives the recogniser locale, the model instruction, and the speaking voice.
+     */
+    var languagePrefs: LanguagePrefs
+        get() = LanguagePrefs.parse(prefs.getString(KEY_LANGUAGES, null))
+        set(value) = prefs.edit().putString(KEY_LANGUAGES, value.serialize()).apply()
 
     /**
      * The chosen background, independent of the theme.
@@ -132,6 +143,7 @@ class UserPreferences(context: Context) {
 
         private const val KEY_INSTRUCTIONS = "custom_instructions"
         private const val KEY_THEME = "theme"
+        private const val KEY_LANGUAGES = "languages"
         private const val KEY_BACKDROP = "backdrop_id"
         private const val KEY_FACTS = "learned_facts"
         private const val KEY_BG_WAKE = "background_wake"

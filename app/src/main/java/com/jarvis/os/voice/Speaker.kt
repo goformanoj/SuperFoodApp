@@ -51,11 +51,23 @@ class Speaker(context: Context) {
 
     private val settings = VoiceSettings(context)
 
+    /**
+     * The user's languages, set by the owner (see [AssistantEngine]). Each reply
+     * is spoken in the language of its own script — a Hindi or Arabic answer must
+     * not come out of an English voice — falling back to the primary for the
+     * Latin-script languages, which cannot be told apart from text. Default
+     * English until the user chooses.
+     */
+    var languagePrefs: LanguagePrefs = LanguagePrefs.DEFAULT
+
     private val main = Handler(Looper.getMainLooper())
     private var tts: TextToSpeech? = null
     private var ready = false
     private var failed = false
     private var pending: Pair<Long, String>? = null
+
+    /** Which language the engine is currently configured for, to avoid re-setting it. */
+    private var spokenLang: Language? = null
 
     /**
      * Allocated in [speak] rather than [doSpeak] so that a reply buffered before
@@ -70,11 +82,7 @@ class Speaker(context: Context) {
         tts = TextToSpeech(context.applicationContext) { status ->
             val engine = tts
             if (status == TextToSpeech.SUCCESS && engine != null) {
-                val res = engine.setLanguage(Locale.UK)
-                if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    engine.setLanguage(Locale.US)
-                }
-                selectBestVoice(engine)
+                configureVoiceFor(engine, languagePrefs.primary)
                 engine.setPitch(VoicePreference.PITCH)
                 engine.setSpeechRate(VoicePreference.SPEECH_RATE)
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -129,6 +137,29 @@ class Speaker(context: Context) {
                 }
             }
         }
+    }
+
+    /**
+     * Point the engine at [lang], but only when it is not already there — so a
+     * run of replies in one language does not re-select the voice each time.
+     *
+     * The voice ranker and the user's saved voice are English choices (the ranking
+     * in [VoicePreference] is tuned for English), so they are applied only when
+     * English is being spoken; the other four languages take the engine's own
+     * default voice for their locale, which is the right one for them and the only
+     * one this off-device code can safely assume exists. A language with no data
+     * installed falls back to US English rather than going silent — the wrong
+     * accent is still better than nothing while the user installs the voice.
+     */
+    private fun configureVoiceFor(engine: TextToSpeech, lang: Language) {
+        if (spokenLang == lang) return
+        spokenLang = lang
+        val res = engine.setLanguage(Locale.forLanguageTag(lang.tag))
+        if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+            engine.setLanguage(Locale.US)
+            if (lang != Language.English) return
+        }
+        if (lang == Language.English) selectBestVoice(engine)
     }
 
     /**
@@ -273,6 +304,9 @@ class Speaker(context: Context) {
             endNow(seq)
             return
         }
+        // Speak this reply in the language of its own script, so a Hindi or Arabic
+        // answer is not read out by an English voice.
+        configureVoiceFor(engine, spokenLanguageFor(text, languagePrefs))
         engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceIdFor(seq))
     }
 

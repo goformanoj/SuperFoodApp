@@ -90,6 +90,8 @@ class MainActivity : ComponentActivity() {
                         learnedFacts = { engine.learnedFacts() },
                         onSaveInstructions = { engine.saveCustomInstructions(it) },
                         onForgetFact = { engine.forgetFact(it) },
+                        languagePrefs = { engine.languagePrefs() },
+                        onSetLanguages = { engine.setLanguages(it) },
                         backgroundWakeEnabled = { engine.backgroundWakeEnabled() },
                         onSetBackgroundWake = { engine.setBackgroundWake(it) },
                         floatingOrbEnabled = { engine.floatingOrbEnabled() },

@@ -110,6 +110,7 @@ import com.jarvis.os.ui.theme.Surface
 import com.jarvis.os.ui.theme.SurfaceGlass
 import com.jarvis.os.ui.theme.TextPrimary
 import com.jarvis.os.ui.theme.TextSecondary
+import com.jarvis.os.voice.LanguagePrefs
 import com.jarvis.os.voice.OrbState
 import com.jarvis.os.voice.Speaker
 import com.jarvis.os.voice.VoiceUiState
@@ -226,6 +227,8 @@ fun JarvisApp(
     learnedFacts: () -> List<String> = { emptyList() },
     onSaveInstructions: (String) -> Unit = {},
     onForgetFact: (String) -> Unit = {},
+    languagePrefs: () -> LanguagePrefs = { LanguagePrefs.DEFAULT },
+    onSetLanguages: (LanguagePrefs) -> Unit = {},
     backgroundWakeEnabled: () -> Boolean = { true },
     onSetBackgroundWake: (Boolean) -> Unit = {},
     floatingOrbEnabled: () -> Boolean = { true },
@@ -413,6 +416,8 @@ fun JarvisApp(
                         floatingOrbEnabled = floatingOrbEnabled(),
                         onSetFloatingOrb = onSetFloatingOrb,
                         onOpenAssistantSettings = onOpenAssistantSettings,
+                        languagePrefs = languagePrefs(),
+                        onSetLanguages = onSetLanguages,
                     )
                     Dest.Instructions -> InstructionsScreen(
                         initial = customInstructions(),
