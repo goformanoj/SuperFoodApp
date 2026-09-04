@@ -9,19 +9,46 @@ landed on the branch: the universe is navigated by **zoom** (with **tap** also
 restored), the orb stage is **smaller** (pickable), and JARVIS now understands and
 replies in **up to two languages** of five. Working tree clean.
 
-### The one thing explicitly asked for and NOT done: the design overhaul
+### The design overhaul: DIRECTION SET, a concept is published, awaiting reaction
 
-*"I WANT THE DESIGN WAY WAY BETTER, FUTURISTIC AND STICKING MORE TO THE THEME OF
-THE USER."* Not started, on purpose. It is a large, subjective, Compose-only
-rewrite of the most heavily-documented rendering in the app, and the repo's own
-rule is that improvements to a liked design must be **additive**, not a re-derive
-(the Orbit/Forge revert scars). **Next move: put a visual mock in front of the
-user first** — the design/artifact tooling can show a futuristic on-theme
-galaxy-select concept cheaply, get their reaction, then port to Kotlin. Note the
-tension to resolve WITH them: "stick more to the theme" partly conflicts with the
-hard-won *"past the orb, the theme stops"* decision (dimensions got their own
-colours precisely because theme-coloured ones "all looked the same"). Ask what
-"theme" means here — the chrome/typography/transitions, or the content colours.
+*"I WANT THE DESIGN WAY WAY BETTER, FUTURISTIC AND STICKING MORE TO THE THEME."*
+Not yet in the app — deliberately mocked first (it is a large, subjective,
+Compose-only rewrite of the most heavily-documented rendering here, and the repo's
+rule is that improvements to a liked design are **additive**, not a re-derive).
+
+**Decisions the user has now made:**
+- **Remove the *"past the orb, the theme stops"* rule** — their words: *"remove
+  that rule, my mistake, it looks bad."* The deeper visuals (stars/systems/worlds)
+  SHOULD carry the user's theme palette now. This reverses the decision recorded
+  in JARVIS_MEMORY under the Cosmos work — do it knowingly.
+- **Also do the UI/chrome glow-up** (they picked the "UI & chrome" option too).
+- **Weakest areas, their pick:** the **deeper visuals** and the **HUD / text /
+  labels**. Spend the effort there.
+
+**A concept mock is published for them to react to** (HTML, not the app):
+`https://claude.ai/code/artifact/385325a7-3e07-439a-ad9a-34cbdefb242e` — a
+theme-driven "system view": reactor-core star, theme-tinted lit worlds, a sci-fi
+HUD (corner brackets, a GALAXY→CLUSTER→SYSTEM→WORLD depth ladder, a targeting
+reticle + data callout), Michroma + IBM Plex Mono type, and a chip switcher that
+recolours the whole scene (Arc/Forge/Nebula). Source in this session's scratchpad
+`jarvis-universe.html`; to iterate, republish that file path to the same URL.
+
+**Three questions put to the user, still open (start here when they answer):**
+1. Is the instrument-panel HUD / reticle / depth-ladder feel right?
+2. Push further or pull back?
+3. Build which screen first in the real app — this **system view**, or the
+   **galaxy-select / orb entry** (mock that one too, same style, if they want).
+
+**Then port to Kotlin, in this order:**
+- Feed the theme palette into the deeper visuals. The colour generator is
+  `ui/components/Cosmos.kt` (`paletteFor(branch, kind)` / the per-dimension inks) —
+  it is **pure and in the jvmcheck allow-list**, so this part is testable
+  off-device: bias the generated inks toward the theme's accent/secondary/highlight
+  instead of a seed-only hash, and keep a distinctness test so dimensions still
+  differ (the original "all looked the same" risk is real — hold variety in the
+  ranges, not the theme).
+- Rebuild the HUD in `OrbUniverse.kt` (`StageHud`) to the concept: bracketed
+  frame, depth ladder, reticle callout, refined type. Compose, so CI-only.
 
 ### Start here next session
 
