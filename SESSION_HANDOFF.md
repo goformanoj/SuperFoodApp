@@ -9,9 +9,19 @@ which proves both runtime secrets (`GROQ_API_KEY`, `PROXY_SECRET`) are set,
 the D1 binding resolves, and the real `src/index.js` is live (not the
 placeholder). D1 `jarvis` (`1dc3695c…`) has both tables, empty.
 
-**Next: Phase 2 — the eval harness** (`scripts/eval/run.mjs`), now unblocked
-by Phase 1. See [`BACKEND_PLAN.md`](BACKEND_PLAN.md) §Phase 2. The real `/chat`
-smoke test was deferred to Phase 4 (needs a POST with `X-Proxy-Secret`+`X-Uid`).
+**Phase 2 in progress — eval harness scaffolding built.** In `scripts/eval/`:
+`scenarios.mjs` (marker-shape assertions for the checkable rows of
+`docs/SCREEN_CONTROL_EVAL.md`), `assert.mjs` (pure checker, 7 unit tests),
+`run.mjs` (on-demand runner that POSTs each prompt to the live `/chat`). The
+system prompt was moved server-side — `backend/src/systemPrompt.js`, used as the
+Worker default (`body.system ?? SYSTEM_PROMPT`) — so the eval tests the real
+text and a prompt fix is a deploy (first half of Phase 4). 51 backend tests green.
+
+**Still to do for Phase 2:** run it against the live model (needs `WORKER_URL` +
+`PROXY_SECRET` in the run environment; blocked from the Claude session by egress),
+then wire it as a **non-gating, on-demand** CI job. See
+[`BACKEND_PLAN.md`](BACKEND_PLAN.md) §Phase 2. The real `/chat` smoke test remains
+deferred to Phase 4.
 
 **Hard-won gotchas from bringing the Worker up (all config, not code):**
 - The committed `database_id` was for a D1 that did not exist in this account →

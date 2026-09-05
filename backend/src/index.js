@@ -16,6 +16,7 @@ import { capFor, dayKey, isOverCap, overCapBody, remaining } from './quota.js'
 import { modelsFor } from './models.js'
 import { d1Store } from './db.js'
 import { MIGRATIONS } from './schema.js'
+import { SYSTEM_PROMPT } from './systemPrompt.js'
 import { groqProvider } from './providers/groq.js'
 
 /**
@@ -102,7 +103,7 @@ export function createWorker({ store, provider, proxySecret = null, now = () => 
       const models = modelsFor(plan)
       let result
       try {
-        result = await provider.complete({ models, messages, system: body.system })
+        result = await provider.complete({ models, messages, system: body.system ?? SYSTEM_PROMPT })
       } catch (e) {
         // Nothing is charged. The user got no answer; billing them for the
         // provider's bad day would be the wrong way round.
