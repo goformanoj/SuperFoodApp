@@ -11,8 +11,13 @@ Worker — baseline **4/13**, but mostly noise (4 rows rate-limited by Groq's fr
 tier; 3 over-strict scenarios where the model correctly asked). D1 confirmed the
 full path (uid `eval-harness`, 9 requests metered). The harness was then fixed:
 `run.mjs` spaces calls 2s apart + retries on `rate_limited`; E6/C5/B5 scenarios
-corrected. **Next: re-run for a clean score, then investigate the real misses
-(A1 "play Blinding Lights" → no action; B1 "order …on blinkit" → no OPEN).**
+corrected. Re-run #3 (rate-limit-free) scored **5/13** — a true signal now, and
+it points at plan quality: `gpt-oss-20b` emits the `<<…>>` markers inconsistently
+(half the action prompts returned zero markers; C2 even flipped pass→fail between
+runs, temp 0.7). `run.mjs` now prints the model's actual reply on every failing
+row so the outputs can be diagnosed. **Next: re-run to capture the raw replies,
+then tune `backend/src/systemPrompt.js` (edit → deploy → re-run) to push the
+model toward markers. Targets: A1, B1, C2, E6, E7.**
 
 New gotchas this round:
 - `${{ vars.X }}` reads repo **Variables**, `${{ secrets.X }}` reads **Secrets** —

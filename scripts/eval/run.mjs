@@ -100,6 +100,10 @@ for (const [i, s] of SCENARIOS.entries()) {
     failedRows.push({ id: s.id, failures: r.failures })
     console.log(`✘ ${s.id}  ${s.prompt}`)
     for (const f of r.failures) console.log(`    - ${f}`)
+    // Show what the model ACTUALLY said, so a "missing marker" can be diagnosed
+    // (did it chat, ask, or emit a marker in the wrong shape?) — this is the raw
+    // material for tuning the server-side system prompt.
+    console.log(`    reply: ${JSON.stringify((reply ?? '').replace(/\s+/g, ' ').trim()).slice(0, 400)}`)
   }
 }
 
