@@ -1,5 +1,32 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-05 (later) — Phase 2 eval wiring, and the vars-vs-secrets gotcha
+
+**What was built.** The Phase 2 eval harness (`scripts/eval/`) was wired to an
+on-demand CI workflow (`.github/workflows/eval.yml`, `workflow_dispatch`,
+non-gating), and the system prompt was moved to the Worker as its server-side
+default so the eval tests the real text.
+
+**Why the first run failed, and what the evidence showed.** The first CI run
+failed in 4s with exit code 2 — `run.mjs` exits there only when its config is
+missing. The run log was unambiguous: `WORKER_URL:` empty, `PROXY_SECRET: ***`
+set. So the URL had been added somewhere `${{ vars.WORKER_URL }}` does not read
+(a Secret, an Environment, or a mismatched name) rather than as a repository
+Variable. Because the Worker URL is not secret, the fix was to hardcode it as a
+fallback in the workflow (`vars.WORKER_URL || '<public url>'`), reducing the
+required config to just `PROXY_SECRET`. Reading a missing var yields an empty
+string, not an error, which is why it surfaced only as a downstream exit 2.
+
+**Two access limits worth remembering.** This session's GitHub integration is
+read-only on Actions: it can list runs and read job logs but cannot dispatch a
+workflow (`403 Resource not accessible by integration`), so the user triggers
+runs. And GitHub's mobile web UI hides the `workflow_dispatch` "Run workflow"
+button — it needs a desktop browser or "Desktop site" mode.
+
+**Open.** Trigger a fresh run (a new dispatch on the fixed commit, not a re-run
+of the old one) for the first baseline score, confirm the `usage_daily` row in
+D1, then grow the scenarios toward the plan's 100 rows.
+
 ## 2026-09-05 — Backend Phase 1: the Worker is deployed and live
 
 **What was built.** The Cloudflare Worker (`backend/`) is now deployed from

@@ -1,9 +1,24 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-05 (latest) — backend Phase 1 live
+## Current position — 2026-09-05 (latest) — backend Phase 1 live, Phase 2 wiring
 
-The Cloudflare Worker is **deployed and serving**. `main` @ `993e7fd`,
+The Cloudflare Worker is **deployed and serving**, with the system prompt now
+its server-side default. `main` @ `aedd537`,
 session branch `claude/cloudflare-backend-databases-fatxx4`.
+Phase 2 eval harness is built (`scripts/eval/`) and wired to on-demand CI
+(`.github/workflows/eval.yml`). First CI run failed because the `WORKER_URL`
+repo **variable** was empty — now hardcoded as a fallback, so the eval needs
+only `PROXY_SECRET` (set). **Next: trigger a fresh run for the baseline score.**
+
+New gotchas this round:
+- `${{ vars.X }}` reads repo **Variables**, `${{ secrets.X }}` reads **Secrets** —
+  a value in the wrong tab (or an Environment) comes through empty, not an error.
+- This session's GitHub integration is **read-only on Actions** — it can list
+  runs and read logs but cannot **dispatch** a workflow (403). The user triggers.
+- GitHub **mobile web hides the `workflow_dispatch` "Run workflow" button**;
+  use a desktop browser or "Desktop site".
+
+
 `GET https://superfoodapp.goformanoj.workers.dev/health` → `{"ok":true}`,
 which proves both runtime secrets (`GROQ_API_KEY`, `PROXY_SECRET`) are set,
 the D1 binding resolves, and the real `src/index.js` is live (not the
