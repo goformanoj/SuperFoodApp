@@ -17,9 +17,15 @@ system prompt was moved server-side — `backend/src/systemPrompt.js`, used as t
 Worker default (`body.system ?? SYSTEM_PROMPT`) — so the eval tests the real
 text and a prompt fix is a deploy (first half of Phase 4). 51 backend tests green.
 
-**Still to do for Phase 2:** run it against the live model (needs `WORKER_URL` +
-`PROXY_SECRET` in the run environment; blocked from the Claude session by egress),
-then wire it as a **non-gating, on-demand** CI job. See
+**On-demand CI is wired:** `.github/workflows/eval.yml` (`workflow_dispatch`,
+non-gating) runs `node scripts/eval/run.mjs`. To make it runnable, add
+`PROXY_SECRET` as a repo **secret** and `WORKER_URL` as a repo **variable**, then
+trigger it from the Actions tab (it spends real tokens; the Worker supplies the
+system prompt itself).
+
+**Still to do for Phase 2:** actually run it (blocked from the Claude session by
+egress — must run in CI or on a machine that can reach `workers.dev`), read the
+score, then grow the scenarios toward the plan's 100 rows. See
 [`BACKEND_PLAN.md`](BACKEND_PLAN.md) §Phase 2. The real `/chat` smoke test remains
 deferred to Phase 4.
 

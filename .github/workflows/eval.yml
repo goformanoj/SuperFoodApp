@@ -1,0 +1,32 @@
+name: Backend eval (on-demand)
+
+# Fires the marker-shape eval (scripts/eval/) at the LIVE Worker and prints a
+# score. Manual ONLY (workflow_dispatch): it spends real Groq tokens and the
+# model is non-deterministic, so it must never run per-push. Non-gating — it
+# reports the score and does not fail the run (GATE is left unset), matching
+# BACKEND_PLAN.md Phase 2 ("a non-gating CI job at first").
+#
+# To run it: add PROXY_SECRET as a repository secret and WORKER_URL as a
+# repository variable, then trigger this workflow from the Actions tab. The
+# Worker supplies the system prompt itself (its server-side default), so no
+# system prompt is sent from here.
+on:
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run the eval against the live Worker
+        env:
+          WORKER_URL: ${{ vars.WORKER_URL }}
+          PROXY_SECRET: ${{ secrets.PROXY_SECRET }}
+        run: node scripts/eval/run.mjs
