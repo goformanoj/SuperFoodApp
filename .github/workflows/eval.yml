@@ -27,6 +27,9 @@ jobs:
 
       - name: Run the eval against the live Worker
         env:
-          WORKER_URL: ${{ vars.WORKER_URL }}
+          # The Worker URL is public, so a hardcoded default keeps the eval
+          # runnable with only PROXY_SECRET configured; a WORKER_URL repo
+          # variable still overrides it if one is ever set.
+          WORKER_URL: ${{ vars.WORKER_URL || 'https://superfoodapp.goformanoj.workers.dev' }}
           PROXY_SECRET: ${{ secrets.PROXY_SECRET }}
         run: node scripts/eval/run.mjs
