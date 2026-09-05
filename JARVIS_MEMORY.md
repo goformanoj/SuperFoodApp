@@ -1,5 +1,29 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-05 (later still) — first eval baseline: 4/13, and why the number lied
+
+**What the evidence showed.** The eval ran all 13 prompts against the live
+Worker and scored 4/13 — but reading the per-row log, most failures were not the
+model. Four rows failed with HTTP 502 `rate_limited` because the harness fired 13
+calls in 9 seconds and hit Groq's free tier (infra, not plan quality). Three more
+were over-strict scenarios where the model behaved *correctly*: E6 "7:30" has no
+am/pm so it asked (its own prompt says to); C5 supplied no message to type so it
+asked; B5 "passed" with zero markers (a false pass). Only two look like real
+misses worth chasing: A1 ("play Blinding Lights" → no action markers) and B1
+("order milk and bread on blinkit" → no OPEN, though B10 opened Blinkit fine).
+
+**End-to-end proof.** D1 recorded uid `eval-harness`: 9 requests, 13,957 input /
+2,141 output tokens. The 4 rate-limited calls charged nothing — the "provider
+failure charges the user nothing" rule, confirmed live. This is the real Phase 1
+end-to-end proof, ahead of Phase 4.
+
+**Why this is the point of an eval.** The first run's job was to expose both real
+prompt behavior AND flaws in the measuring instrument, and it did. Fixes:
+`run.mjs` now spaces calls 2s apart and backs off / retries when the Worker
+reports `rate_limited`; E6 got an unambiguous time, C5 a message, and B5 now
+requires ≥1 action marker so a do-nothing reply cannot pass. Next run should give
+a truer score and isolate A1/B1 as genuine model-quality work.
+
 ## 2026-09-05 (later) — Phase 2 eval wiring, and the vars-vs-secrets gotcha
 
 **What was built.** The Phase 2 eval harness (`scripts/eval/`) was wired to an

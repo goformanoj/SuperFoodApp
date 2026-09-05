@@ -44,7 +44,15 @@ if (!system) {
   console.warn('⚠  No SYSTEM_PROMPT_FILE set — relying on the Worker default system prompt.\n')
 }
 
-async function ask(prompt) {
+// Groq's free tier rate-limits, and firing every scenario back-to-back trips it
+// (the first baseline lost 4 rows to HTTP 502 rate_limited). Space the calls out
+// and, when the Worker reports a rate limit, wait the suggested window and retry
+// so a throttle does not read as a plan-quality failure.
+const SPACING_MS = 2000
+const MAX_RETRIES = 3
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+async function ask(prompt, attempt = 0) {
   const res = await fetch(new URL('/chat', WORKER_URL), {
     method: 'POST',
     headers: {
@@ -58,7 +66,14 @@ async function ask(prompt) {
     }),
   })
   const text = await res.text()
-  if (!res.ok) return { error: `HTTP ${res.status}: ${text.slice(0, 160)}` }
+  if (!res.ok) {
+    const m = /rate_limited:(\d+)s/.exec(text)
+    if (m && attempt < MAX_RETRIES) {
+      await sleep((Number(m[1]) + 1) * 1000)
+      return ask(prompt, attempt + 1)
+    }
+    return { error: `HTTP ${res.status}: ${text.slice(0, 160)}` }
+  }
   try {
     return { reply: JSON.parse(text).reply ?? '' }
   } catch {
@@ -69,7 +84,8 @@ async function ask(prompt) {
 let passed = 0
 const failedRows = []
 
-for (const s of SCENARIOS) {
+for (const [i, s] of SCENARIOS.entries()) {
+  if (i > 0) await sleep(SPACING_MS)
   const { reply, error } = await ask(s.prompt)
   if (error) {
     failedRows.push({ id: s.id, failures: [error] })

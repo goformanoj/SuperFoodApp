@@ -6,9 +6,13 @@ The Cloudflare Worker is **deployed and serving**, with the system prompt now
 its server-side default. `main` @ `aedd537`,
 session branch `claude/cloudflare-backend-databases-fatxx4`.
 Phase 2 eval harness is built (`scripts/eval/`) and wired to on-demand CI
-(`.github/workflows/eval.yml`). First CI run failed because the `WORKER_URL`
-repo **variable** was empty — now hardcoded as a fallback, so the eval needs
-only `PROXY_SECRET` (set). **Next: trigger a fresh run for the baseline score.**
+(`.github/workflows/eval.yml`). It has **run end-to-end** against the live
+Worker — baseline **4/13**, but mostly noise (4 rows rate-limited by Groq's free
+tier; 3 over-strict scenarios where the model correctly asked). D1 confirmed the
+full path (uid `eval-harness`, 9 requests metered). The harness was then fixed:
+`run.mjs` spaces calls 2s apart + retries on `rate_limited`; E6/C5/B5 scenarios
+corrected. **Next: re-run for a clean score, then investigate the real misses
+(A1 "play Blinding Lights" → no action; B1 "order …on blinkit" → no OPEN).**
 
 New gotchas this round:
 - `${{ vars.X }}` reads repo **Variables**, `${{ secrets.X }}` reads **Secrets** —
