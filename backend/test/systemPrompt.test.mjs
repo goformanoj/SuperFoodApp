@@ -32,6 +32,22 @@ test('a request may still override the system prompt', async () => {
   assert.equal(provider.calls[0].system, 'custom prompt')
 })
 
+test('a context field is appended to the system prompt, app-style (base\\n\\ncontext)', () => {
+  const { worker, provider } = build()
+  const ctx = 'On screen: the home screen. Known: music app is Spotify.'
+  return worker
+    .fetch(chat({ messages: [{ role: 'user', content: 'play something' }], context: ctx }))
+    .then(() => {
+      assert.equal(provider.calls[0].system, `${SYSTEM_PROMPT}\n\n${ctx}`)
+    })
+})
+
+test('no context field leaves the system prompt untouched', async () => {
+  const { worker, provider } = build()
+  await worker.fetch(chat({ messages: [{ role: 'user', content: 'hi' }] }))
+  assert.equal(provider.calls[0].system, SYSTEM_PROMPT)
+})
+
 test('the default prompt carries the marker protocol the eval depends on', () => {
   // A cheap guard against the prompt being gutted: the eval asserts on these
   // marker kinds, so they must be taught here.

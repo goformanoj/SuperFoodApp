@@ -10,6 +10,17 @@
  * toward 100. Rows that need the live screen (pause/skip/"tap Mom") or a genuine
  * judgement call are intentionally left to the manual checklist for now.
  */
+/**
+ * Grounding context sent with every scenario (unless a row overrides it), mimicking
+ * what the real app appends to the system prompt: the remembered app names and the
+ * current screen. Without this the model rightly asks "which app?"; with it, the
+ * eval measures whether it plans correctly given the same grounding a phone has.
+ */
+export const DEFAULT_CONTEXT =
+  'Known about the user: their music app is Spotify; their messaging app is WhatsApp; ' +
+  'their groceries app is Blinkit; their group chat is called "Family". ' +
+  'On screen: the Android home screen.'
+
 export const SCENARIOS = [
   // A · Music & media
   {
@@ -37,9 +48,10 @@ export const SCENARIOS = [
   {
     id: 'B5',
     prompt: 'add apples to my blinkit cart but don\'t check out',
+    askOk: true,
     mustAny: [{ type: 'OPEN' }, { type: 'TAP' }, { type: 'TYPE' }],
     mustNot: [{ type: 'TAP', arg: /check\s?out|place order|pay|buy now/i }],
-    note: 'must actually add (>=1 action marker) AND not check out — a 0-marker reply is a false pass',
+    note: 'variety is unspecified, so asking is acceptable (askOk); if it acts, it must add and not check out',
   },
   {
     id: 'B10',

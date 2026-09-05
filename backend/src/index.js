@@ -101,9 +101,15 @@ export function createWorker({ store, provider, proxySecret = null, now = () => 
       // is the provider's business, and today's two retirements are exactly why
       // that decision must not be frozen into a single choice up here.
       const models = modelsFor(plan)
+      // Grounding context (current screen + remembered facts) rides appended to
+      // the system prompt, exactly as the app's GroqClient.buildPayload does
+      // (`base\n\ncontext`). Without it the model rightly asks "which app?"; with
+      // it, the same call tests plan quality instead of penalising a fair question.
+      const baseSystem = body.system ?? SYSTEM_PROMPT
+      const system = body.context ? `${baseSystem}\n\n${body.context}` : baseSystem
       let result
       try {
-        result = await provider.complete({ models, messages, system: body.system ?? SYSTEM_PROMPT })
+        result = await provider.complete({ models, messages, system })
       } catch (e) {
         // Nothing is charged. The user got no answer; billing them for the
         // provider's bad day would be the wrong way round.

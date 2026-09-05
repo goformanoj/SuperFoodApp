@@ -55,6 +55,23 @@ test('mustAny: at least one option present', () => {
   assert.equal(checkScenario(s, '<<OPEN|Blinkit>>').pass, false)
 })
 
+test('askOk: a clarifying question passes, but asking AND acting still checks the markers', () => {
+  const s = {
+    id: 'B5',
+    askOk: true,
+    mustAny: [{ type: 'OPEN' }, { type: 'TAP' }, { type: 'TYPE' }],
+    mustNot: [{ type: 'TAP', arg: /check\s?out/i }],
+  }
+  // Pure clarifying question -> acceptable.
+  const asked = checkScenario(s, 'Which variety of apples would you like?')
+  assert.equal(asked.pass, true)
+  assert.equal(asked.asked, true)
+  // Acts correctly -> also passes.
+  assert.equal(checkScenario(s, '<<OPEN|Blinkit>> <<TAP|Add>>').pass, true)
+  // Acts but checks out -> still fails (asking did not happen; markers present).
+  assert.equal(checkScenario(s, '<<OPEN|Blinkit>> <<TAP|Checkout>>').pass, false)
+})
+
 test('noMarkers: an ambiguous ask should emit nothing', () => {
   const s = { id: 'E1', noMarkers: true }
   assert.equal(checkScenario(s, 'Which app should I use for that?').pass, true)

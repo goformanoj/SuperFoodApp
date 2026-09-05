@@ -23,7 +23,7 @@
  *                       because token cost + non-determinism make it advisory).
  */
 import { readFile } from 'node:fs/promises'
-import { SCENARIOS } from './scenarios.mjs'
+import { SCENARIOS, DEFAULT_CONTEXT } from './scenarios.mjs'
 import { checkScenario } from './assert.mjs'
 
 const {
@@ -52,7 +52,7 @@ const SPACING_MS = 2000
 const MAX_RETRIES = 3
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-async function ask(prompt, attempt = 0) {
+async function ask(prompt, context, attempt = 0) {
   const res = await fetch(new URL('/chat', WORKER_URL), {
     method: 'POST',
     headers: {
@@ -62,6 +62,7 @@ async function ask(prompt, attempt = 0) {
     },
     body: JSON.stringify({
       messages: [{ role: 'user', content: prompt }],
+      ...(context ? { context } : {}),
       ...(system ? { system } : {}),
     }),
   })
@@ -70,7 +71,7 @@ async function ask(prompt, attempt = 0) {
     const m = /rate_limited:(\d+)s/.exec(text)
     if (m && attempt < MAX_RETRIES) {
       await sleep((Number(m[1]) + 1) * 1000)
-      return ask(prompt, attempt + 1)
+      return ask(prompt, context, attempt + 1)
     }
     return { error: `HTTP ${res.status}: ${text.slice(0, 160)}` }
   }
@@ -86,7 +87,7 @@ const failedRows = []
 
 for (const [i, s] of SCENARIOS.entries()) {
   if (i > 0) await sleep(SPACING_MS)
-  const { reply, error } = await ask(s.prompt)
+  const { reply, error } = await ask(s.prompt, s.context ?? DEFAULT_CONTEXT)
   if (error) {
     failedRows.push({ id: s.id, failures: [error] })
     console.log(`✘ ${s.id}  ${s.prompt}\n    ${error}`)
@@ -95,7 +96,7 @@ for (const [i, s] of SCENARIOS.entries()) {
   const r = checkScenario(s, reply)
   if (r.pass) {
     passed++
-    console.log(`✓ ${s.id}  ${s.prompt}  (${r.markerCount} markers)`)
+    console.log(`✓ ${s.id}  ${s.prompt}  (${r.asked ? 'asked a clarifying question' : `${r.markerCount} markers`})`)
   } else {
     failedRows.push({ id: s.id, failures: r.failures })
     console.log(`✘ ${s.id}  ${s.prompt}`)

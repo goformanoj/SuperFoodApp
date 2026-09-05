@@ -1,5 +1,41 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-05 (evening) — the eval was unfair: the model was asking, not failing
+
+**What the evidence showed.** Logging the model's actual reply on each failing
+row (run #4) overturned the "gpt-oss-20b emits markers inconsistently" read from
+run #3. Every failure was a *reasonable clarifying question*: "Which app would you
+like to play it in?" (A1, E7), "Which app is Mom's chat in?" (C1), "Which variety
+of apples?" (B5), "Do you have the Blinkit app installed?" (B1). The model was
+behaving correctly; the eval was starving it of context. Reading the trace before
+theorising (Rule 4) changed the diagnosis entirely — again.
+
+**Why it happened.** `GroqClient.buildPayload` grounds every real call by
+appending context to the system prompt (`base\n\ncontext`) — the current screen
+plus remembered facts like the user's app names. The eval sent a bare prompt with
+none of that, so "which app?" was the right answer, and the eval was penalising it.
+
+**What was built.** Made the eval context-fair: the Worker's `/chat` now accepts
+an optional `context` field and appends it exactly as the app does
+(`(body.system ?? SYSTEM_PROMPT) + "\n\n" + context`); the eval sends a realistic
+`DEFAULT_CONTEXT` (music=Spotify, messaging=WhatsApp, groceries=Blinkit, group=
+Family, on the home screen); and an `askOk` flag lets a genuine clarifying
+question count as a pass where a spec is truly missing (B5). E6 stays strict — it
+over-asks about label/repeat on a plain "set an alarm for 7:30 am", a real prompt
+target. 53 backend + 8 eval tests green.
+
+**Two honest points recorded for the user.** (1) This phase raises reliability and
+catches regressions; it does not make the app "never err" — the phone still owns
+taps and speech (backend owns deciding, phone owns doing), and it is a small model
+with run-to-run variance (C2 flipped across runs at temp 0.7). (2) The user's
+"ask mid-execution instead of freezing" is a device-side Phase 4 concern
+(`AgentLoop`/`executeScreen`/`FollowUp`), distinct from the planning-time asking
+the model already does.
+
+**Also seen:** the free daily cap (60k tokens) is real — uid `eval-harness` hit
+429 quota_exhausted on run #4, the quota working as designed. Re-runs wait for the
+UTC reset or use a fresh eval uid.
+
 ## 2026-09-05 (later still) — first eval baseline: 4/13, and why the number lied
 
 **What the evidence showed.** The eval ran all 13 prompts against the live

@@ -14,10 +14,20 @@ full path (uid `eval-harness`, 9 requests metered). The harness was then fixed:
 corrected. Re-run #3 (rate-limit-free) scored **5/13** — a true signal now, and
 it points at plan quality: `gpt-oss-20b` emits the `<<…>>` markers inconsistently
 (half the action prompts returned zero markers; C2 even flipped pass→fail between
-runs, temp 0.7). `run.mjs` now prints the model's actual reply on every failing
-row so the outputs can be diagnosed. **Next: re-run to capture the raw replies,
-then tune `backend/src/systemPrompt.js` (edit → deploy → re-run) to push the
-model toward markers. Targets: A1, B1, C2, E6, E7.**
+runs, temp 0.7). `run.mjs` prints the model's actual reply on every failing
+row. Run #4's replies revealed the model was **asking sensible clarifying
+questions** ("which app?", "which variety of apples?"), not failing — because the
+bare eval sent no context, which the real app always does (`GroqClient` appends
+`base\n\ncontext`). **Made the eval context-fair:** the Worker now takes an
+optional `context` field composed app-style; the eval sends a `DEFAULT_CONTEXT`
+(known apps + home screen); `askOk` lets a genuine clarifying question pass (B5).
+53 backend + 8 eval tests green.
+
+**Next: re-run** (waits for the free-tier token reset ~13h on uid `eval-harness`,
+or use a fresh eval uid) to get the real context-fair score, then tune
+`backend/src/systemPrompt.js` for the remaining true misses (E6 over-asks on a
+simple alarm). Separately, the user asked for **ask-mid-execution** — device-side
+Phase 4 (`AgentLoop`/`executeScreen`/`FollowUp`), not the backend.
 
 New gotchas this round:
 - `${{ vars.X }}` reads repo **Variables**, `${{ secrets.X }}` reads **Secrets** —

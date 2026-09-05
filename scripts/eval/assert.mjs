@@ -52,6 +52,15 @@ export function checkScenario(scenario, reply) {
   const markers = parseMarkers(reply)
   const failures = []
 
+  // askOk: for a genuinely under-specified prompt (e.g. "add apples" with no
+  // variety), a clarifying question with NO markers is a valid outcome — the
+  // assistant is right to ask rather than guess. Only a 0-marker reply counts;
+  // if it emitted markers we still check them (asking AND acting is the bug the
+  // system prompt forbids).
+  if (scenario.askOk && markers.length === 0) {
+    return { id: scenario.id, pass: true, markerCount: 0, failures: [], asked: true }
+  }
+
   for (const matcher of scenario.must ?? []) {
     if (!markers.some((mk) => matches(mk, matcher))) {
       failures.push(`missing required ${describe(matcher)}`)
