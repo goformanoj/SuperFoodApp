@@ -1,6 +1,6 @@
 # Config only — NEVER a key. The Groq key is set with:
 #   wrangler secret put GROQ_API_KEY
-name = "jarvis-proxy"
+name = "superfoodapp"
 main = "src/index.js"
 compatibility_date = "2026-08-18"
 
@@ -10,7 +10,7 @@ compatibility_date = "2026-08-18"
 [[d1_databases]]
 binding = "DB"
 database_name = "jarvis"
-database_id = "3841685b-2ad2-4f38-94e5-065697c0efcb"
+database_id = "1dc3695c-1f4b-4e17-980e-b6f90122d35f"
 
 # Logs, so a failing deploy can be diagnosed from the dashboard rather than guessed at.
 [observability]
