@@ -1,5 +1,43 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-05 — Backend Phase 1: the Worker is deployed and live
+
+**What was built.** The Cloudflare Worker (`backend/`) is now deployed from
+`main` and serving at `superfoodapp.goformanoj.workers.dev`. `/health` returns
+`{"ok":true}`, which — because `src/index.js` checks `PROXY_SECRET` and
+`GROQ_API_KEY` before it routes anything — simultaneously proves the code is
+live, the D1 binding resolves, and both secrets are set as runtime secrets.
+
+**Why it took a chain of fixes, and why none were code.** With the Cloudflare
+connector granted, the account could be looked at rather than guessed:
+- The committed `database_id` (`3841685b…`) named a D1 database that **did not
+  exist in this account** — almost certainly from an earlier/other account, so
+  `wrangler deploy` failed its binding check. Fix: created a real `jarvis` D1
+  (`1dc3695c…`), applied `schema.sql` (confirmed `users`+`usage_daily` via
+  `sqlite_master`), repointed the binding in `wrangler.toml`.
+- The Git-connected build deploys the **production branch (`main`)**, so pushing
+  the fix to the session branch changed nothing live — it had to reach `main`.
+- The build then failed with *"could not detect a directory containing static
+  files"* because the **root directory was `/`**: `wrangler deploy` ran at the
+  repo root, where there is no `wrangler.toml`, so it guessed a static site.
+  Setting root directory to `backend` fixed it.
+- `/health` still 503'd at first because the secrets had been added as **build**
+  variables (available only during the build), not Worker **runtime** secrets.
+  Re-adding them under the Worker's runtime Variables and Secrets fixed it.
+- Worker renamed `jarvis-proxy` → `superfoodapp` so `wrangler deploy` lands in
+  the Builds project the Git connection created, not a second Worker.
+
+**What the evidence showed.** `models.js` is live on `openai/gpt-oss-20b` and
+`openai/gpt-oss-120b` (the retired-llama correction from `BACKEND_PLAN.md` held).
+D1 is a clean baseline (0 users, 0 usage rows), so the first real `/chat` turn
+will surface as a `usage_daily` row — that is how the end-to-end path gets proven
+from the Cloudflare side even though this environment's egress is blocked from
+reaching `workers.dev`.
+
+**Deferred / next.** The live `/chat` smoke test is deferred to Phase 4 (it needs
+a POST with `X-Proxy-Secret`+`X-Uid`, which the app will send). Phase 2 — the eval
+harness (`scripts/eval/run.mjs`) — is now unblocked.
+
 ## 2026-08-26 (afternoon) — "can we build our own AI" — planned, parked, nothing built
 
 **Asked.** *"can we build our own ai, called Jarvis ai, which will have all the

@@ -1,6 +1,30 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-08-26 (latest, handed off)
+## Current position — 2026-09-05 (latest) — backend Phase 1 live
+
+The Cloudflare Worker is **deployed and serving**. `main` @ `993e7fd`,
+session branch `claude/cloudflare-backend-databases-fatxx4`.
+`GET https://superfoodapp.goformanoj.workers.dev/health` → `{"ok":true}`,
+which proves both runtime secrets (`GROQ_API_KEY`, `PROXY_SECRET`) are set,
+the D1 binding resolves, and the real `src/index.js` is live (not the
+placeholder). D1 `jarvis` (`1dc3695c…`) has both tables, empty.
+
+**Next: Phase 2 — the eval harness** (`scripts/eval/run.mjs`), now unblocked
+by Phase 1. See [`BACKEND_PLAN.md`](BACKEND_PLAN.md) §Phase 2. The real `/chat`
+smoke test was deferred to Phase 4 (needs a POST with `X-Proxy-Secret`+`X-Uid`).
+
+**Hard-won gotchas from bringing the Worker up (all config, not code):**
+- The committed `database_id` was for a D1 that did not exist in this account →
+  build failed the binding check. Create the DB, repoint, and it resolves.
+- Git-Builds deploys **`main`** — a fix on the session branch never deploys.
+- **Root directory must be `backend`**, or `wrangler deploy` runs at repo root,
+  finds no `wrangler.toml`, and dies with *"could not detect a directory
+  containing static files"*.
+- Secrets added as **build** variables are build-time only; the Worker reads
+  them at runtime, so they must be Worker **runtime** secrets. `/health` (which
+  checks both before routing) is the one-tap proof they landed.
+
+## Current position — 2026-08-26 (handed off)
 
 Branch `claude/phone-glitch-investigation-g6dnhk`, **green with the
 `jarvis-debug-apk` artifact** for `5915741`, and `main` fast-forwarded.
@@ -27,7 +51,7 @@ more expensive by waiting. Phase 0 is small, pure, and gates off-device.
 | **PDF content quality** | 35KB for a page of text; summarised a 540-char on-screen fragment when asked for a whole chat, having never scrolled |
 | **Speech accuracy** | *"unsure of a word"* recurs across traces |
 | **Chat and Files layout** | never had the pass that Settings and Instructions got |
-| **Cloudflare Worker** | D1 migrated and confirmed; the Worker is **not** deployed. Two dashboard steps are the user's — see [`BACKEND_PLAN.md`](BACKEND_PLAN.md) |
+| **Cloudflare Worker** | ✅ **Deployed and live** (Phase 1 done, 2026-09-05) — `/health` green. `/chat` smoke test deferred to Phase 4; Phase 2 (eval harness) now unblocked |
 
 ### What shipped this session
 
