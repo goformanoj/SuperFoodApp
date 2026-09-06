@@ -23,8 +23,9 @@ optional `context` field composed app-style; the eval sends a `DEFAULT_CONTEXT`
 (known apps + home screen); `askOk` lets a genuine clarifying question pass (B5).
 53 backend + 8 eval tests green.
 
-**Next: re-run** (waits for the free-tier token reset ~13h on uid `eval-harness`,
-or use a fresh eval uid) to get the real context-fair score, then tune
+The eval workflow now sets `EVAL_UID: eval-${{ github.run_id }}` — a fresh uid per
+run, so each draws its own 60k free allowance and the daily cap never blocks a run.
+**Next: re-run** for the real context-fair score, then tune
 `backend/src/systemPrompt.js` for the remaining true misses (E6 over-asks on a
 simple alarm). Separately, the user asked for **ask-mid-execution** — device-side
 Phase 4 (`AgentLoop`/`executeScreen`/`FollowUp`), not the backend.

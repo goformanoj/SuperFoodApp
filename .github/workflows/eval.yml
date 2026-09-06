@@ -32,4 +32,8 @@ jobs:
           # variable still overrides it if one is ever set.
           WORKER_URL: ${{ vars.WORKER_URL || 'https://superfoodapp.goformanoj.workers.dev' }}
           PROXY_SECRET: ${{ secrets.PROXY_SECRET }}
+          # A per-run uid draws a fresh free daily allowance every run, so the
+          # 60k/day cap never blocks the eval (run #4 hit it as eval-harness).
+          # ~40 calls/run stays well under one uid's cap.
+          EVAL_UID: eval-${{ github.run_id }}
         run: node scripts/eval/run.mjs
