@@ -10,10 +10,25 @@
  * nightly). It cannot run from the Claude session (egress is blocked to
  * workers.dev); it runs from CI or any machine that can reach the Worker.
  *
+ * ## Auth
+ *
+ * Once Phase 3 is live the Worker requires a signed Firebase ID token and ignores
+ * `X-Uid`. So when `FIREBASE_WEB_API_KEY` is set, the eval signs in anonymously
+ * through Firebase's REST API (exactly what the app does on first launch), gets a
+ * real ID token, and sends it as `Authorization: Bearer`. This exercises the real
+ * verification path rather than a bypass — and each sign-in mints a fresh
+ * anonymous uid, which by itself gives every run a fresh daily allowance (so the
+ * old per-run `EVAL_UID` trick is no longer needed in token mode). With no web api
+ * key set, it falls back to the pre-Phase-3 `X-Uid` stub, so this keeps working
+ * before activation and for a Worker deployed without a project id.
+ *
  * Env:
  *   WORKER_URL          e.g. https://superfoodapp.goformanoj.workers.dev  (required)
  *   PROXY_SECRET        the X-Proxy-Secret the Worker expects              (required)
- *   EVAL_UID            the X-Uid to send (default: "eval-harness")
+ *   FIREBASE_WEB_API_KEY  Firebase project's public Web API key. When set, the
+ *                       eval authenticates with a real anonymous ID token (Phase 3).
+ *   EVAL_UID            the X-Uid to send in the pre-Phase-3 stub path
+ *                       (default: "eval-harness"). Ignored in token mode.
  *   SYSTEM_PROMPT_FILE  optional path to a system prompt to send as body.system.
  *                       If unset, the Worker's own default system prompt is used
  *                       (see BACKEND_PLAN.md Phase 4 — moving SystemPrompt.kt
@@ -29,6 +44,7 @@ import { checkScenario } from './assert.mjs'
 const {
   WORKER_URL,
   PROXY_SECRET,
+  FIREBASE_WEB_API_KEY,
   EVAL_UID = 'eval-harness',
   SYSTEM_PROMPT_FILE,
   GATE,
@@ -37,6 +53,40 @@ const {
 if (!WORKER_URL || !PROXY_SECRET) {
   console.error('Set WORKER_URL and PROXY_SECRET (see the header of this file).')
   process.exit(2)
+}
+
+/**
+ * Sign in anonymously via Firebase's REST API and return a real ID token — the
+ * same call the app makes on first launch. A fresh anonymous user per run, so a
+ * fresh daily allowance comes for free.
+ */
+async function firebaseAnonToken(apiKey) {
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ returnSecureToken: true }),
+    },
+  )
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok || !body.idToken) {
+    throw new Error(`anonymous sign-in failed: HTTP ${res.status} ${JSON.stringify(body).slice(0, 200)}`)
+  }
+  return body.idToken
+}
+
+// Auth headers, decided once. Token mode (Phase 3) when a web api key is present,
+// else the pre-Phase-3 X-Uid stub. PROXY_SECRET rides along either way — it gates
+// the app, the token identifies the user.
+let authHeaders
+if (FIREBASE_WEB_API_KEY) {
+  const idToken = await firebaseAnonToken(FIREBASE_WEB_API_KEY)
+  authHeaders = { Authorization: `Bearer ${idToken}` }
+  console.log('🔑 Authenticating with a real anonymous Firebase ID token (Phase 3).\n')
+} else {
+  authHeaders = { 'X-Uid': EVAL_UID }
+  console.warn('⚠  No FIREBASE_WEB_API_KEY — using the pre-Phase-3 X-Uid stub path.\n')
 }
 
 const system = SYSTEM_PROMPT_FILE ? await readFile(SYSTEM_PROMPT_FILE, 'utf8') : undefined
@@ -58,7 +108,7 @@ async function ask(prompt, context, attempt = 0) {
     headers: {
       'Content-Type': 'application/json',
       'X-Proxy-Secret': PROXY_SECRET,
-      'X-Uid': EVAL_UID,
+      ...authHeaders,
     },
     body: JSON.stringify({
       messages: [{ role: 'user', content: prompt }],

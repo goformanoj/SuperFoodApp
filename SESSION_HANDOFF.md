@@ -31,9 +31,13 @@ Backend-only change; **nothing half-built.**
    is set in `backend/wrangler.toml`. Verification **activates on the next deploy**
    of `main` (Cloudflare Git-Builds). So: merge this branch to `main` once CI is
    green, and the Worker begins requiring a signed Bearer token.
-3. **When activating, the eval harness needs attention** — it sends `X-Uid`, which
-   is ignored once verification is on. Give it a minted token or a documented
-   first-party bypass before flipping the switch.
+3. **Eval harness handled** — `scripts/eval/run.mjs` now signs in anonymously via
+   Firebase's REST API (`FIREBASE_WEB_API_KEY`) and sends a real Bearer token, so
+   it exercises the real Phase 3 path (no bypass); a fresh anonymous uid per run
+   also gives a fresh daily allowance. Falls back to the `X-Uid` stub when no web
+   api key is set. **User must add `FIREBASE_WEB_API_KEY` as a repo VARIABLE**
+   (public; Firebase → Project settings → General → Web API Key) before running
+   the eval post-activation.
 4. **Phase 4** (device side): `ProxyClient` behind `Brain.generate()` sends the
    Firebase ID token; this is what restores the phone's (currently OFF) brain.
 

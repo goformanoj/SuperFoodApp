@@ -10,6 +10,11 @@ name: Backend eval (on-demand)
 # repository variable, then trigger this workflow from the Actions tab. The
 # Worker supplies the system prompt itself (its server-side default), so no
 # system prompt is sent from here.
+#
+# Phase 3: once the Worker requires a Firebase ID token, add FIREBASE_WEB_API_KEY
+# as a repository VARIABLE (it is the project's public web api key, not a secret).
+# The eval then signs in anonymously and sends a real token. Without it, the eval
+# falls back to the X-Uid stub, which the Worker rejects once verification is on.
 on:
   workflow_dispatch:
 
@@ -32,8 +37,11 @@ jobs:
           # variable still overrides it if one is ever set.
           WORKER_URL: ${{ vars.WORKER_URL || 'https://superfoodapp.goformanoj.workers.dev' }}
           PROXY_SECRET: ${{ secrets.PROXY_SECRET }}
-          # A per-run uid draws a fresh free daily allowance every run, so the
-          # 60k/day cap never blocks the eval (run #4 hit it as eval-harness).
-          # ~40 calls/run stays well under one uid's cap.
+          # Public web api key: when set, the eval authenticates with a real
+          # anonymous Firebase ID token (Phase 3). Each sign-in is a fresh
+          # anonymous uid, so it also draws a fresh daily allowance per run.
+          FIREBASE_WEB_API_KEY: ${{ vars.FIREBASE_WEB_API_KEY }}
+          # Fallback only (pre-Phase-3 / no web api key): a per-run uid draws a
+          # fresh free daily allowance so the 60k/day cap never blocks the eval.
           EVAL_UID: eval-${{ github.run_id }}
         run: node scripts/eval/run.mjs
