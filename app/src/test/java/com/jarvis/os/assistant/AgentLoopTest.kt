@@ -407,7 +407,8 @@ class AgentLoopTest {
     @Test
     fun `an explanation that already ends in punctuation is not double-stopped`() {
         val message = AgentLoop.blockedMessage("add milk", "There is no Add button here!")
-        assertTrue(message.startsWith("There is no Add button here! I've stopped"))
+        // The "!" is kept as-is (no added period) and the hand-back is appended.
+        assertEquals("There is no Add button here! What next?", message)
     }
 
     @Test
