@@ -53,6 +53,74 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
 - **Privacy constraint (non-negotiable, see [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md)):** screen text sent to a third-party LLM is a sensitive-data transfer — it needs explicit consent and **redaction of password / OTP / payment fields before anything leaves the device**.
 - **Acceptance:** "open the chat with <name>" and "search <query>" land reliably in the common apps.
 
+### Part C2 — App Learning: Test Mode → shared, server-side mastery ⏸️
+- **The point (why this matters more than per-device tricks):** an app becomes
+  reliable for **everyone**, not just the person who trained it, only when its
+  knowledge lives on the **server**. On-device learning (the `Playbook`) helps the
+  one phone that did the errand; server-side knowledge helps every install. Because
+  the app already talks to the Worker (Phase 4), a pack can ship server-side and
+  reach every phone **with no reinstall** — exactly as the system prompt already does.
+- **The loop the user asked for:**
+  1. **Test Mode** (a new page under JARVIS → Diagnostics) records a **trace** of an
+     errand on an app — the accessibility-tree snapshot at each step, the step taken,
+     and the outcome (worked / failed / stuck). **Redacted on-device** before it is
+     ever written (password / OTP / payment fields — reuse `ScreenMatch.redactSensitive`).
+  2. The user **shares** the trace (the existing Diagnostics → Share, extended to emit
+     a structured trace rather than only a log).
+  3. It gets **baked into a server-side app-knowledge pack** — per-app control labels
+     (search / cart / checkout / back), verified recipes, and hints. Near-term this is
+     a **Claude-assisted dev step** (share the trace → I turn it into a pack → deploy),
+     which is precisely how the backend eval and prompt tuning already work; long-term
+     it can become an automated ingestion pipeline.
+  4. The pack is **served from the Worker** and the app **fetches + caches** it, so
+     the next Blinkit errand on **any** phone follows the known-good recipe.
+- **The three tiers of app handling (most apps never leave tier 1):**
+  | Tier | Source of knowledge | Who benefits |
+  |---|---|---|
+  | Generic | live accessibility-tree matching (Part C) | everyone, now |
+  | Learned-local | `Playbook` records a successful run and replays it | the one device |
+  | **Shared pack** | trace → server pack, served by the Worker | **everyone, no reinstall** |
+- **Two capture flavors, safe one first:**
+  - **Passive (build first):** the user just *uses* the app in Test Mode; JARVIS
+    records the map from real taps. Zero risk — the user is driving.
+  - **Supervised active exploration (much later):** JARVIS taps around to discover the
+    app, **strictly read-only** — never a control the irreversible guard flags
+    (buy / pay / send / delete / order), and only with the user watching.
+- **Learn from the accessibility TREE, not a screen recording.** Pixels would need a
+  vision model (parked under "Later"); the a11y tree is structured, precise, private,
+  and already what the executor reads.
+- **Two non-negotiable constraints:**
+  - **Privacy:** redact before the trace leaves the device; explicit consent to share;
+    and the pack itself stores only **generic UI knowledge** (labels, recipes) — never
+    user-specific values (address, order contents, contacts). A trace is sensitive
+    data; a pack must not be.
+  - **Safety:** exploration never taps an irreversible control — the same guard that
+    already stops checkout / pay / send / delete in the errand loop and `SendGuard`.
+- **Server mechanics:** packs are read-mostly config, so they can be served as
+  versioned JSON from the Worker (`/apps/<package>` or part of a served config blob),
+  cached on device with a TTL. **Storage is NOT the quota path**, so eventual
+  consistency is fine here — KV or a served static blob is acceptable (contrast the
+  deliberate D1-not-KV choice for metering in `BACKEND_PLAN.md`).
+- **Staging (each shippable on its own):**
+  - **C2.0 — keep the data.** Persist traces to disk (today `DebugLog` is memory-only,
+    300-entry cap — see Part H Phase 0). Prerequisite: you can't share a trace you threw away.
+  - **C2.1 — shareable trace.** Extend Diagnostics → Share to emit a structured,
+    redacted app trace (screens + steps + outcome), not just the text log.
+  - **C2.2 — pack format + fetch.** Define the per-app pack (JSON: search/cart/checkout
+    labels + recipes), have the Worker serve it and the app fetch + cache it (mirrors the
+    server-side system prompt). This is the "reliable for everyone" mechanism.
+  - **C2.3 — bake loop.** User shares a trace → Claude turns it into a pack → deploy to
+    the Worker → every install benefits.
+  - **C2.4 — later:** automated/crowd-sourced ingestion with review, and the supervised
+    active-exploration mode.
+- **Depends on / feeds:** builds on Part C (matching + plan-follow) and Phase 4
+  (app↔Worker, already live); reuses `ScreenMatch.redactSensitive`; and the same traces
+  are the labelled corpus a future on-device fine-tune (Part H) needs — so this is not a
+  side quest, it produces that data as a by-product.
+- **Acceptance:** a trace shared for Blinkit becomes a served pack, and a **fresh
+  install that never trained anything** then completes "add milk and bread on Blinkit"
+  reliably.
+
 ### Part F — Files (artifacts JARVIS makes) ⏸️
 - **Goal:** "make a PDF of the important points", "draw a flow chart of this" → JARVIS produces the file, and it lands in the **Files** tab.
 - **Feasible now, no new provider:**
