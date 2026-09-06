@@ -1,9 +1,19 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-06 — Phase 3 identity verifier built (server-side)
+## Current position — 2026-09-06 — Phase 3 identity MERGED to main
 
-Session branch `claude/next-steps-phase-order-wwvyk9` (from `main` @ `ddeea0c`).
-Backend-only change; **nothing half-built.**
+Session branch `claude/next-steps-phase-order-wwvyk9`; **`main` fast-forwarded to
+`8768f84`** and pushed. build.yml green (backend 84/84 + APK). Cloudflare Git-Builds
+redeploys `main`, activating token verification. Backend-only change; **nothing
+half-built.**
+
+**Live-verify still owed** — this session cannot reach `workers.dev` (egress 403),
+so the deployed behaviour was not checked from here. Do this next: after the deploy,
+`GET /health` → `{"ok":true}`, then run the **eval** workflow (it is now token-authed
+via the `FIREBASE_WEB_API_KEY` repo Variable) and confirm the score is back to
+~25–28/28 — a wall of `401 no_token`/`unauthorized` means the token path is
+misconfigured, not the model. It WAS proven off-device with a real token before
+merge (anonymous sign-in → verified via `auth.js` against Google's live keys).
 
 **What shipped this session (Part E, Phase 3 — the server-side half):**
 - **`backend/src/auth.js`** verifies a Firebase ID token by hand (the Admin SDK is
