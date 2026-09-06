@@ -1,10 +1,29 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-06 — Phase 4 started (app → Worker), on the branch
+## Current position — 2026-09-06 — Phase 4 works on device; transient error fixed
 
-Session branch `claude/next-steps-phase-order-wwvyk9`; `main` @ `daea8bf` (Phase 3
-live). Phase 4 is committed **on the branch, NOT merged**, and is **unverified beyond
-careful review + unit tests** — Android can't be compiled or run here.
+Session branch `claude/next-steps-phase-order-wwvyk9`. **Phase 4 is confirmed on a real
+phone** (realme RMX3868): Diagnostics shows **Provider: Worker** and real plans come
+back through the Worker — the brain is back on, on the proxy path, direct key gone.
+
+**Fixed this round (server-side, deploys via `main` — no reinstall needed):** the
+intermittent `provider_failed` was a transient Groq 400/5xx under the errand's rapid-fire
+calls, which the live path did not retry. `backend/src/providers/groq.js` now retries a
+transient 400/408/409/5xx or empty reply on the same model up to 3× with backoff (429
+still cools to the next model; 401/403 still fatal). 88 backend tests. **Eval grown
+28→38** and `run.mjs` rotates its anonymous identity every 15 rows so the 60k/day cap
+can't fail late rows.
+
+**The real open problem is Part C (execution accuracy), not the backend.** The Blinkit
+errand "went in circles" because the on-device executor couldn't map a correct plan
+(`<<TAP|Search>>`…) onto Blinkit's real UI. That is the next high-value work: inject the
+accessibility tree (visible text/labels) into the model's context so taps land, verify a
+tap changed the screen and retry once, and redact password/OTP/payment fields before
+anything leaves the device (the Part C privacy line). This is device-side and can only be
+verified on a phone.
+
+### Earlier this session — Phase 4 started (app → Worker), on the branch
+Phase 4 was committed on the branch and CI-green before the device test above.
 
 **What Phase 4 adds:**
 - `ai/ProxyClient.kt` — mirrors `GroqClient` (`generate`/`chooseIndex`) but posts to

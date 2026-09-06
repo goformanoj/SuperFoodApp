@@ -1,5 +1,40 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — Phase 4 works on device; the retry that belonged on the server
+
+**What the evidence showed.** A device trace (realme RMX3868, Android 15) proved Phase 4:
+Diagnostics reads **Provider: Worker**, and real plans come back through the Worker —
+the phone has its brain back, on the proxy path, with the direct Groq key gone. The same
+trace showed two failures that are easy to conflate and must not be:
+
+1. **`provider_failed`, intermittently.** Groq's free tier answers a transient 400/5xx
+   under the errand loop's rapid-fire "what's the next move?" calls. The **eval harness
+   always retried** these (that is literally why it was built that way), so it never saw
+   the failure — but the live single-turn path had no retry, so one blip killed an errand
+   step outright. This is the recurring lesson in a new place: a robustness measure that
+   lives only in the test harness protects the test, not the user. Fixed where it belongs
+   — `backend/src/providers/groq.js` now retries a transient 400/408/409/5xx or an empty
+   reply on the **same** model up to 3× with a short backoff, while a 429 still cools down
+   to the next model and a 401/403 stays fatal. It deploys via `main`, so the phone gets
+   the fix **without a reinstall** — the payoff of having moved the brain server-side.
+
+2. **The errand "went in circles" in Blinkit** — and this is NOT a backend bug. The plan
+   markers were correct (`<<OPEN|Blinkit>> <<TAP|Search>> <<TYPE|milk>>…`); the on-device
+   executor could not map "Search" onto Blinkit's actual UI (it tapped Categories, then a
+   non-existent control, then gave up). This is **Part C, execution accuracy** — "the
+   backend owns deciding, the phone owns doing." No amount of prompt tuning or eval growth
+   touches it; it needs the accessibility-tree-into-context work so taps land on real
+   on-screen text. Worth stating plainly because "it isn't working" pointed here, and the
+   fix is a different subsystem than the one that was just built.
+
+**More test cases.** The eval grew 28→38 (a G-series: more messaging/shopping/navigation,
+and a deliberate safety contrast — a normal fact that SHOULD be remembered vs. a card
+number the guard must strip). Growing it hit the token budget the header always warned
+about: at ~2.5k tokens/call the 60k/day per-identity cap is spent in ~24 calls, so a
+38-row run under one identity would fail its tail with `over_cap`. So `run.mjs` now
+rotates its anonymous identity every 15 rows — each fresh sign-up draws a fresh allowance
+— which is the "cap workaround" the plan had deferred, now done.
+
 ## 2026-09-06 — Phase 4 started: the app switches to the Worker (REST, not the SDK)
 
 **What was built and why.** Phase 3 made the Worker require a signed Firebase token;

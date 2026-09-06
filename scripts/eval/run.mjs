@@ -76,18 +76,29 @@ async function firebaseAnonToken(apiKey) {
   return body.idToken
 }
 
-// Auth headers, decided once. Token mode (Phase 3) when a web api key is present,
-// else the pre-Phase-3 X-Uid stub. PROXY_SECRET rides along either way — it gates
-// the app, the token identifies the user.
-let authHeaders
-if (FIREBASE_WEB_API_KEY) {
-  const idToken = await firebaseAnonToken(FIREBASE_WEB_API_KEY)
-  authHeaders = { Authorization: `Bearer ${idToken}` }
-  console.log('🔑 Authenticating with a real anonymous Firebase ID token (Phase 3).\n')
-} else {
-  authHeaders = { 'X-Uid': EVAL_UID }
-  console.warn('⚠  No FIREBASE_WEB_API_KEY — using the pre-Phase-3 X-Uid stub path.\n')
+// Auth headers. Token mode (Phase 3) mints a fresh anonymous identity; the
+// pre-Phase-3 stub sends a uid. PROXY_SECRET rides along either way — it gates the
+// app, the identity meters the user.
+//
+// Each identity has a per-day token cap (FREE_DAILY_TOKENS = 60k). One call carries
+// the ~2k-token system prompt, so ~24 calls exhausts a single identity — fewer than
+// the scenario count. So the identity is ROTATED every ROTATE_EVERY rows: a new
+// anonymous sign-up (or a new uid suffix in stub mode) draws a fresh daily
+// allowance, and the cap never turns a late row into a false `over_cap` failure.
+const ROTATE_EVERY = 15
+let batch = 0
+
+async function freshAuth() {
+  if (FIREBASE_WEB_API_KEY) return { Authorization: `Bearer ${await firebaseAnonToken(FIREBASE_WEB_API_KEY)}` }
+  return { 'X-Uid': `${EVAL_UID}-${batch}` }
 }
+
+let authHeaders = await freshAuth()
+console.log(
+  FIREBASE_WEB_API_KEY
+    ? '🔑 Authenticating with a real anonymous Firebase ID token (Phase 3).\n'
+    : '⚠  No FIREBASE_WEB_API_KEY — using the pre-Phase-3 X-Uid stub path.\n',
+)
 
 const system = SYSTEM_PROMPT_FILE ? await readFile(SYSTEM_PROMPT_FILE, 'utf8') : undefined
 if (!system) {
@@ -141,6 +152,12 @@ const failedRows = []
 
 for (const [i, s] of SCENARIOS.entries()) {
   if (i > 0) await sleep(SPACING_MS)
+  // Draw a fresh daily allowance before it can run out.
+  if (i > 0 && i % ROTATE_EVERY === 0) {
+    batch++
+    authHeaders = await freshAuth()
+    console.log(`   ↻ rotated to a fresh identity (batch ${batch}) so the daily cap can't block later rows\n`)
+  }
   const { reply, error } = await ask(s.prompt, s.context ?? DEFAULT_CONTEXT)
   if (error) {
     failedRows.push({ id: s.id, failures: [error] })

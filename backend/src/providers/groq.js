@@ -40,6 +40,10 @@ export function groqProvider(apiKey, options = {}) {
   const blockedUntil = new Map()
   const now = options.now ?? (() => Date.now())
   const maxTokens = options.maxTokens ?? 900
+  // Same-model attempts before giving up on a transient failure. Injectable sleep
+  // so tests do not actually wait.
+  const maxAttempts = options.maxAttempts ?? 3
+  const sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
 
   async function once(model, messages, system) {
     const body = {
@@ -63,23 +67,34 @@ export function groqProvider(apiKey, options = {}) {
         return { error: 'bad_json_from_provider', retryable: false }
       }
       const content = parsed?.choices?.[0]?.message?.content?.trim() ?? ''
-      if (!content) return { error: EMPTY_REPLY, retryable: true }
+      // Empty is transient (a model that spent its budget without emitting text):
+      // worth another go on the SAME model.
+      if (!content) return { error: EMPTY_REPLY, retryable: true, transient: true }
       return { text: content, usage: parsed.usage ?? {}, model }
     }
 
     if (res.status === 429) {
+      // A cooldown, not a same-model retry: the quota needs time to clear, so move
+      // to the next model rather than hammering this one.
       const wait = retryAfterSeconds(res.headers.get('Retry-After'), text)
       blockedUntil.set(model, now() + wait * 1000)
-      return { error: `rate_limited:${wait}s`, retryable: true }
+      return { error: `rate_limited:${wait}s`, retryable: true, transient: false }
     }
 
     // 404, or a 400 whose body says the model is gone. Groq has used both.
     if (res.status === 404 || (res.status === 400 && looksRetired(text))) {
       retired.add(model)
-      return { error: 'model_retired', retryable: true }
+      return { error: 'model_retired', retryable: true, transient: false }
     }
 
-    return { error: `http_${res.status}`, retryable: false, detail: text.slice(0, 200) }
+    // Everything else. Groq's free tier intermittently answers 400/408/409/5xx
+    // under rapid fire — the eval harness saw exactly this and worked around it by
+    // retrying, but the live single-turn path had no retry, so one transient blip
+    // killed a whole errand step (`provider_failed` in a device trace). Treat those
+    // as transient and worth another go on the same model; a hard 401/403 (bad key)
+    // is fatal and must not be retried.
+    const transient = res.status >= 500 || res.status === 400 || res.status === 408 || res.status === 409
+    return { error: `http_${res.status}`, retryable: transient, transient, detail: text.slice(0, 200) }
   }
 
   return {
@@ -92,15 +107,20 @@ export function groqProvider(apiKey, options = {}) {
         if ((blockedUntil.get(model) ?? 0) > now()) continue
         anyTried = true
 
-        let outcome = await once(model, messages, system)
-        // The one retry, and only for the one transient case.
-        if (outcome.error === EMPTY_REPLY) {
-          outcome = await once(model, messages, system)
+        // Try the same model a few times for a TRANSIENT failure (empty reply, or a
+        // 400/5xx blip under rapid fire), with a short backoff between http retries.
+        // A cooldown (429) or a retirement is not transient — those break out to the
+        // next model. A fatal error (bad key) stops everything.
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          const outcome = await once(model, messages, system)
+          if (outcome.text) return outcome
+          lastError = outcome.error
+          if (!outcome.retryable) throw new ProviderError(outcome.error, 502)
+          if (!outcome.transient) break
+          if (attempt < maxAttempts && outcome.error !== EMPTY_REPLY) {
+            await sleep(250 * attempt)
+          }
         }
-        if (outcome.text) return outcome
-
-        lastError = outcome.error
-        if (!outcome.retryable) throw new ProviderError(outcome.error, 502)
       }
 
       // Checked AFTER the loop as well as before it. A test caught the

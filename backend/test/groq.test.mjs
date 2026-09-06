@@ -107,6 +107,51 @@ test('the key never appears in the error surfaced upward', async () => {
   } finally { s.restore() }
 })
 
+// --- transient retry (the live-turn fix) -------------------------------------
+
+// Groq's free tier intermittently answers 400/5xx under rapid fire. The eval
+// harness retried around it; the live single-turn path did not, so one blip killed
+// an errand step with `provider_failed`. These pin the same-model retry. Sleep is
+// injected as a no-op so the tests do not actually wait.
+const noWait = { sleep: async () => {} }
+
+test('a transient http 400 retries the SAME model and then succeeds', async () => {
+  const s = scripted([{ status: 400, body: 'upstream hiccup' }, ok('recovered')])
+  try {
+    const out = await ask(groqProvider('k', noWait))
+    assert.equal(out.text, 'recovered')
+    assert.deepEqual(s.seen, ['model-a', 'model-a'], 'a transient blip must not burn the model')
+  } finally { s.restore() }
+})
+
+test('a transient 5xx retries the same model before succeeding', async () => {
+  const s = scripted([{ status: 503, body: 'busy' }, ok('ok now')])
+  try {
+    assert.equal((await ask(groqProvider('k', noWait))).text, 'ok now')
+  } finally { s.restore() }
+})
+
+test('a model failing transiently past the attempt cap falls through to the next', async () => {
+  // Three strikes on model-a (the default cap), then model-b answers.
+  const s = scripted([
+    { status: 500, body: 'x' }, { status: 500, body: 'x' }, { status: 500, body: 'x' },
+    ok('from b'),
+  ])
+  try {
+    const out = await ask(groqProvider('k', noWait))
+    assert.equal(out.text, 'from b')
+    assert.deepEqual(s.seen, ['model-a', 'model-a', 'model-a', 'model-b'])
+  } finally { s.restore() }
+})
+
+test('a fatal error (bad key) is never retried, even now that transient ones are', async () => {
+  const s = scripted([{ status: 401, body: 'invalid api key' }])
+  try {
+    await assert.rejects(ask(groqProvider('k', noWait)))
+    assert.deepEqual(s.seen, ['model-a'], 'a 401 must not be retried on the same model or the next')
+  } finally { s.restore() }
+})
+
 // --- the pure helpers --------------------------------------------------------
 
 test('the retry wait is read from the header, then the body, then defaulted', () => {
