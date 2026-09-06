@@ -81,6 +81,12 @@ jobs:
           # Injected from repository secrets; empty if a secret is unset.
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Phase 4 — the Worker path. PROXY_SECRET is a real secret; the Firebase
+          # web api key is public (a repo Variable); WORKER_URL has a default in
+          # build.gradle.kts so it is only needed to override.
+          PROXY_SECRET: ${{ secrets.PROXY_SECRET }}
+          FIREBASE_WEB_API_KEY: ${{ vars.FIREBASE_WEB_API_KEY }}
+          WORKER_URL: ${{ vars.WORKER_URL }}
         run: ./gradlew assembleDebug
 
       - name: Upload debug APK

@@ -1,6 +1,46 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-06 — Phase 3 identity MERGED to main
+## Current position — 2026-09-06 — Phase 4 started (app → Worker), on the branch
+
+Session branch `claude/next-steps-phase-order-wwvyk9`; `main` @ `daea8bf` (Phase 3
+live). Phase 4 is committed **on the branch, NOT merged**, and is **unverified beyond
+careful review + unit tests** — Android can't be compiled or run here.
+
+**What Phase 4 adds:**
+- `ai/ProxyClient.kt` — mirrors `GroqClient` (`generate`/`chooseIndex`) but posts to
+  `<WORKER_URL>/chat` with `X-Proxy-Secret` + a `Bearer` Firebase ID token. Thinner:
+  the Worker owns the key, model list, and system prompt.
+- `ai/Identity.kt` — anonymous Firebase token via the **Auth REST API** (no SDK, no
+  `google-services` plugin, no `google-services.json`): `accounts:signUp` then
+  `securetoken/token` refresh, refresh token persisted in SharedPreferences. Only the
+  public web api key is needed.
+- `Brain` prefers the proxy when configured, else Groq/Gemini. `AssistantEngine`
+  untouched; one `Identity.init(applicationContext)` line added to `MainActivity`.
+- BuildConfig `WORKER_URL` / `FIREBASE_API_KEY` (reuses the `FIREBASE_WEB_API_KEY`
+  repo Variable) / `PROXY_SECRET` (existing secret) — CI needs nothing new.
+- Off-device tests: `ProxyClientTest`, `IdentityParseTest`.
+
+**Do next:**
+1. Watch CI on the branch — `testDebugUnitTest` + `assembleDebug` are the first
+   compile. Fix anything red (I could not compile here).
+2. **On-device test (the user):** install the new `jarvis-debug-apk`, give a command,
+   confirm it works and Diagnostics shows provider **"Worker"**. This is the real
+   proof — the phone regains its brain.
+3. Only after device-confirmed: fast-forward `main`.
+4. Then finish Phase 4: drop the dead `GROQ_API_KEY`/`GEMINI_API_KEY` BuildConfig path
+   (Phase 5 is Play Integrity).
+
+### Gotcha earned this session
+- **An unset GitHub Variable is an empty string, not absent**, so `getenv("X") ?: default`
+  lets `""` beat the default. `WORKER_URL` uses `takeIf { it.isNotBlank() }` before the
+  fallback for this reason.
+- **Don't reach for the Firebase SDK on a project that injects (not commits) keys** — the
+  `google-services` plugin hard-fails without a committed `google-services.json`. The Auth
+  REST API gives the same anonymous token with only the public web api key.
+
+---
+
+## Earlier position — 2026-09-06 — Phase 3 identity MERGED to main
 
 Session branch `claude/next-steps-phase-order-wwvyk9`; **`main` fast-forwarded to
 `8768f84`** and pushed. build.yml green (backend 84/84 + APK). Cloudflare Git-Builds

@@ -1,5 +1,42 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — Phase 4 started: the app switches to the Worker (REST, not the SDK)
+
+**What was built and why.** Phase 3 made the Worker require a signed Firebase token;
+Phase 4 makes the app actually send one — which is also what turns the phone's brain
+back on (it has been off since the Groq key was removed from GitHub). New
+`ai/ProxyClient.kt` (mirrors `GroqClient`: same `generate`/`chooseIndex`) posts to
+`<WORKER_URL>/chat` with `X-Proxy-Secret` + a `Bearer` ID token; `ai/Identity.kt`
+mints/refreshes that token. `Brain` prefers the proxy when configured, else falls back
+to Groq/Gemini. Because `Brain` is the app's single model call-site, `AssistantEngine`
+was not touched — only one `Identity.init(applicationContext)` line in `MainActivity`.
+
+**The design decision: REST, not the Firebase SDK.** The plan anticipated the SDK, but
+here the SDK is the wrong tool: it drags in the `google-services` Gradle plugin, which
+**fails the build outright without a committed `google-services.json`** — a file that
+carries the project's API key, which this project injects rather than commits. The SDK
+ultimately just calls the Auth REST endpoints, and for an anonymous token that is all we
+need. So `Identity` calls `accounts:signUp` and `securetoken/token` directly: it needs
+only the public web api key we already have (no Android-app registration, no json, no new
+secret), it is pure `HttpURLConnection`+`org.json` so its parsing unit-tests off-device,
+and it dodges the plugin's fragility. Google sign-in / account linking (Phase 6,
+subscriptions) is the one thing this can't do and isn't needed until then.
+
+**Why it's testable but not yet verified.** The trust-worthy parts are pure: payload
+shape, reply/error parsing, and both auth-response formats (identitytoolkit is camelCase,
+securetoken snake_case — a mismatch would silently break refresh) — all covered by
+`ProxyClientTest`/`IdentityParseTest`. But Android can't be compiled or run in a Claude
+session (no SDK, Gradle can't fetch through the proxy), so CI is the first compiler and
+the phone is the first real run. This is pushed to the branch **unverified beyond careful
+review + those unit tests**; it is NOT merged to main, and needs an on-device check
+(a command works; Diagnostics shows provider "Worker") before it is done.
+
+**Config with no new setup.** BuildConfig gains `WORKER_URL` (public default),
+`FIREBASE_API_KEY` (reuses the existing `FIREBASE_WEB_API_KEY` repo Variable), and
+`PROXY_SECRET` (existing repo secret) — so CI needs nothing new. Note: the Worker checks
+the app secret AND the token, so the app must carry both; shipping the proxy secret in the
+APK is the known, accepted tradeoff that Phase 5 (Play Integrity) closes.
+
 ## 2026-09-06 — Phase 3 follow-through: the eval authenticates like a real client
 
 **What was built and why.** Activating Phase 3 (the Worker requiring a signed

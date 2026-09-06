@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.jarvis.os.ai.Identity
 import com.jarvis.os.assistant.AssistantEngine
 import com.jarvis.os.ui.home.JarvisApp
 import com.jarvis.os.ui.theme.JarvisPalette
@@ -56,6 +57,8 @@ class MainActivity : ComponentActivity() {
         installSplash()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Lets the anonymous Firebase identity persist across restarts (Phase 4).
+        Identity.init(applicationContext)
         engine = AssistantEngine(applicationContext)
         setContent {
             // Held above the theme so a change repaints the whole app immediately,

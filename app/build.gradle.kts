@@ -13,6 +13,23 @@ val groqApiKey: String = (project.findProperty("GROQ_API_KEY") as String?)
     ?: System.getenv("GROQ_API_KEY")
     ?: ""
 
+// Phase 4 — the app talks to the Worker instead of Groq directly.
+// WORKER_URL is public and defaults to the live Worker, so the proxy path works even
+// when nothing is passed. FIREBASE_API_KEY is the project's public web api key (used
+// only to mint an anonymous ID token). PROXY_SECRET gates the app and is a real
+// secret — injected at build time, never committed — exactly like the model keys.
+// Blank-safe: an unset GitHub Variable arrives as an empty string, not absent, so
+// `?:` alone would let "" defeat the default. takeIf keeps the fallback working.
+val workerUrl: String = (project.findProperty("WORKER_URL") as String?)?.takeIf { it.isNotBlank() }
+    ?: System.getenv("WORKER_URL")?.takeIf { it.isNotBlank() }
+    ?: "https://superfoodapp.goformanoj.workers.dev"
+val firebaseApiKey: String = (project.findProperty("FIREBASE_WEB_API_KEY") as String?)
+    ?: System.getenv("FIREBASE_WEB_API_KEY")
+    ?: ""
+val proxySecret: String = (project.findProperty("PROXY_SECRET") as String?)
+    ?: System.getenv("PROXY_SECRET")
+    ?: ""
+
 android {
     namespace = "com.jarvis.os"
     compileSdk = 36
@@ -26,6 +43,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
         buildConfigField("String", "GROQ_API_KEY", "\"$groqApiKey\"")
+        buildConfigField("String", "WORKER_URL", "\"$workerUrl\"")
+        buildConfigField("String", "FIREBASE_API_KEY", "\"$firebaseApiKey\"")
+        buildConfigField("String", "PROXY_SECRET", "\"$proxySecret\"")
     }
 
     signingConfigs {

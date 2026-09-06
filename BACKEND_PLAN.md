@@ -228,7 +228,11 @@ a documented bypass. The app sending the token is Phase 4.
 1. `ProxyClient` mirroring `GroqClient`'s shape, slotted in beside the existing two behind
    `Brain.generate()` (`app/src/main/java/com/jarvis/os/ai/Brain.kt`) — the app's only call site
    for a model, so there is no call-site churn. **Do not touch `AssistantEngine`.**
-2. Firebase Auth dependency for a cached ID token (refresh ≈1h).
+2. A cached ID token (refresh ≈1h). **Implemented via the Firebase Auth REST API, not
+   the SDK** (`ai/Identity.kt`): the `google-services` plugin hard-fails without a
+   committed `google-services.json`, which conflicts with this project's inject-don't-
+   commit rule for keys. REST needs only the public web api key. (Revisit the SDK at
+   Phase 6, when Google sign-in / account linking is actually needed.)
 3. Behind a flag, with the direct path as fallback while it proves out.
 4. **`SystemPrompt.kt` moves server-side** — from here a prompt fix is a deploy.
 5. Remove the `BuildConfig` keys once the proxy is the default path.
@@ -298,7 +302,10 @@ Google's JWK endpoint) and, once `FIREBASE_PROJECT_ID` is set, requires a signed
 backend tests green); it stays dormant until the user creates a Firebase project
 and supplies the project id, so it is safe to deploy now with no behaviour change.
 
-**Phase 4 (app → Worker) not started.** The app still talks to Groq directly and is
-untouched — and its direct brain is currently OFF because the `GROQ_API_KEY` GitHub
-secret was removed (restored only by Phase 4 or re-adding the secret). No
-Firebase/Billing/Play dependency in `app/build.gradle.kts` yet.
+**Phase 4 (app → Worker): STARTED on the branch, unverified.** `ai/ProxyClient.kt`
+(mirrors `GroqClient`) + `ai/Identity.kt` (anonymous token via the Auth **REST API**,
+not the SDK — see the Phase 4 section above and `JARVIS_MEMORY.md`) route `Brain`
+through the Worker; `AssistantEngine` untouched. Config via BuildConfig (`WORKER_URL`,
+`FIREBASE_API_KEY` from the existing `FIREBASE_WEB_API_KEY` Variable, `PROXY_SECRET`).
+Off-device unit tests added. **Not merged; needs CI compile + on-device test** (the
+phone regains its brain here). No Billing/Play dependency yet.

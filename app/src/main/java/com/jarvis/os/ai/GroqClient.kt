@@ -159,7 +159,8 @@ object GroqClient {
         return number.takeIf { it in 1..options.size }
     }
 
-    private val CHOOSER_PROMPT = """
+    // internal so ProxyClient can reuse the one copy of this prompt.
+    internal val CHOOSER_PROMPT = """
         You match a description to one item in a list of things visible on a phone screen.
         Reply with ONLY the number of the best match. Reply with 0 if nothing genuinely matches.
         Never explain, never add words, never invent an option that is not listed.

@@ -3,15 +3,18 @@ package com.jarvis.os.ai
 import com.jarvis.os.data.ChatTurn
 
 /**
- * Chooses which AI provider answers. Groq is preferred (free, no billing);
- * Gemini is used if only its key is present. Both receive the conversation
- * history and a grounding [context].
+ * Chooses which AI provider answers. The Worker ([ProxyClient]) is preferred once
+ * configured — it holds the key, meters per user, and serves the server-side system
+ * prompt (Phase 4). If it is not configured, this falls back to the direct providers:
+ * Groq (free, no billing), then Gemini. All receive the conversation history and a
+ * grounding [context].
  */
 object Brain {
 
-    fun hasKey(): Boolean = GroqClient.hasKey() || GeminiClient.hasKey()
+    fun hasKey(): Boolean = ProxyClient.isConfigured() || GroqClient.hasKey() || GeminiClient.hasKey()
 
     fun providerName(): String = when {
+        ProxyClient.isConfigured() -> "Worker"
         GroqClient.hasKey() -> "Groq"
         GeminiClient.hasKey() -> "Gemini"
         else -> "none"
@@ -30,7 +33,9 @@ object Brain {
         tier: Tier = Tier.SMART,
         systemOverride: String? = null,
     ): String =
-        if (GroqClient.hasKey()) {
+        if (ProxyClient.isConfigured()) {
+            ProxyClient.generate(messages, context, systemOverride = systemOverride, tier = tier)
+        } else if (GroqClient.hasKey()) {
             GroqClient.generate(messages, context, systemOverride = systemOverride, tier = tier)
         } else {
             GeminiClient.generate(messages, context, systemOverride = systemOverride)
@@ -43,17 +48,16 @@ object Brain {
      * only needs to hear "OK" was costing as much as a real conversation turn and
      * pushing the account toward its tokens-per-minute limit.
      */
-    suspend fun ping(): String =
-        if (GroqClient.hasKey()) {
-            GroqClient.generate(
-                messages = listOf(ChatTurn(ChatTurn.USER, "Reply with just: OK")),
-                context = "",
-                systemOverride = "Reply with exactly: OK",
-                tier = Tier.FAST,
-            )
-        } else {
-            GeminiClient.generate(listOf(ChatTurn(ChatTurn.USER, "Reply with just: OK")), "")
+    suspend fun ping(): String {
+        val probe = listOf(ChatTurn(ChatTurn.USER, "Reply with just: OK"))
+        return when {
+            ProxyClient.isConfigured() ->
+                ProxyClient.generate(probe, "", systemOverride = "Reply with exactly: OK", tier = Tier.FAST)
+            GroqClient.hasKey() ->
+                GroqClient.generate(probe, "", systemOverride = "Reply with exactly: OK", tier = Tier.FAST)
+            else -> GeminiClient.generate(probe, "")
         }
+    }
 
     /**
      * Which of the things currently on screen matches [description]? Returns a
@@ -67,6 +71,9 @@ object Brain {
      * this returns null and the step reports an honest failure rather than
      * tapping something arbitrary.
      */
-    suspend fun choose(description: String, options: List<String>): Int? =
-        if (GroqClient.hasKey()) GroqClient.chooseIndex(description, options) else null
+    suspend fun choose(description: String, options: List<String>): Int? = when {
+        ProxyClient.isConfigured() -> ProxyClient.chooseIndex(description, options)
+        GroqClient.hasKey() -> GroqClient.chooseIndex(description, options)
+        else -> null
+    }
 }
