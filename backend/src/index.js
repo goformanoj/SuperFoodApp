@@ -17,6 +17,7 @@ import { modelsFor } from './models.js'
 import { d1Store } from './db.js'
 import { MIGRATIONS } from './schema.js'
 import { SYSTEM_PROMPT } from './systemPrompt.js'
+import { dropSecretMemories } from './guards.js'
 import { groqProvider } from './providers/groq.js'
 
 /**
@@ -125,8 +126,10 @@ export function createWorker({ store, provider, proxySecret = null, now = () => 
       const outTok = result.usage?.completion_tokens ?? 0
       await store.addUsage(uid, day, inTok, outTok)
 
+      // Rule 6 guard: a code/PIN/password must never reach the device's memory,
+      // whatever the model emitted. Strip secret <<REMEMBER>> markers server-side.
       return Response.json({
-        reply: result.text,
+        reply: dropSecretMemories(result.text),
         model: result.model,
         plan,
         usage: { input: inTok, output: outTok },
