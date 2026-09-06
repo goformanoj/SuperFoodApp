@@ -11,6 +11,30 @@ import org.junit.Test
  */
 class ScreenMatchTest {
 
+    // --- normalizeLabel: strip an appended argument the model adds to a tap ---
+
+    @Test
+    fun `a trailing quoted argument is dropped from a tap label`() {
+        // The device trace that motivated this: <<TAP|Search "milk">> matched no
+        // control, because the control is just "Search".
+        assertEquals("Search", ScreenMatch.normalizeLabel("""Search "milk""""))
+        assertEquals("Search", ScreenMatch.normalizeLabel("""Search "organic honey""""))
+    }
+
+    @Test
+    fun `a fully quoted label is unwrapped`() {
+        assertEquals("Search", ScreenMatch.normalizeLabel(""""Search""""))
+        assertEquals("milk", ScreenMatch.normalizeLabel(""""milk""""))
+    }
+
+    @Test
+    fun `a plain label is returned untouched, apostrophes included`() {
+        assertEquals("Add to cart", ScreenMatch.normalizeLabel("Add to cart"))
+        assertEquals("Add to cart", ScreenMatch.normalizeLabel("  Add to cart  "))
+        // An apostrophe is not a quote — a real contact/label must keep it.
+        assertEquals("Mom's chat", ScreenMatch.normalizeLabel("Mom's chat"))
+    }
+
     // --- fieldScore tiers (inputs are already normalised, as callers guarantee) ---
 
     @Test

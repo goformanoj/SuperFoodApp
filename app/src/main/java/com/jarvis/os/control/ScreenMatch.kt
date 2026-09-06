@@ -16,6 +16,32 @@ internal object ScreenMatch {
     /** Bare 4-8 digit runs — one-time codes — are masked before leaving the device. */
     private val OTP_LIKE = Regex("""\b\d{4,8}\b""")
 
+    /** Double / smart double quotes. Apostrophes are NOT here — "O'Brien" must survive. */
+    private val QUOTES = setOf('"', '“', '”')
+
+    /**
+     * Clean a tap LABEL before it is matched to a control.
+     *
+     * The model routinely appends the value it is acting on to the control name —
+     * a device trace had `<<TAP|Search "milk">>`, and no control is called
+     * `search "milk"`, so the tap found nothing and the errand went in circles.
+     * The real control is just "Search". So: unwrap a fully-quoted label
+     * (`"Search"` → `Search`) and drop a trailing quoted argument
+     * (`Search "milk"` → `Search`). Only double quotes trigger this, never an
+     * apostrophe, so a genuine label keeps its punctuation. Conservative on
+     * purpose: it removes only what is unambiguously an appended argument, so a
+     * plain label like "Add to cart" is returned untouched.
+     */
+    fun normalizeLabel(label: String): String {
+        var s = label.trim()
+        if (s.length >= 2 && s.first() in QUOTES && s.last() in QUOTES) {
+            s = s.substring(1, s.length - 1).trim()
+        }
+        val firstQuote = s.indexOfFirst { it in QUOTES }
+        if (firstQuote > 0) s = s.substring(0, firstQuote).trim()
+        return s
+    }
+
     /**
      * Best score for a control whose visible text is [text] and content-description
      * is [desc], matched against an already-normalised [query]. Higher = better;

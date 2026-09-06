@@ -36,7 +36,13 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
 - **Play-compliant from day one** (saves a rewrite in Part E): `FOREGROUND_SERVICE` + `FOREGROUND_SERVICE_MICROPHONE` permissions, `android:foregroundServiceType="microphone"`, and a persistent notification the user can see and stop.
 - **Acceptance:** open app + command → follow-ups heard; open/close only → silent; "thank you jarvis" → stops and returns the mic.
 
-### Part C — accuracy ⏸️
+### Part C — accuracy 🔨 (in progress)
+- **Iteration 1 (2026-09-06):** `ScreenMatch.normalizeLabel` strips an appended
+  argument from a tap label (`Search "milk"` → `Search`) so a correct plan lands on
+  the real control. Much of the rest already exists — `renderScreen` tags
+  fields/buttons and redacts password/OTP; `awaitContentChange` verifies a tap
+  changed the screen — so Part C is now iterative tuning against device traces
+  (per-app search hints, disambiguation on ties, verify-and-retry).
 - **Goal:** stop the AI guessing labels; make taps land.
 - **Approach:** summarize the current window's accessibility tree (visible text/labels) and inject it into the LLM context so it taps real on-screen text; after a tap, verify the window/content changed and retry once if not; when matches tie, ask a one-line disambiguation; add small per-app hints (WhatsApp/YouTube search entry points).
 - **Privacy constraint (non-negotiable, see [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md)):** screen text sent to a third-party LLM is a sensitive-data transfer — it needs explicit consent and **redaction of password / OTP / payment fields before anything leaves the device**.

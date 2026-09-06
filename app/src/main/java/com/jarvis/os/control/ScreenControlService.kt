@@ -680,7 +680,7 @@ class ScreenControlService : AccessibilityService() {
         // so a stale entry fails exactly like any other wrong label.
         val known = ControlVocabulary.candidatesFor(
             rootInActiveWindow?.packageName?.toString(),
-            label,
+            ScreenMatch.normalizeLabel(label),
         )
         for (candidate in known) {
             val (altNode, altScore) = bestMatch(root, candidate)
@@ -704,7 +704,9 @@ class ScreenControlService : AccessibilityService() {
 
     /** Best-scoring clickable node for [label] anywhere in the tree, with its score. */
     private fun bestMatch(root: AccessibilityNodeInfo, label: String): Pair<AccessibilityNodeInfo?, Int> {
-        val query = label.trim().lowercase()
+        // Strip an appended argument the model tends to add ("Search \"milk\"" ->
+        // "Search") so the query is the control name the screen actually shows.
+        val query = ScreenMatch.normalizeLabel(label).lowercase()
         if (query.isEmpty()) return null to 0
         var best: AccessibilityNodeInfo? = null
         var bestScore = 0

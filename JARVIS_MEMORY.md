@@ -1,5 +1,31 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — Part C iteration 1: a correct plan was dying on a bad label
+
+**What the evidence showed.** In the Blinkit trace the plan was correct and the model
+could see the screen — it failed at *execution*: it emitted `<<TAP|Search "milk">>`,
+i.e. the control name with the value it was acting on appended in quotes. `bestMatch`
+queried for `search "milk"`, no control has that text, the per-app vocabulary fallback
+was keyed on the same compound and also missed, so the tap found nothing and the errand
+looped until the circuit-breaker stopped it. The lesson: the model will not always name
+a control cleanly, so the executor must be forgiving of a label that carries an
+argument — the plan was good; the string was slightly wrong.
+
+**The fix, kept pure and small.** `ScreenMatch.normalizeLabel` unwraps a fully-quoted
+label and strips a trailing quoted argument (`Search "milk"` → `Search`), double quotes
+only so an apostrophe in a real label/contact survives. It is wired into `bestMatch`'s
+query and the `ControlVocabulary` fallback in `seek`, so the same imperfect label now
+resolves to Blinkit's real "Search for atta, dal…" box (directly or via the per-app
+literal). Three JVM tests pin it. This is the accuracy work living where it is testable
+off-device, as `ScreenMatch` was designed for.
+
+**Scope note for the next session.** Much of Part C was already built — `renderScreen`
+tags editable fields / clickables and redacts password + OTP, and `awaitContentChange`
+already verifies a tap changed the screen. So Part C is now iterative *tuning* against
+device traces, not a greenfield build: the next levers are richer per-app search hints in
+`ControlVocabulary`, a one-line disambiguation when matches tie, and tuning the
+verify-and-retry — each of which needs an on-device trace to calibrate, not a guess.
+
 ## 2026-09-06 — Phase 4 works on device; the retry that belonged on the server
 
 **What the evidence showed.** A device trace (realme RMX3868, Android 15) proved Phase 4:

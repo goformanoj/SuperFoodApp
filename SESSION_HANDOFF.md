@@ -1,6 +1,21 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-06 — Phase 4 works on device; transient error fixed
+## Current position — 2026-09-06 — Part C started (execution accuracy)
+
+`main` @ `b754705` (Phase 4 live; provider retry deployed). On the branch, **Part C
+iteration 1**: `ScreenMatch.normalizeLabel` strips an appended argument from a tap
+label (`Search "milk"` → `Search`), wired into `bestMatch` + the `seek` vocabulary
+fallback, so a correct plan with a slightly-wrong label lands on the real control.
+3 pure tests. **On-device test owed:** install the new APK and retry "go to Blinkit
+and add milk and bread" — the earlier circling was this label miss.
+
+**Part C is now iterative tuning, not greenfield** — `renderScreen` already tags
+fields/buttons and redacts password+OTP, and `awaitContentChange` verifies a tap
+changed the screen. Next levers (each needs a device trace to calibrate): per-app
+search hints in `ControlVocabulary`, a one-line disambiguation on tied matches,
+verify-and-retry tuning.
+
+### Earlier — Phase 4 works on device; transient error fixed
 
 Session branch `claude/next-steps-phase-order-wwvyk9`. **Phase 4 is confirmed on a real
 phone** (realme RMX3868): Diagnostics shows **Provider: Worker** and real plans come
