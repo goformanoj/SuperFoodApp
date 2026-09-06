@@ -26,8 +26,11 @@ Backend-only change; **nothing half-built.**
 ### Start here next session
 1. **Confirm CI's `backend` job is green** for the pushed commit, then fast-forward
    `main`. (Backend is gated by `node --test`, not the APK artifact.)
-2. **Blocked on the user for activation:** create a Firebase project, enable
-   Anonymous auth, hand over the **project id** → set `FIREBASE_PROJECT_ID`, deploy.
+2. **Firebase side DONE by the user (2026-09-06):** project `jarvis-os-4efe3`
+   created, **Anonymous auth enabled**, and `FIREBASE_PROJECT_ID = "jarvis-os-4efe3"`
+   is set in `backend/wrangler.toml`. Verification **activates on the next deploy**
+   of `main` (Cloudflare Git-Builds). So: merge this branch to `main` once CI is
+   green, and the Worker begins requiring a signed Bearer token.
 3. **When activating, the eval harness needs attention** — it sends `X-Uid`, which
    is ignored once verification is on. Give it a minted token or a documented
    first-party bypass before flipping the switch.
