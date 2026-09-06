@@ -48,7 +48,7 @@ if (!system) {
 // (the first baseline lost 4 rows to HTTP 502 rate_limited). Space the calls out
 // and, when the Worker reports a rate limit, wait the suggested window and retry
 // so a throttle does not read as a plan-quality failure.
-const SPACING_MS = 2000
+const SPACING_MS = 3000
 const MAX_RETRIES = 3
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -68,9 +68,13 @@ async function ask(prompt, context, attempt = 0) {
   })
   const text = await res.text()
   if (!res.ok) {
-    const m = /rate_limited:(\d+)s/.exec(text)
-    if (m && attempt < MAX_RETRIES) {
-      await sleep((Number(m[1]) + 1) * 1000)
+    // Retry ANY upstream error, not just rate limits: Groq's free tier
+    // intermittently returns http_400/5xx under rapid fire (run #7 lost 4 rows
+    // to transient http_400 that passed on other runs). Wait the suggested
+    // rate-limit window if given, else a few seconds, and try again.
+    if (attempt < MAX_RETRIES) {
+      const m = /rate_limited:(\d+)s/.exec(text)
+      await sleep(m ? (Number(m[1]) + 1) * 1000 : 4000)
       return ask(prompt, context, attempt + 1)
     }
     return { error: `HTTP ${res.status}: ${text.slice(0, 160)}` }

@@ -35,9 +35,13 @@ The tune worked: run #6 scored **13/13**. The scenario set was then grown from 1
 irreversible, E10 never-store-an-OTP). ~22 rows stay manual (mid-errand screen
 state, multi-turn, safety judgement). **Cost note:** the ~2k-token system prompt
 rides every call, so one run fits ~30 calls before the 60k/day cap — reaching all
-50 in one run needs a higher cap or a split. **Next: run the 28-row set for the
-new baseline, then tune whatever genuinely fails.** Separately, the user's
-**ask-mid-execution** request is device-side Phase 4
+50 in one run needs a higher cap or a split. The 28-row set ran **21/28**: 4 transient Groq `http_400` (noise — pass on other
+runs), and 3 rows where the assistant behaved well but assertions were too strict
+(B2 asked which flavor, B4 confirmed before checkout, D7 asked what to play).
+Hardened the harness: `run.mjs` retries any upstream error (not just rate-limits)
+and spaces calls 3s; B2/B4/D7 are now `askOk`. **Next: re-run for a clean score;
+one genuine open question is whether D7 opens Amazon Music before asking.**
+Separately, the user's **ask-mid-execution** request is device-side Phase 4
 (`AgentLoop`/`executeScreen`/`FollowUp`). Separately, the user asked for **ask-mid-execution** — device-side
 Phase 4 (`AgentLoop`/`executeScreen`/`FollowUp`), not the backend.
 
