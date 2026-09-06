@@ -250,9 +250,27 @@ with consent and redaction, they become a replay corpus — today that exists on
 - **Paid price** and the paid-tier fair-use hard cap.
 - **Cloudflare account** (Phase 1) and **Firebase project** (Phase 3).
 
-## Status
+## Status (updated 2026-09-06)
 
-**Phase 0: done** — `backend/` exists, 25 tests green, gated in CI.
-**Phase 1 is next and is blocked on a Cloudflare account.** Nothing else has started; there is
-still no Firebase, Billing or Play dependency in `app/build.gradle.kts`, and the app is
-untouched — the phone still talks to Groq directly until Phase 4.
+**Phase 0: done** — `backend/` exists, tests green, gated in CI.
+
+**Phase 1: DONE** — the Worker is deployed and live at
+`superfoodapp.goformanoj.workers.dev` (Cloudflare Git-Builds from `main`). D1
+`jarvis` created + migrated; `GROQ_API_KEY` and `PROXY_SECRET` are runtime secrets;
+`/health` green; end-to-end metering confirmed in D1. Models on
+`openai/gpt-oss-20b`/`120b`.
+
+**Phase 2: substantially built** — `scripts/eval/` is a marker-shape eval (28
+scenarios) run on-demand by `.github/workflows/eval.yml`. Score ~25–28/28 (small-
+model variance on the ask-vs-act boundary). Two things landed on the way: the
+system prompt moved server-side (`backend/src/systemPrompt.js`, the first half of
+Phase 4) so a prompt fix is a deploy; and a **Rule 6 safety guard**
+(`backend/src/guards.js#dropSecretMemories`) that stops the model storing a
+secret/OTP. Remaining Phase 2: grow toward the 50/100 rows (needs the 60k/day free
+token-cap workaround — one run fits ~30 calls).
+
+**Phase 3 (Firebase identity) and Phase 4 (app → Worker) not started.** The app
+still talks to Groq directly and is untouched — and its direct brain is currently
+OFF because the `GROQ_API_KEY` GitHub secret was removed (restored only by Phase 4
+or re-adding the secret). No Firebase/Billing/Play dependency in
+`app/build.gradle.kts` yet.

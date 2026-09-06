@@ -1,6 +1,75 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-05 (latest) — backend Phase 1 live, Phase 2 wiring
+## Current position — 2026-09-06 (handed off) — backend live, Phase 2 eval running
+
+Session branch `claude/cloudflare-backend-databases-fatxx4`, `main` fast-forwarded
+to it. Working tree clean. **Nothing is half-built.**
+
+**What shipped this session (Part E backend):**
+- **Phase 1 DONE — the Worker is live.** `superfoodapp.goformanoj.workers.dev`
+  serves `/chat` and `/health` (→ `{"ok":true}`). Deployed from `main` via
+  Cloudflare's Git-Builds; D1 `jarvis` (`1dc3695c…`) holds `users`+`usage_daily`;
+  `GROQ_API_KEY` + `PROXY_SECRET` are runtime secrets; `models.js` on
+  `openai/gpt-oss-20b`/`120b`. End-to-end proven in D1 (metered usage).
+- **System prompt moved server-side** (`backend/src/systemPrompt.js`, the Worker
+  default via `body.system ?? SYSTEM_PROMPT`) — first half of Phase 4; a prompt
+  fix is now a deploy.
+- **Phase 2 eval harness** (`scripts/eval/`): 28 marker-shape scenarios from
+  `docs/SCREEN_CONTROL_EVAL.md`, run on-demand by `.github/workflows/eval.yml`
+  (`workflow_dispatch`, non-gating, per-run uid so the free cap never blocks it).
+  Trajectory across runs: 4/13 → 13/13 (after one prompt tune) → **~25/28** on the
+  harder set. It has already earned its keep twice: it forced the context-fairness
+  fix, and it **caught a real safety bug**.
+- **Safety guard (Rule 6):** the eval caught the model storing an OTP
+  (`<<REMEMBER|458213>>`). Added `backend/src/guards.js#dropSecretMemories`, wired
+  into `/chat`, which strips any secret-looking `<<REMEMBER>>` (code/PIN/password/
+  card, or a 4+ digit run) before the reply leaves the Worker — confirmed live
+  (E10 now passes). Prompt refusal also strengthened. **58 backend + 8 eval tests.**
+
+**The score oscillates 25–28/28 by design, not regression:** at temperature 0.7
+the small model wobbles on the *ask-vs-act* boundary (a run's misses are rows like
+B1/C2/D8 where it asked "which chat?"/"which app's notifications?" instead of
+acting, then acts next run). The safety guard is deterministic (code, not prompt);
+the remaining wobble is a small-model ceiling — diminishing returns from more
+prompt tuning, and a whack-a-mole risk (push it to act → it acts when it should ask).
+
+### Start here next session (backend track) — pick one
+
+1. **Grow the eval toward 50** — needs the token-cap workaround (one run fits ~30
+   calls under the 60k/day free cap; split the run or raise the cap). ~22 rows are
+   still manual (mid-errand screen state, multi-turn F1/F2, delete-all judgement).
+2. **Phase 3 — identity (Firebase).** Replace the stubbed `X-Uid`; verify the RS256
+   ID token by hand in the Worker (Admin SDK does NOT run on Workers — the plan's
+   biggest trap). See `BACKEND_PLAN.md` §Phase 3.
+3. **Phase 4 — app switches to the Worker.** New `ProxyClient` behind
+   `Brain.generate()`; then remove the app's Groq key for good.
+
+### Two things the user flagged, both device-side (Phase 4), NOT backend
+- **Ask-mid-execution:** when the executor is stuck mid-errand it should ask a
+  question, not freeze at a screen (`AgentLoop`/`executeScreen`/`FollowUp`).
+- The app's direct brain is currently **OFF**: the user removed `GROQ_API_KEY`
+  from GitHub secrets, so new APK builds have no key. Correct end-state, but early
+  — the app only regains a brain once Phase 4 points it at the Worker (or re-add
+  the GitHub secret to restore the direct path meanwhile).
+
+### Residual noted, not done
+- The secret guard covers the **storage** path (`<<REMEMBER>>`). A spoken echo of a
+  code phrased without a marker still needs an on-device `SpokenText` scrub (there
+  is precedent in `DebugLog.redact`).
+
+### Gotchas earned this session
+- Cloudflare Git-Builds deploys the **production branch (`main`)**; **root
+  directory must be `backend`**; a committed `database_id` must exist in the account;
+  **runtime** secrets ≠ **build** variables (`/health` is the one-tap proof both
+  runtime secrets landed).
+- GitHub: `${{ vars.X }}` = repo **Variables**, `${{ secrets.X }}` = **Secrets** (a
+  value in the wrong tab reads empty, no error); this session's integration is
+  **read-only on Actions** (can't dispatch — the user clicks Run); GitHub **mobile
+  web hides the "Run workflow" button** (use desktop / "Desktop site").
+
+---
+
+## Session log — 2026-09-05/06 (detail; the summary above is authoritative)
 
 The Cloudflare Worker is **deployed and serving**, with the system prompt now
 its server-side default. `main` @ `aedd537`,

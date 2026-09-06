@@ -1,5 +1,30 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — session handoff: the guard holds, the score oscillates by design
+
+**What the evidence showed.** Run #9 (after the secret guard shipped) scored 25/28
+and confirmed the two things that mattered: **E10 now passes** — the OTP guard
+works live — and D4/D5 (the context/askOk fixes) pass. The three misses were all
+the same benign kind: the model asked a clarifying question ("which chat?", "which
+app's notifications?") where it had acted a run earlier. Across runs the score
+oscillates 25–28/28 with the same rows flipping — this is temperature-0.7
+non-determinism on the ask-vs-act boundary, a small-model ceiling, not a
+regression. Worth remembering before chasing any single red row with more prompt
+tuning: it is whack-a-mole past this point, and pushing the model to act more risks
+it acting when it should ask.
+
+**Why the guard, not more prompting.** The one deterministic fix this needed was
+the safety guard (`dropSecretMemories`), because a code guard cannot flip between
+runs the way a prompt-followed rule does — the Rule 6 lesson, confirmed by the
+eval catching the violation in the first place.
+
+**Handoff state.** Phase 1 done (Worker live, D1 metered, secrets set); system
+prompt server-side; Phase 2 eval built, tuned, safety-guarded; 58 backend + 8 eval
+tests green. Open backend choices: grow eval → 50 (needs the 60k/day cap
+workaround), Phase 3 Firebase identity, Phase 4 app→Worker. Device-side and flagged
+by the user: ask-mid-execution (executor asks instead of freezing) and the app's
+brain is OFF until Phase 4 (GROQ key removed from GitHub). See `SESSION_HANDOFF.md`.
+
 ## 2026-09-06 — the eval earned its keep: it caught the model storing an OTP
 
 **What the evidence showed.** The hardened 28-row run scored 25/28, and one of the
