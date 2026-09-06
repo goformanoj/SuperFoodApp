@@ -1,5 +1,15 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-05 (evening) — eval gets a per-run uid so the free cap can't block it
+
+**What/why.** Run #4 hit the 60k/day free token cap on uid `eval-harness` (429
+quota_exhausted) — the per-user daily quota working exactly as designed, but it
+also meant the eval could not be re-run until the UTC reset. Since the eval is the
+owner's own account and each run is ~40 short calls (well under one uid's cap), the
+workflow now sets `EVAL_UID: eval-${{ github.run_id }}`, giving every run its own
+fresh allowance. The cap still protects real users; the eval simply stops tripping
+over it. No behaviour change to the Worker.
+
 ## 2026-09-05 (evening) — the eval was unfair: the model was asking, not failing
 
 **What the evidence showed.** Logging the model's actual reply on each failing
