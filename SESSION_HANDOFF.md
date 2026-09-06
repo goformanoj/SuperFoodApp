@@ -7,13 +7,11 @@ Session branch `claude/next-steps-phase-order-wwvyk9`; **`main` fast-forwarded t
 redeploys `main`, activating token verification. Backend-only change; **nothing
 half-built.**
 
-**Live-verify still owed** — this session cannot reach `workers.dev` (egress 403),
-so the deployed behaviour was not checked from here. Do this next: after the deploy,
-`GET /health` → `{"ok":true}`, then run the **eval** workflow (it is now token-authed
-via the `FIREBASE_WEB_API_KEY` repo Variable) and confirm the score is back to
-~25–28/28 — a wall of `401 no_token`/`unauthorized` means the token path is
-misconfigured, not the model. It WAS proven off-device with a real token before
-merge (anonymous sign-in → verified via `auth.js` against Google's live keys).
+**Live-verify DONE.** The eval (run #10, `main @ bd99c4f`) scored **28/28** against
+the deployed, verification-on Worker, authing with a real anonymous Firebase ID
+token — the definitive end-to-end proof (a broken token path would be all 401s).
+Phase 3 is fully live. (This session can't reach `workers.dev` itself — egress 403
+— so the eval workflow, which runs in CI, is how live checks are done from here.)
 
 **What shipped this session (Part E, Phase 3 — the server-side half):**
 - **`backend/src/auth.js`** verifies a Firebase ID token by hand (the Admin SDK is
