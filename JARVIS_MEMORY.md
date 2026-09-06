@@ -1,5 +1,26 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — context-fair eval hit 10/13, and the first evidence-based prompt tune
+
+**What the evidence showed.** With the eval now sending realistic grounding, run
+#5 scored 10/13 (up from 5/13) — proof that most earlier "failures" were the
+missing-context artifact, not the model. The three remaining misses, read from the
+logged replies (Rule 4), were precise and two were genuine: **E6** "set an alarm
+for 7:30 am" → *"should this alarm repeat on any days?"* (over-asking, because the
+ALARM section told it to ask about repeat for "a wake-up or routine" — it applied
+that to a plain one-off); **B1** "order milk and bread on blinkit" → *"would you
+like me to add…?"* (asking permission for an instruction already given clearly).
+**C2** was a transient `http_400` from Groq — it passed in other runs, so noise.
+
+**What was built.** First tune of the server-side `systemPrompt.js`, targeted at
+exactly those two: (1) alarms — once the time is clear, SET a single non-repeating
+alarm and suggest a label; only ask about days when the words imply a routine; (2)
+a general rule — when the user clearly names the action and its target, ACT rather
+than re-confirm, still confirming only before an irreversible step (checkout, pay,
+send, delete). No safety guard weakened (the checkout/send/delete confirmations
+stay). 53 backend tests green; deployed via main. Next run measures whether E6/B1
+flip to pass — the fast edit→deploy→re-run loop the server-side prompt enables.
+
 ## 2026-09-05 (evening) — eval gets a per-run uid so the free cap can't block it
 
 **What/why.** Run #4 hit the 60k/day free token cap on uid `eval-harness` (429

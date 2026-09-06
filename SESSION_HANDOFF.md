@@ -24,10 +24,15 @@ optional `context` field composed app-style; the eval sends a `DEFAULT_CONTEXT`
 53 backend + 8 eval tests green.
 
 The eval workflow now sets `EVAL_UID: eval-${{ github.run_id }}` — a fresh uid per
-run, so each draws its own 60k free allowance and the daily cap never blocks a run.
-**Next: re-run** for the real context-fair score, then tune
-`backend/src/systemPrompt.js` for the remaining true misses (E6 over-asks on a
-simple alarm). Separately, the user asked for **ask-mid-execution** — device-side
+run, so the daily cap never blocks a run. The context-fair run #5 scored **10/13
+(77%)** (up from 5/13). Remaining real misses: **E6** over-asked about repeat on a
+one-off alarm; **B1** over-confirmed a clear order ("would you like me to add…?").
+**C2** was a transient `http_400`, noise. First prompt tune shipped in
+`backend/src/systemPrompt.js` (alarms set a clear one-off; act on a clear
+action+target instead of re-confirming; still confirm before irreversible steps).
+**Next: re-run to measure the tune (expect E6/B1 to pass), then keep tuning /
+grow scenarios toward 100.** Separately, the user's **ask-mid-execution** request
+is device-side Phase 4 (`AgentLoop`/`executeScreen`/`FollowUp`). Separately, the user asked for **ask-mid-execution** — device-side
 Phase 4 (`AgentLoop`/`executeScreen`/`FollowUp`), not the backend.
 
 New gotchas this round:
