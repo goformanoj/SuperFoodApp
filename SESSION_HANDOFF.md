@@ -30,9 +30,15 @@ one-off alarm; **B1** over-confirmed a clear order ("would you like me to add…
 **C2** was a transient `http_400`, noise. First prompt tune shipped in
 `backend/src/systemPrompt.js` (alarms set a clear one-off; act on a clear
 action+target instead of re-confirming; still confirm before irreversible steps).
-**Next: re-run to measure the tune (expect E6/B1 to pass), then keep tuning /
-grow scenarios toward 100.** Separately, the user's **ask-mid-execution** request
-is device-side Phase 4 (`AgentLoop`/`executeScreen`/`FollowUp`). Separately, the user asked for **ask-mid-execution** — device-side
+The tune worked: run #6 scored **13/13**. The scenario set was then grown from 13
+→ **28** rows (more shopping/messaging/navigation + safety: E5 confirm-before-
+irreversible, E10 never-store-an-OTP). ~22 rows stay manual (mid-errand screen
+state, multi-turn, safety judgement). **Cost note:** the ~2k-token system prompt
+rides every call, so one run fits ~30 calls before the 60k/day cap — reaching all
+50 in one run needs a higher cap or a split. **Next: run the 28-row set for the
+new baseline, then tune whatever genuinely fails.** Separately, the user's
+**ask-mid-execution** request is device-side Phase 4
+(`AgentLoop`/`executeScreen`/`FollowUp`). Separately, the user asked for **ask-mid-execution** — device-side
 Phase 4 (`AgentLoop`/`executeScreen`/`FollowUp`), not the backend.
 
 New gotchas this round:

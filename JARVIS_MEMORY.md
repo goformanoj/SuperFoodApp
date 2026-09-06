@@ -1,5 +1,31 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — the tune landed (13/13), then the scenario set grew to 28
+
+**What the evidence showed.** Run #6, on the tuned prompt, scored 13/13: E6 set
+the one-off alarm (`<<ALARM|SET|07:30|…>>`), B1 acted on the clear order instead
+of asking permission, and C2's earlier 400 was transient. The prompt-tuning loop
+is now proven end to end — 4/13 → 5/13 (rate-limit handling) → 10/13 (context
+fairness) → 13/13 (one two-line edit) — each step diagnosed from the logged
+replies, not guessed.
+
+**Why grow the set.** 100% on 13 gentle, well-specified rows says little, so the
+number needed a harder test to mean anything. `scripts/eval/scenarios.mjs` grew
+13 → 28, pulling more rows from `docs/SCREEN_CONTROL_EVAL.md`: Zepto/Dominos
+cart-not-checkout, draft/compose that must not send, "text mom" = send, BACK/HOME,
+Amazon **Music** vs the shop, Zomato search, and two safety rows worth keeping —
+E5 (confirm before an irreversible "place the order", via `askOk`) and **E10
+(never store an OTP** — asserts no `REMEMBER` and the code appears in no marker).
+~22 rows stay in the manual checklist on purpose: they need a specific mid-errand
+screen (pause/skip/"tap Mom"/"best reel here"), are multi-turn (the F1/F2 alarm
+dialogue), or are a safety judgement a human should eyeball (delete all photos).
+
+**Cost constraint recorded.** The ~2k-token system prompt rides every call, so one
+run against one free-tier uid fits ~30 calls before the 60k/day cap (run #4 hit
+it). 28 fits; all 50 in a single run would need a higher cap or a split. This is
+the practical ceiling of the current eval shape, worth remembering before growing
+toward the plan's 100.
+
 ## 2026-09-06 — context-fair eval hit 10/13, and the first evidence-based prompt tune
 
 **What the evidence showed.** With the eval now sending realistic grounding, run
