@@ -396,8 +396,8 @@ object AgentLoop {
      * silently — the user needs to know it stopped, and where.
      */
     fun exhaustedMessage(goal: String): String =
-        "I've taken $MAX_STEPS steps towards \"$goal\" and I'm not there yet, so I've " +
-            "stopped rather than keep guessing. Tell me what to do next."
+        "I've taken $MAX_STEPS steps towards \"$goal\" and stopped without getting there. " +
+            "Tell me the next step and I'll do it."
 
     /**
      * What to say when the errand's own app never opened.
@@ -435,8 +435,8 @@ object AgentLoop {
         // The app-lock is internal, but its honest explanation is more useful than
         // the generic "can't see what to do", so it gets its own line.
         if (reason == LEFT_APP) {
-            return "I started heading into a different app than \"$goal\" needs, so I stopped " +
-                "rather than do the wrong thing. What next?"
+            return "That was about to open a different app than \"$goal\" needs, so I stopped. " +
+                "Which app should I use?"
         }
         val explanation = reason.trim()
         // Reasons JARVIS wrote for itself are diagnostics, not speech. A trace
@@ -447,11 +447,11 @@ object AgentLoop {
             INTERNAL_REASONS.none { explanation.equals(it, ignoreCase = true) } &&
             explanation.split(Regex("\\s+")).count { it.isNotBlank() } >= 3
         if (!speakable) {
-            return "I got stuck trying to \"$goal\" — I can't see what to do from this " +
-                "screen, so I've stopped rather than guess. What next?"
+            return "I couldn't finish \"$goal\" — this screen doesn't show the control I " +
+                "need. What next?"
         }
         val ended = if (explanation.last() in ".!?") explanation else "$explanation."
-        return "$ended I've stopped there rather than guess. What next?"
+        return "$ended What next?"
     }
 
     /**

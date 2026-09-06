@@ -1,5 +1,32 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — Part C: iteration 1 half-worked; the failure moved down a layer
+
+**What the evidence showed (second Blinkit trace).** Label-normalization did its job — the
+model now emits clean labels (`Tap(Search)`) and even tapped Blinkit's real, verbose
+search box (`Search for atta, dal, coke and more`); the `Search "milk"` compound miss is
+gone. But the errand still failed, and the trace shows why, one layer down: the errand
+loop **discards the original plan** (which was correct: OPEN Blinkit → TAP Search → TYPE
+bread → …) and re-derives each step live, and those per-step choices were worse — it
+tapped **Categories** first, **typed the misheard app-name "blanket"** instead of "bread",
+ran TYPE before any field was focused, and oscillated Search↔Categories until the
+circuit-breaker fired. So the accuracy problem is no longer "the tap can't match the
+label"; it is "the step-by-step re-planner makes bad decisions." That reframes iteration 2.
+
+**The iteration-2 fork (needs a decision, not a guess).** The loop was *deliberately* built
+to re-decide each step from the screen because a plan written blind can't know the real UI
+(recorded here previously). But this trace shows a *coherent, correct* plan being thrown
+away for worse live choices. So the fork: (a) **follow a coherent plan step-by-step**, only
+falling back to screen re-planning when a step actually fails — versus (b) keep re-planning
+but feed it better guidance (per-app search hints, "to search tap the box with the long
+placeholder, then type", stop it typing the app name). (a) is architectural and reverses a
+past decision; (b) is incremental and lower-risk. Not choosing blind — put it to the user.
+
+**Also this round:** removed the "I've stopped rather than guess" hedge from `AgentLoop`'s
+dead-end messages (user called it out) — they now state what happened and hand back
+plainly, with the test contract (names the goal, hands back, never speaks an internal
+reason) intact.
+
 ## 2026-09-06 — Part C iteration 1: a correct plan was dying on a bad label
 
 **What the evidence showed.** In the Blinkit trace the plan was correct and the model
