@@ -1,5 +1,37 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — Part C iteration 2: follow the plan; re-plan only on failure
+
+**What was built and why.** Iteration 1 (label normalization) proved the model plans
+correctly and even names the real search box — the failure had moved down a layer, into
+the errand loop, which *discarded* that correct plan and re-derived each step live
+(tapping Categories, typing the misheard app name "blanket"). The loop was built that way
+on purpose — the reasoning, recorded here before, is that step 2+ of an up-front plan was
+guessed against a screen that did not exist. But the trace disproved the corollary: a
+*coherent* plan like TAP Search → TYPE bread → ENTER → PICK first → TAP Add to cart is a
+better recipe than the per-step re-planner, because the label layer
+(`ScreenMatch`+`ControlVocabulary`) already maps a generic "Search" onto the app's real
+"Search for atta, dal…" box. So the executor no longer needs to *plan* each step, only to
+*resolve* it.
+
+**The change.** `driveErrand` now follows the plan's in-app steps in order
+(`AgentLoop.planTail` drops the leading Opens), and only re-plans from the model when a
+step fails on the screen or trips a guard — then the plan is dropped and the old
+model-driven loop takes over from the live screen. Each planned step passes the SAME
+guardrails as a model-chosen one via a new pure `AgentLoop.plannedMove` (app-lock,
+no-back-on-arrival, no-repeat, no whole-goal echo, and — unchanged and load-bearing —
+**confirm before an irreversible tap, carrying the exact step** so a confirmed "place
+order" runs THAT, not a freshly invented one). Bonus: no model round-trip per step while
+the plan holds, so a working errand is faster as well as more reliable. 8 pure tests.
+
+**The judgement worth keeping.** "Re-plan every step from the screen" and "follow the
+plan" are both right, for different inputs: re-planning wins when the plan is blind
+guesswork, following wins when the plan is a sound generic recipe and only the *labels*
+are unknown — which the label layer now resolves. The loop does both: follow while it
+lands, re-plan the moment it doesn't. Reversing a past architectural decision was the
+right call *because a trace showed the discarded plan outperforming its replacement* —
+not on taste.
+
 ## 2026-09-06 — Part C: iteration 1 half-worked; the failure moved down a layer
 
 **What the evidence showed (second Blinkit trace).** Label-normalization did its job — the

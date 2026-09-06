@@ -217,6 +217,20 @@ object AgentLoop {
     /** The leading app launches, which are safe to run before looking. */
     fun opensIn(steps: List<ScreenStep>): List<ScreenStep> = steps.takeWhile { it is ScreenStep.Open }
 
+    /**
+     * The in-app steps of an errand plan — everything after the leading app
+     * launches. This is the recipe the loop now FOLLOWS step by step (resolving
+     * each label against the live screen) rather than discarding: a device trace
+     * showed the per-step re-planner tap "Categories" and type the misheard app
+     * name, while the plan it threw away — TAP Search, TYPE bread, ENTER, PICK the
+     * first result, TAP Add to cart — was correct. The label layer
+     * ([com.jarvis.os.control.ScreenMatch] + ControlVocabulary) maps a generic
+     * "Search" onto the app's real box, which is what makes following it viable.
+     * The loop re-plans from the model only when a planned step trips a guard or
+     * fails on the screen.
+     */
+    fun planTail(steps: List<ScreenStep>): List<ScreenStep> = steps.dropWhile { it is ScreenStep.Open }
+
     /** The app an errand runs in — the first thing it opened — or empty. */
     fun appOf(steps: List<ScreenStep>): String =
         (steps.firstOrNull { it is ScreenStep.Open } as? ScreenStep.Open)?.app.orEmpty()
@@ -333,6 +347,41 @@ object AgentLoop {
             return AgentMove.Ask(confirmationFor(first), first)
         }
         return AgentMove.Act(first)
+    }
+
+    /**
+     * Validate a KNOWN planned step against the same guardrails [parseMove] applies
+     * to a model-chosen one, and return how to treat it.
+     *
+     * This is what lets the loop follow a coherent up-front plan safely: a planned
+     * step still may not switch apps ([LEFT_APP]), back out on arrival
+     * ([JUST_ARRIVED]), repeat itself ([GOING_IN_CIRCLES]), re-run the step that
+     * just failed ([ALREADY_FAILED]), or echo the whole goal into a field — and an
+     * irreversible tap (checkout/pay/send/delete) still stops to [AgentMove.Ask]
+     * with the exact step carried, exactly as for a model move. A [AgentMove.Blocked]
+     * here means "this planned step no longer fits the live screen" — the caller
+     * drops the rest of the plan and lets the model decide instead.
+     */
+    fun plannedMove(
+        step: ScreenStep,
+        avoid: ScreenStep? = null,
+        taken: List<ScreenStep> = emptyList(),
+        stayInApp: String? = null,
+        goal: String? = null,
+    ): AgentMove {
+        if (step is ScreenStep.Open && stayInApp != null && !sameApp(step.app, stayInApp)) {
+            return AgentMove.Blocked(LEFT_APP)
+        }
+        if ((step is ScreenStep.Back || step is ScreenStep.Home) && !hasActedInApp(taken)) {
+            return AgentMove.Blocked(JUST_ARRIVED)
+        }
+        if (avoid != null && step == avoid) return AgentMove.Blocked(ALREADY_FAILED)
+        if (repeats(step, taken)) return AgentMove.Blocked(GOING_IN_CIRCLES)
+        if (step is ScreenStep.Type && echoesWholeGoal(step.text, goal)) {
+            return AgentMove.Blocked(NO_STEP)
+        }
+        if (needsConfirmation(step)) return AgentMove.Ask(confirmationFor(step), step)
+        return AgentMove.Act(step)
     }
 
     /**

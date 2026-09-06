@@ -1539,8 +1539,8 @@ class AssistantEngine(context: Context) {
             val errandApp = AgentLoop.appOf(plan.steps)
             DebugLog.log(
                 DebugLog.Stage.SCREEN,
-                "errand: opening, then deciding each step from the screen " +
-                    "(the planned ${plan.steps.size} steps are only a suggestion)",
+                "errand: opening, then FOLLOWING the ${plan.steps.size}-step plan, " +
+                    "re-planning from the screen only when a step fails",
             )
             // Seeded with the launches already performed, so the loop cannot
             // decide to open an app that is already in front — which it did
@@ -1559,7 +1559,10 @@ class AssistantEngine(context: Context) {
                         say(AgentLoop.couldNotOpenMessage(errandApp))
                         return@post
                     }
-                    driveErrand(goal, token, lastFailed = null, app = errandApp)
+                    driveErrand(
+                        goal, token, lastFailed = null, app = errandApp,
+                        plan = AgentLoop.planTail(plan.steps),
+                    )
                 }
             }
             return ScreenOutcome.DISPATCHED
@@ -1705,6 +1708,10 @@ class AssistantEngine(context: Context) {
         lastScreen: String = "",
         nudges: Int = 0,
         renderWaits: Int = 0,
+        // The remaining in-app steps of the up-front plan, followed in order while
+        // they work; emptied the moment one fails or trips a guard, after which the
+        // model re-plans each step from the live screen (the old behaviour).
+        plan: List<ScreenStep> = emptyList(),
     ) {
         // A newer command has taken over. Without this the old loop kept picking
         // steps while the new one ran, and two loops fought over one screen.
@@ -1741,7 +1748,7 @@ class AssistantEngine(context: Context) {
                     "(${renderWaits + 1}/${AgentLoop.MAX_RENDER_WAITS})",
             )
             main.postDelayed(
-                { driveErrand(goal, token, lastFailed, app, stalls, lastScreen, nudges, renderWaits + 1) },
+                { driveErrand(goal, token, lastFailed, app, stalls, lastScreen, nudges, renderWaits + 1, plan) },
                 RENDER_WAIT_MS,
             )
             return
@@ -1755,6 +1762,60 @@ class AssistantEngine(context: Context) {
             say(AgentLoop.blockedMessage(goal, AgentLoop.NO_STEP))
             return
         }
+        // Follow the up-front plan step by step while it works, resolving each
+        // label against the live screen, and only re-plan from the model when a
+        // planned step trips a guard or fails. A device trace showed the per-step
+        // re-planner tapping "Categories" and typing the misheard app name, while
+        // the plan it discarded — TAP Search, TYPE bread, ENTER, PICK, TAP Add to
+        // cart — was correct. The label layer maps a generic "Search" onto the
+        // app's real box, which is what makes following the plan land.
+        val planned = plan.firstOrNull()
+        if (planned != null) {
+            when (val move = AgentLoop.plannedMove(planned, avoid = lastFailed, taken = errandSteps, stayInApp = app, goal = goal)) {
+                is AgentMove.Act -> {
+                    agentSteps += 1
+                    errandSteps = errandSteps + move.step
+                    stepsTaken = stepsTaken + move.step
+                    DebugLog.log(
+                        DebugLog.Stage.SCREEN,
+                        "errand step $agentSteps/${AgentLoop.MAX_STEPS} (from plan): ${move.step}",
+                    )
+                    service.runSteps(listOf(move.step), recover = false) { ok, _ ->
+                        main.post {
+                            driveErrand(
+                                goal = goal,
+                                token = token,
+                                lastFailed = if (ok) null else move.step,
+                                app = app,
+                                stalls = stalled,
+                                lastScreen = screen,
+                                // Keep following while steps land; on a failure drop
+                                // the rest of the plan and let the model re-plan.
+                                plan = if (ok) plan.drop(1) else emptyList(),
+                            )
+                        }
+                    }
+                    return
+                }
+                is AgentMove.Ask -> {
+                    DebugLog.log(DebugLog.Stage.SCREEN, "errand stopped to ask (from plan): ${move.question}")
+                    setTaskRunning(false)
+                    pendingConfirm = move.pending
+                    say(move.question)
+                    return
+                }
+                is AgentMove.Blocked -> {
+                    // The planned step no longer fits this screen — abandon the plan
+                    // and let the model decide from here (fall through, plan cleared).
+                    DebugLog.log(
+                        DebugLog.Stage.SCREEN,
+                        "errand: plan step $planned no longer fits (${move.reason}) — re-planning from the screen",
+                    )
+                }
+                AgentMove.Done -> {} // plannedMove never returns Done; fall through to the model.
+            }
+        }
+
         // Logged BEFORE the call, not after. A device trace on 2026-08-18 has a
         // sixteen-second hole here — the app opened Amazon Music, said nothing,
         // and the user gave up — and nothing in the log said whether the request

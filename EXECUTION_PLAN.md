@@ -41,8 +41,13 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
   argument from a tap label (`Search "milk"` → `Search`) so a correct plan lands on
   the real control. Much of the rest already exists — `renderScreen` tags
   fields/buttons and redacts password/OTP; `awaitContentChange` verifies a tap
-  changed the screen — so Part C is now iterative tuning against device traces
-  (per-app search hints, disambiguation on ties, verify-and-retry).
+  changed the screen.
+- **Iteration 2 (2026-09-06):** the errand now **follows the up-front plan** step by
+  step (`AgentLoop.planTail`/`plannedMove`), re-planning from the model only when a
+  step fails or trips a guard — a trace showed the per-step re-planner discarding a
+  correct plan for worse live choices. Needs on-device confirmation.
+- **Next iterations (need device traces):** per-app search hints, disambiguation on
+  tied matches, verify-and-retry tuning.
 - **Goal:** stop the AI guessing labels; make taps land.
 - **Approach:** summarize the current window's accessibility tree (visible text/labels) and inject it into the LLM context so it taps real on-screen text; after a tap, verify the window/content changed and retry once if not; when matches tie, ask a one-line disambiguation; add small per-app hints (WhatsApp/YouTube search entry points).
 - **Privacy constraint (non-negotiable, see [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md)):** screen text sent to a third-party LLM is a sensitive-data transfer — it needs explicit consent and **redaction of password / OTP / payment fields before anything leaves the device**.

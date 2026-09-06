@@ -289,6 +289,73 @@ class AgentLoopTest {
         }
     }
 
+    // --- following a coherent plan (iteration 2) ------------------------------
+
+    @Test
+    fun `planTail drops the leading app opens, keeping the in-app recipe`() {
+        val steps = listOf(
+            ScreenStep.Open("Blinkit"),
+            ScreenStep.Tap("Search"),
+            ScreenStep.Type("bread"),
+            ScreenStep.Enter,
+            ScreenStep.Pick("the first bread result"),
+            ScreenStep.Tap("Add to cart"),
+        )
+        assertEquals(
+            listOf(
+                ScreenStep.Tap("Search"),
+                ScreenStep.Type("bread"),
+                ScreenStep.Enter,
+                ScreenStep.Pick("the first bread result"),
+                ScreenStep.Tap("Add to cart"),
+            ),
+            AgentLoop.planTail(steps),
+        )
+        assertTrue(AgentLoop.planTail(listOf(ScreenStep.Open("A"), ScreenStep.Open("B"))).isEmpty())
+    }
+
+    @Test
+    fun `a normal planned step is taken as-is`() {
+        assertEquals(
+            AgentMove.Act(ScreenStep.Tap("Search")),
+            AgentLoop.plannedMove(ScreenStep.Tap("Search"), taken = listOf(ScreenStep.Open("Blinkit"))),
+        )
+    }
+
+    @Test
+    fun `an irreversible planned tap still stops to confirm, carrying the exact step`() {
+        val step = ScreenStep.Tap("Place order")
+        val move = AgentLoop.plannedMove(step, taken = listOf(ScreenStep.Open("Blinkit"), ScreenStep.Tap("Cart")))
+        assertTrue("must ask before an irreversible step", move is AgentMove.Ask)
+        assertEquals(step, (move as AgentMove.Ask).pending)
+    }
+
+    @Test
+    fun `add to cart is reversible, so it is taken without asking`() {
+        val move = AgentLoop.plannedMove(ScreenStep.Tap("Add to cart"), taken = listOf(ScreenStep.Open("Blinkit")))
+        assertTrue(move is AgentMove.Act)
+    }
+
+    @Test
+    fun `a planned step that just failed is blocked, so the caller re-plans`() {
+        val step = ScreenStep.Tap("Search")
+        val move = AgentLoop.plannedMove(step, avoid = step, taken = listOf(ScreenStep.Open("Blinkit")))
+        assertEquals(AgentMove.Blocked(AgentLoop.ALREADY_FAILED), move)
+    }
+
+    @Test
+    fun `a planned step that leaves the app is blocked`() {
+        val move = AgentLoop.plannedMove(ScreenStep.Open("Phone"), stayInApp = "Blinkit")
+        assertEquals(AgentMove.Blocked(AgentLoop.LEFT_APP), move)
+    }
+
+    @Test
+    fun `a planned Back before any in-app action is blocked`() {
+        // Nothing acted in-app yet (only the Open), so a Back would undo the launch.
+        val move = AgentLoop.plannedMove(ScreenStep.Back, taken = listOf(ScreenStep.Open("Blinkit")))
+        assertEquals(AgentMove.Blocked(AgentLoop.JUST_ARRIVED), move)
+    }
+
     @Test
     fun `the budget stops the loop`() {
         assertFalse(AgentLoop.exhausted(0))

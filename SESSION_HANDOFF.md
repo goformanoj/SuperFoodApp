@@ -1,6 +1,18 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-06 — Part C started (execution accuracy)
+## Current position — 2026-09-06 — Part C iteration 2 (follow the plan)
+
+On the branch (needs on-device test): `driveErrand` now **follows the up-front plan**
+step by step (`AgentLoop.planTail`) instead of re-deriving each step from the model,
+falling back to the old model-driven loop only when a planned step fails or trips a
+guard (`AgentLoop.plannedMove` applies the same guardrails, incl. confirm-before-
+irreversible with the exact step carried). This targets the iteration-1 trace where the
+loop discarded a correct plan and re-planned worse (tapped Categories, typed the
+misheard "blanket"). 8 new pure tests. **On-device test:** retry "go to Blinkit and add
+milk and bread" — it should now tap Search, type the real item, and add to cart.
+Fallback to per-step re-planning is intact.
+
+### Earlier — Part C iteration 1 (label normalization) + Phase 4
 
 `main` @ `b754705` (Phase 4 live; provider retry deployed). On the branch, **Part C
 iteration 1**: `ScreenMatch.normalizeLabel` strips an appended argument from a tap
