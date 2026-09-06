@@ -1,5 +1,30 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — Phase 3 follow-through: the eval authenticates like a real client
+
+**What was built and why.** Activating Phase 3 (the Worker requiring a signed
+token) would have broken the one thing that actually calls the live Worker today:
+the eval harness, which authenticated with `X-Uid`. Rather than punch a bypass
+into production code, the eval now does exactly what the app will do on first
+launch — sign in anonymously through Firebase's REST API (`accounts:signUp` with
+the project's **public** web api key) and send the returned ID token as
+`Authorization: Bearer`. So the eval exercises the *real* verification path, and
+the fix costs the Worker nothing.
+
+**A bonus that fell out of it.** Each anonymous sign-in is a brand-new uid, which
+by itself draws a fresh daily token allowance every run — so the old per-run
+`EVAL_UID` hack (invented to dodge the 60k/day free cap) is redundant in token
+mode. One honest mechanism replaced a workaround.
+
+**What the evidence showed.** The Firebase sign-in endpoint is reachable from this
+environment (a keyless probe returned a well-formed 403 asking for an API key), so
+the flow will work from CI and can be validated in-session once the web api key is
+supplied. Kept a fallback to the `X-Uid` stub when no web api key is set, so the
+harness still runs before activation and against a Worker with no project id.
+Config: `eval.yml` passes `FIREBASE_WEB_API_KEY` from a repo Variable, because the
+`AIza…` web api key is public (it ships in every app) — the same public/secret
+split as the project id.
+
 ## 2026-09-06 — Phase 3 identity: verifying a Firebase token by hand, off-device
 
 **What was built and why.** The Worker's uid was self-declared (`X-Uid`): past the
