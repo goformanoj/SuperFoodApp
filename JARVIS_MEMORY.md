@@ -1,5 +1,52 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — Phase 3 identity: verifying a Firebase token by hand, off-device
+
+**What was built and why.** The Worker's uid was self-declared (`X-Uid`): past the
+shared secret, any caller could claim any user and spend their allowance, so the
+per-user quota was honour-system. Phase 3 makes the uid *provable* — the phone will
+send a **Firebase ID token** (`Authorization: Bearer <jwt>`), and the Worker checks
+Google's signature on it. That signature is the whole thing: the `kid` is public,
+but only Google holds the key, so a token cannot be forged, and `sub` becomes a uid
+we can trust for billing and abuse limits.
+
+**Why Firebase.** Free, Google's own, the standard identity for Android, and — the
+part that fits this app — **anonymous on first launch** (zero friction, JARVIS just
+works), upgradable to a Google account later so a paid entitlement survives a new
+phone. Building that identity flow ourselves is the kind of thing that is easy to
+get catastrophically wrong.
+
+**The trap, avoided.** The obvious tool — the Firebase Admin SDK — is Node-only and
+does **not** run on Workers; `BACKEND_PLAN.md` calls it the single biggest trap in
+the plan. So the token is verified by hand: it is a standard RS256 JWT, and Workers
+ships WebCrypto, which is all verification actually needs (~one file).
+
+**What the evidence showed.** Two facts checked live before writing a line, because
+getting the key URL or `iss` wrong makes it silently reject everything: (1) Google
+publishes the securetoken keys as **JWKS** at
+`…/service_accounts/v1/jwk/securetoken@system…` (confirmed with a real fetch:
+`{keys:[{kid,n,e,…}]}`, `cache-control: max-age=22214`), which `importKey('jwk',…)`
+takes directly — no X.509/ASN.1 parsing, unlike the x509 endpoint the docs lead
+with; (2) `aud`==projectId, `iss`==`securetoken.google.com/<projectId>`, `sub`
+non-empty. A Node↔WebCrypto interop probe (Node `createSign` → WebCrypto `verify`)
+passed before committing to the approach.
+
+**How it is tested.** The logic worth defending is pure — `verifyIdToken` takes the
+keys as an argument — so **26 tests mint real RS256 tokens from a locally-generated
+keypair** and exercise the entire signature path with no network, no Firebase, no
+deploy: good→uid; forged signature (right kid, wrong key), tampered payload,
+expired, wrong project, wrong issuer, empty/over-long sub, future iat, non-RS256
+alg, unknown kid, and garbage are each rejected; keys cache and refetch exactly once
+on a kid rotation; and a spoofed `X-Uid` is ignored when a token is required. 84
+backend tests green. This is the Phase 3 payoff the plan promised — the trust
+decision is testable where it is written.
+
+**Rollout.** Verification activates only when `FIREBASE_PROJECT_ID` (public, not a
+secret) is set in `wrangler.toml`; unset, the Worker keeps the stubbed-uid path, so
+the change deploys with nothing broken for the live app or the eval. Left for the
+user: create the Firebase project + hand over the id. Noted for activation day: the
+eval sends `X-Uid`, so it needs a token or a documented bypass before the switch.
+
 ## 2026-09-06 — session handoff: the guard holds, the score oscillates by design
 
 **What the evidence showed.** Run #9 (after the secret guard shipped) scored 25/28

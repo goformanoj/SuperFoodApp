@@ -19,6 +19,7 @@ import { MIGRATIONS } from './schema.js'
 import { SYSTEM_PROMPT } from './systemPrompt.js'
 import { dropSecretMemories } from './guards.js'
 import { groqProvider } from './providers/groq.js'
+import { AuthError, firebaseVerifier } from './auth.js'
 
 /**
  * Builds a handler from its dependencies.
@@ -27,7 +28,13 @@ import { groqProvider } from './providers/groq.js'
  * provider and a clock. The alternative — reaching for globals inside the
  * handler — is what makes a worker testable only by deploying it.
  */
-export function createWorker({ store, provider, proxySecret = null, now = () => Date.now() }) {
+export function createWorker({
+  store,
+  provider,
+  proxySecret = null,
+  verifyToken = null,
+  now = () => Date.now(),
+}) {
   return {
     async fetch(request) {
       const url = new URL(request.url)
@@ -69,10 +76,35 @@ export function createWorker({ store, provider, proxySecret = null, now = () => 
         return Response.json({ error: 'forbidden' }, { status: 403 })
       }
 
-      // PHASE 3 replaces this with a verified Firebase ID token. Until then any
-      // caller past the shared secret can claim any uid.
-      const uid = request.headers.get('X-Uid')
-      if (!uid) return Response.json({ error: 'no_uid' }, { status: 401 })
+      // PHASE 3 — identity.
+      //
+      // When a verifier is wired (the deploy has a Firebase project id), the uid
+      // must come from a signed Firebase ID token: `Authorization: Bearer <jwt>`.
+      // A verified uid cannot be spoofed the way `X-Uid` could — that is the whole
+      // point of the phase — so once verification is on, `X-Uid` is ignored.
+      //
+      // When no verifier is wired (before the project id is configured), the old
+      // stubbed `X-Uid` path stays, so nothing breaks on the way to Phase 4 and
+      // the eval harness keeps running. The default export decides which by
+      // whether `FIREBASE_PROJECT_ID` is set.
+      let uid
+      if (verifyToken) {
+        const authz = request.headers.get('Authorization') ?? ''
+        if (!authz.startsWith('Bearer ')) {
+          return Response.json({ error: 'no_token' }, { status: 401 })
+        }
+        try {
+          ;({ uid } = await verifyToken(authz.slice(7).trim()))
+        } catch (e) {
+          // One 401 for every rejection; the code says which, for logs and the
+          // app, without ever leaking whether a uid exists.
+          const code = e instanceof AuthError ? e.code : 'bad_token'
+          return Response.json({ error: 'unauthorized', code }, { status: 401 })
+        }
+      } else {
+        uid = request.headers.get('X-Uid')
+        if (!uid) return Response.json({ error: 'no_uid' }, { status: 401 })
+      }
 
       let body
       try {
@@ -169,6 +201,13 @@ export default {
     }
     const provider = groqProvider(env.GROQ_API_KEY)
     const store = d1Store(env.DB)
-    return createWorker({ store, provider, proxySecret: env.PROXY_SECRET }).fetch(request)
+    // Phase 3 turns on the moment a Firebase project id is present. Until then
+    // the Worker keeps the stubbed-uid behaviour, so this code can ship and
+    // deploy with nothing changed for the live app or the eval harness. `iss`
+    // and `aud` are derived from this one non-secret value.
+    const verifyToken = env.FIREBASE_PROJECT_ID
+      ? firebaseVerifier({ projectId: env.FIREBASE_PROJECT_ID })
+      : null
+    return createWorker({ store, provider, proxySecret: env.PROXY_SECRET, verifyToken }).fetch(request)
   },
 }

@@ -195,6 +195,28 @@ with consent and redaction, they become a replay corpus — today that exists on
 > **GOTCHA: the Firebase Admin SDK is Node-only and does NOT run on Cloudflare Workers.**
 > This is the single biggest trap in the whole plan.
 
+**Server-side half DONE (2026-09-06), off-device and tested.** `backend/src/auth.js`:
+- `verifyIdToken(token, { keys, projectId, now })` — PURE (keys injected), so it is
+  fully unit-tested offline against a locally-minted keypair. RS256 via WebCrypto,
+  then `aud`/`iss`/`sub`/`exp`/`iat`/`auth_time` with a small clock skew.
+- `firebaseKeyStore` / `firebaseVerifier` — the thin impure shells: fetch Google's
+  keys and cache them per `Cache-Control: max-age`, refetch once on a kid rotation.
+- **Keys come from the JWK endpoint**, not the x509 one:
+  `https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com`
+  returns standard JWKS, so `crypto.subtle.importKey('jwk', …)` works directly and
+  there is no X.509/ASN.1 parsing to get wrong. (Both endpoints are Google's; the
+  docs lead with x509, but the JWK one is far cleaner on Workers.)
+- Wired in `index.js`: with a verifier present, `/chat` requires
+  `Authorization: Bearer <jwt>` and **ignores `X-Uid`**; with none, the stub stays.
+- **Activation switch:** `FIREBASE_PROJECT_ID` in `wrangler.toml` (public, not a
+  secret). Unset ⇒ pre-Phase-3 behaviour, so the code ships without breaking the
+  live app or the eval. 26 new tests (84 backend total, green).
+
+**Still blocked on the user:** the Firebase project itself (create it, enable
+Anonymous auth, hand over the project id). Then it activates on the next deploy.
+**When it activates:** the eval harness sends `X-Uid` and will need a real token or
+a documented bypass. The app sending the token is Phase 4.
+
 **Done when:** a forged uid is rejected and a real one is quota-limited.
 
 ---
@@ -269,8 +291,14 @@ Phase 4) so a prompt fix is a deploy; and a **Rule 6 safety guard**
 secret/OTP. Remaining Phase 2: grow toward the 50/100 rows (needs the 60k/day free
 token-cap workaround — one run fits ~30 calls).
 
-**Phase 3 (Firebase identity) and Phase 4 (app → Worker) not started.** The app
-still talks to Groq directly and is untouched — and its direct brain is currently
-OFF because the `GROQ_API_KEY` GitHub secret was removed (restored only by Phase 4
-or re-adding the secret). No Firebase/Billing/Play dependency in
-`app/build.gradle.kts` yet.
+**Phase 3 (Firebase identity): server-side half DONE, dormant.** The Worker can
+verify a Firebase ID token by hand (`backend/src/auth.js`, RS256/WebCrypto against
+Google's JWK endpoint) and, once `FIREBASE_PROJECT_ID` is set, requires a signed
+`Authorization: Bearer` token and ignores `X-Uid`. Built and tested off-device (84
+backend tests green); it stays dormant until the user creates a Firebase project
+and supplies the project id, so it is safe to deploy now with no behaviour change.
+
+**Phase 4 (app → Worker) not started.** The app still talks to Groq directly and is
+untouched — and its direct brain is currently OFF because the `GROQ_API_KEY` GitHub
+secret was removed (restored only by Phase 4 or re-adding the secret). No
+Firebase/Billing/Play dependency in `app/build.gradle.kts` yet.

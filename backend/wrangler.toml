@@ -12,6 +12,16 @@ binding = "DB"
 database_name = "jarvis"
 database_id = "1dc3695c-1f4b-4e17-980e-b6f90122d35f"
 
+# Phase 3 — identity. NOT a secret: the project id is public, it only names which
+# Firebase project's tokens we accept (it sets the required `aud`, and the `iss`
+# `https://securetoken.google.com/<id>`). Leaving it unset keeps the Worker on the
+# pre-Phase-3 stubbed-uid path, so this config is safe to deploy as-is. To turn
+# verification ON, uncomment and set it to your Firebase project id, then deploy:
+#   the Worker then REQUIRES a signed `Authorization: Bearer <Firebase ID token>`
+#   and ignores the old `X-Uid` header entirely.
+# [vars]
+# FIREBASE_PROJECT_ID = "your-firebase-project-id"
+
 # Logs, so a failing deploy can be diagnosed from the dashboard rather than guessed at.
 [observability]
 enabled = true

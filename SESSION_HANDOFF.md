@@ -1,6 +1,54 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-06 (handed off) — backend live, Phase 2 eval running
+## Current position — 2026-09-06 — Phase 3 identity verifier built (server-side)
+
+Session branch `claude/next-steps-phase-order-wwvyk9` (from `main` @ `ddeea0c`).
+Backend-only change; **nothing half-built.**
+
+**What shipped this session (Part E, Phase 3 — the server-side half):**
+- **`backend/src/auth.js`** verifies a Firebase ID token by hand (the Admin SDK is
+  Node-only and does NOT run on Workers). Standard RS256 JWT via WebCrypto against
+  Google's **JWK** endpoint (`…/service_accounts/v1/jwk/securetoken@system…`),
+  cached per `Cache-Control: max-age`, refetched once on a kid rotation. Checks the
+  signature first, then `aud`==projectId, `iss`==`securetoken.google.com/<id>`, a
+  non-empty `sub`, and `exp`/`iat`/`auth_time` with a 60s skew. Pure `verifyIdToken`
+  (keys injected) + thin impure `firebaseKeyStore`/`firebaseVerifier` shells.
+- Wired into `index.js`: with a verifier present, `/chat` requires
+  `Authorization: Bearer <jwt>` and **ignores `X-Uid`**; with none, the stub stays.
+- **Activation is a config switch:** `FIREBASE_PROJECT_ID` in `wrangler.toml`
+  (public, not a secret). Unset ⇒ unchanged behaviour, so this deploys safely now.
+- **26 new tests** (84 backend total, green) mint real RS256 tokens from a local
+  keypair and prove: good→uid; forged sig / tampered payload / expired / wrong aud
+  / wrong iss / empty sub / future iat / bad alg / unknown kid / garbage → rejected;
+  keys cached + one refetch on rotation; **a spoofed `X-Uid` is ignored** when a
+  token is required.
+
+### Start here next session
+1. **Confirm CI's `backend` job is green** for the pushed commit, then fast-forward
+   `main`. (Backend is gated by `node --test`, not the APK artifact.)
+2. **Blocked on the user for activation:** create a Firebase project, enable
+   Anonymous auth, hand over the **project id** → set `FIREBASE_PROJECT_ID`, deploy.
+3. **When activating, the eval harness needs attention** — it sends `X-Uid`, which
+   is ignored once verification is on. Give it a minted token or a documented
+   first-party bypass before flipping the switch.
+4. **Phase 4** (device side): `ProxyClient` behind `Brain.generate()` sends the
+   Firebase ID token; this is what restores the phone's (currently OFF) brain.
+
+### Gotcha earned this session
+- **Use the JWK key endpoint, not the x509 one.** Firebase's docs lead with
+  `…/robot/v1/metadata/x509/securetoken@system…`, which hands back PEM
+  **certificates** — and WebCrypto cannot `importKey` an X.509 cert, so that path
+  needs an ASN.1 walk to pull out the SPKI. Google also publishes the *same* keys as
+  JWKS at `…/service_accounts/v1/jwk/securetoken@system…`, which
+  `crypto.subtle.importKey('jwk', …)` takes directly. Confirmed live: it returns
+  `{keys:[{kid,n,e,…}]}` with `cache-control: max-age`.
+- **Verify the signature BEFORE reading any claim.** An unsigned token's `aud`/`sub`
+  are attacker-controlled; trusting them even to decide *which* error to return
+  leaks behaviour. Order: parse → header alg/kid → pick key → verify sig → claims.
+
+---
+
+## Earlier position — 2026-09-06 (handed off) — backend live, Phase 2 eval running
 
 Session branch `claude/cloudflare-backend-databases-fatxx4`, `main` fast-forwarded
 to it. Working tree clean. **Nothing is half-built.**
