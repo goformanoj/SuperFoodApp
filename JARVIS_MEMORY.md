@@ -1,5 +1,36 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-06 — Part C iteration 3: PICK ignored the app vocabulary (and the real lesson)
+
+**What the evidence showed.** A second Blinkit trace, this time with a fully step-by-step
+prompt ("go to blinkit, click the search bar, type milk, search, click +, view cart"),
+STILL failed — which is itself the finding: even a descriptive prompt doesn't save you,
+and users won't give one 90% of the time anyway. The concrete bug: the plan's first
+in-app step was `<<PICK|search bar>>`, and the **PICK executor went straight to the fuzzy
+chooser (a small model choosing among on-screen labels) and never consulted
+`ControlVocabulary`** — which already holds Blinkit's real search label. The chooser
+missed "search bar" among 7 options, the planned step failed, iteration-2 correctly
+dropped the plan, and the fallback re-planner then typed "stationery" (a search-box
+placeholder it read as intent). So the knowledge to succeed existed on device and the one
+code path that needed it didn't look.
+
+**The fix.** A generic-intent PICK ("search bar", "cart", "add to cart") now resolves
+deterministically through the app-aware matcher + `ControlVocabulary` first, falling back
+to the chooser only for content-dependent picks ("the first video result"). Seeded
+Blinkit's ADD and View-Cart labels too. `ScreenMatch.normalizeLabel` (iter 1) + follow-
+the-plan (iter 2) + PICK-uses-vocabulary (iter 3) now pull in the same direction.
+
+**The lesson worth keeping.** Two, actually. (1) A capability and its knowledge must be
+wired to *every* path that needs it: TAP consulted the vocabulary; PICK didn't; the model
+picks either marker, so the gap surfaced the moment a plan used PICK for the search bar.
+(2) The strategic one, which the user articulated: **making the app reliable cannot depend
+on the user phrasing a perfect plan** — the generic matcher + per-app packs must carry it.
+This trace is the strongest argument yet for the Part C2 mastery pack, and it also shows
+the chicken-and-egg: authoring an accurate Blinkit recipe (the "+"/ADD label, the add→cart
+flow) needs the *real* labels, which are best captured from a trace of the correct flow —
+exactly what Test Mode exists to collect. Until then, generic + vocabulary gets further
+each iteration but won't be flawless end-to-end.
+
 ## 2026-09-06 — Part C iteration 2: follow the plan; re-plan only on failure
 
 **What was built and why.** Iteration 1 (label normalization) proved the model plans

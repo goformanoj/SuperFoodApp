@@ -66,7 +66,10 @@ internal object ControlVocabulary {
             "Search \"atta\"",
             "Search for products",
         )),
-        Seed("grofers", CART, listOf("My Cart", "Cart")),
+        Seed("grofers", CART, listOf("My Cart", "Cart", "View Cart")),
+        // Blinkit's add control is a green "ADD" on each product tile (it becomes a
+        // +/- stepper once an item is in the cart).
+        Seed("grofers", ADD, listOf("ADD", "Add")),
         // Zepto — the second failed shopping session.
         Seed("zepto", SEARCH, listOf(
             "Search for over 5000 products",

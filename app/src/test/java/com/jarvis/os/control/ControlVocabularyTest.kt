@@ -24,6 +24,16 @@ class ControlVocabularyTest {
     }
 
     @Test
+    fun `Blinkit's add and cart labels are offered for the generic intents`() {
+        // A trace ran "search milk, tap +, view cart" — the add-to-cart and cart
+        // steps need the app's real labels too, not just search.
+        val add = ControlVocabulary.candidatesFor("com.grofers.customerapp", "add to cart")
+        assertTrue("Blinkit's ADD button must be offered", add.contains("ADD"))
+        val cart = ControlVocabulary.candidatesFor("com.grofers.customerapp", "view cart")
+        assertTrue("a cart label must be offered", cart.contains("My Cart") || cart.contains("View Cart"))
+    }
+
+    @Test
     fun `the package is matched by fragment, not exact name`() {
         // Blinkit ships as com.grofers.customerapp — an exact-name key would miss
         // it, and every regional or white-label variant besides.

@@ -289,40 +289,57 @@ class ScreenControlService : AccessibilityService() {
                     failed("the system refused the home action")
                 }
             is ScreenStep.Pick -> {
-                // The one step that looks before it decides. Everything else was
-                // committed to a label when the plan was written, before the
-                // target screen existed.
-                //
-                // Navigation chrome (a "Reels"/"Shorts"/"Home" tab) is dropped before
-                // the chooser sees it: a trace matched <<PICK|the top Reel>> to the
-                // "Reels" tab and opened it instead of playing a reel. Content only,
-                // unless the screen is nothing but chrome (then the full set stands).
-                val options = PickFilter.preferContent(tappableLabels())
-                val resolver = onPick
-                when {
-                    options.isEmpty() -> failed("nothing tappable on screen to choose from")
-                    resolver == null -> failed("no way to ask the model which one")
-                    else -> {
-                        DebugLog.log(
-                            DebugLog.Stage.SCREEN,
-                            "choosing \"${step.description}\" from ${options.size} on-screen options",
-                        )
-                        resolver(step.description, options) { choice ->
-                            if (token != runToken) return@resolver
-                            val label = choice?.let { options.getOrNull(it - 1) }
-                            if (label == null) {
-                                failed("could not match \"${step.description}\" to anything on screen")
-                            } else {
-                                DebugLog.log(DebugLog.Stage.SCREEN, "chose \"$label\"")
-                                // Re-find by label instead of holding the node: the
-                                // model round-trip takes about a second and node
-                                // handles go stale.
-                                seek(label, 0) { ok ->
-                                    if (ok) advance(expectedPackage) else failed("tap on \"$label\" did not register")
+                // The chooser: look at what is actually on screen and ask the model
+                // which item matches. Navigation chrome (a "Reels"/"Shorts"/"Home"
+                // tab) is dropped before it sees them — a trace matched
+                // <<PICK|the top Reel>> to the "Reels" tab and opened that instead of
+                // a reel. Content only, unless the screen is nothing but chrome.
+                val chooser = {
+                    val options = PickFilter.preferContent(tappableLabels())
+                    val resolver = onPick
+                    when {
+                        options.isEmpty() -> failed("nothing tappable on screen to choose from")
+                        resolver == null -> failed("no way to ask the model which one")
+                        else -> {
+                            DebugLog.log(
+                                DebugLog.Stage.SCREEN,
+                                "choosing \"${step.description}\" from ${options.size} on-screen options",
+                            )
+                            resolver(step.description, options) { choice ->
+                                if (token != runToken) return@resolver
+                                val label = choice?.let { options.getOrNull(it - 1) }
+                                if (label == null) {
+                                    failed("could not match \"${step.description}\" to anything on screen")
+                                } else {
+                                    DebugLog.log(DebugLog.Stage.SCREEN, "chose \"$label\"")
+                                    // Re-find by label instead of holding the node: the
+                                    // model round-trip takes about a second and node
+                                    // handles go stale.
+                                    seek(label, 0) { ok ->
+                                        if (ok) advance(expectedPackage) else failed("tap on \"$label\" did not register")
+                                    }
                                 }
                             }
                         }
                     }
+                    Unit
+                }
+                // A GENERIC intent — "search bar", "cart", "add to cart" — is exactly
+                // what the app-aware matcher + ControlVocabulary already resolve well.
+                // A trace had PICK("search bar") fail in Blinkit even though the
+                // vocabulary knows its box is "Search for atta, dal, coke and more":
+                // PICK went straight to the fuzzy chooser and never consulted it. So
+                // resolve a generic intent deterministically FIRST, and fall back to
+                // the chooser only when that finds nothing (or the description is
+                // genuinely content-dependent, like "the first video result").
+                if (ControlVocabulary.isGeneric(step.description)) {
+                    DebugLog.log(
+                        DebugLog.Stage.SCREEN,
+                        "\"${step.description}\" is a generic control — trying the app's known labels before the chooser",
+                    )
+                    seek(step.description, 0) { ok -> if (ok) advance(expectedPackage) else chooser() }
+                } else {
+                    chooser()
                 }
             }
             is ScreenStep.Enter -> {
