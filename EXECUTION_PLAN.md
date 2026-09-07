@@ -121,7 +121,17 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
   install that never trained anything** then completes "add milk and bread on Blinkit"
   reliably.
 
-### Part F — Files (artifacts JARVIS makes) ⏸️
+### Part F — Files (artifacts JARVIS makes) ✅ (built — was mis-marked)
+- **Status (2026-09-07):** already implemented and wired end-to-end. `files/ArtifactActions`
+  parses the `<<FILE|pdf|Title>>…<<ENDFILE>>` block and `<<OPENFILE|title>>`;
+  `files/ArtifactWriter` renders real PDFs (Android `PdfDocument`, word-wrap, headings,
+  bullets, pagination) and notes; `files/ArtifactStore` keeps the JSON index;
+  `ui/files/FilesScreen` is the tab; `AssistantEngine` calls the writer; and the
+  **server** prompt (`backend/src/systemPrompt.js`) teaches the marker, so it works on the
+  Worker path. **Still open:** image generation (Groq has no image model — answered
+  honestly, not faked) and flow-chart/diagram rendering (not yet built). Original design
+  notes kept below for reference.
+
 - **Goal:** "make a PDF of the important points", "draw a flow chart of this" → JARVIS produces the file, and it lands in the **Files** tab.
 - **Feasible now, no new provider:**
   - **Text / Markdown** — trivial.
