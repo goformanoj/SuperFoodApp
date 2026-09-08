@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.jarvis.os.ai.Identity
+import com.jarvis.os.ai.PackClient
 import com.jarvis.os.assistant.AssistantEngine
 import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.ui.home.JarvisApp
@@ -63,6 +64,9 @@ class MainActivity : ComponentActivity() {
         // Persist the diagnostic trace to disk so a failure — and the labelled
         // examples it carries — survives a restart instead of being wiped (Part C2/H).
         DebugLog.attach(applicationContext.filesDir)
+        // Load any cached per-app packs so the first errand after launch starts warm
+        // (Part C2.2). Fresh packs are fetched lazily when an app comes to the front.
+        PackClient.init(applicationContext)
         engine = AssistantEngine(applicationContext)
         setContent {
             // Held above the theme so a change repaints the whole app immediately,

@@ -106,11 +106,16 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
     (`attach(filesDir)` from `MainActivity`; per-entry append, redacted-before-write, bounded
     at 2000 with compaction; Android-free + real-JUnit tested off-device). This also satisfies
     Part H Phase 0. Prerequisite met: you can't share a trace you threw away.
-  - **C2.1 — shareable trace.** Extend Diagnostics → Share to emit a structured,
-    redacted app trace (screens + steps + outcome), not just the text log.
-  - **C2.2 — pack format + fetch.** Define the per-app pack (JSON: search/cart/checkout
-    labels + recipes), have the Worker serve it and the app fetch + cache it (mirrors the
-    server-side system prompt). This is the "reliable for everyone" mechanism.
+  - **C2.1 — shareable trace.** ✅ **Done (2026-09-08).** Diagnostics → **App trace** emits a
+    structured, redacted JSON trace (`trace/AppTrace.kt`): the flat log segmented into turns →
+    steps → inferred outcome, with an extra OTP/card digit scrub on top of the existing
+    key-redaction. Pure + off-device tested.
+  - **C2.2 — pack format + fetch.** ✅ **Done (2026-09-08).** The Worker serves per-app packs
+    (`backend/src/packs.js`, `GET /apps/<package>` behind the shared secret — control labels
+    keyed by package fragment, no user data). The app fetches + caches them (`ai/PackClient.kt`:
+    warm on app-foreground via `ScreenControlService`, disk-cached, loaded at startup) and
+    `ControlVocabulary` tries a fetched pack ahead of its baked-in seeds. Pure parts tested
+    off-device; parse/route in CI + backend `node --test`. Recipes (beyond labels) are C2.3+.
   - **C2.3 — bake loop.** User shares a trace → Claude turns it into a pack → deploy to
     the Worker → every install benefits.
   - **C2.4 — later:** automated/crowd-sourced ingestion with review, and the supervised

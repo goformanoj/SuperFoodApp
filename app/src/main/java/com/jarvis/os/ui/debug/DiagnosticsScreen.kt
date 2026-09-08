@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.jarvis.os.debug.Check
 import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.debug.Diagnostics
+import com.jarvis.os.trace.AppTrace
 import com.jarvis.os.ui.theme.JarvisTheme
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.Cyan
@@ -144,6 +145,18 @@ fun DiagnosticsScreen(onSubmitCommand: (String) -> Unit, modifier: Modifier = Mo
                     putExtra(Intent.EXTRA_TEXT, text)
                 }
                 context.startActivity(Intent.createChooser(send, "Share JARVIS log"))
+            }
+            // The structured, redacted trace (Part C2.1): turns → steps → outcome,
+            // the shape a server-side app pack is later baked from. snapshot() is
+            // oldest-first, which is the order build() expects.
+            ActionButton("App trace") {
+                val json = AppTrace.exportJson(DebugLog.snapshot(), System.currentTimeMillis())
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_SUBJECT, "JARVIS app trace")
+                    putExtra(Intent.EXTRA_TEXT, json)
+                }
+                context.startActivity(Intent.createChooser(send, "Share app trace"))
             }
             ActionButton("Clear") {
                 DebugLog.clear()

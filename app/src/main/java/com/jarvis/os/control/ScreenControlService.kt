@@ -20,6 +20,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import com.jarvis.os.ai.PackClient
 import com.jarvis.os.debug.DebugLog
 
 /**
@@ -114,7 +115,12 @@ class ScreenControlService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString().orEmpty()
-        if (pkg.isNotEmpty() && pkg != packageName) lastAppPackage = pkg
+        if (pkg.isNotEmpty() && pkg != packageName) {
+            lastAppPackage = pkg
+            // Warm this app's server pack (Part C2.2) so a plan's generic labels can
+            // resolve to its real controls. No-op when fresh or already fetching.
+            PackClient.ensure(pkg)
+        }
     }
 
     override fun onInterrupt() { }

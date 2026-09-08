@@ -18,6 +18,7 @@ import { d1Store } from './db.js'
 import { MIGRATIONS } from './schema.js'
 import { SYSTEM_PROMPT } from './systemPrompt.js'
 import { dropSecretMemories } from './guards.js'
+import { packFor } from './packs.js'
 import { groqProvider } from './providers/groq.js'
 import { AuthError, firebaseVerifier } from './auth.js'
 
@@ -41,6 +42,26 @@ export function createWorker({
 
       if (request.method === 'GET' && url.pathname === '/health') {
         return Response.json({ ok: true })
+      }
+
+      // PART C2.2 — per-app packs. `GET /apps/<package>` returns the generic
+      // control-label knowledge for that app (or 404 when nothing is known), which
+      // the device fetches and caches to make a plan land in the real UI. Behind
+      // the same shared secret as /chat — the app already presents it, and there is
+      // no reason to serve config to anyone who did not. Packs carry no user data.
+      if (request.method === 'GET' && url.pathname.startsWith('/apps/')) {
+        if (!checkSecret(request, proxySecret)) {
+          return Response.json({ error: 'forbidden' }, { status: 403 })
+        }
+        let pkg
+        try {
+          pkg = decodeURIComponent(url.pathname.slice('/apps/'.length))
+        } catch {
+          return Response.json({ error: 'bad_package' }, { status: 400 })
+        }
+        const pack = packFor(pkg)
+        if (!pack) return Response.json({ error: 'no_pack' }, { status: 404 })
+        return Response.json(pack)
       }
 
       // Creating the tables, without a terminal.

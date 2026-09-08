@@ -1,5 +1,42 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-08 — Part C2.1 + C2.2: shareable traces, and packs served to every install
+
+**The arc.** C2.0 made the trace survive a restart. C2.1 makes it *shareable* as
+structure, and C2.2 turns shared knowledge into something every install gets without a
+reinstall. Together they are the mechanism the parked screen-control work needs: learn an
+app's real labels once, help everyone.
+
+**C2.1 — structured, redacted trace.** New pure `trace/AppTrace.kt` segments the flat
+`DebugLog` stream into **turns** (one per `HEARD` goal), each with ordered **steps** and an
+**outcome** inferred from the agent-loop's own notes ("goal is met" → ok, "is stuck" →
+stuck, "stopped to ask" → asked, else an error → failed). Diagnostics grew an **App trace**
+share button beside the text-log Share. JSON is hand-rolled (no `org.json`) so the whole
+thing is tested off-device. **Redaction is the load-bearing part:** the entries are already
+key-redacted at write time, and the trace additionally scrubs any 4+ digit run — and the
+test caught that ScreenMatch's `\d{4,8}` OTP shape *misses a 16-digit card number* (no word
+boundary inside the run), so the shared artifact uses the broader `\d{4,}`.
+
+**C2.2 — packs, server → device.** The Worker now serves per-app control knowledge:
+`backend/src/packs.js` (labels keyed by package fragment, mirroring `ControlVocabulary`, and
+a test asserts a pack carries **only** generic UI fields — no address/contact/order) behind
+`GET /apps/<package>` (shared secret, 404 when unknown, 400 on bad encoding). On device,
+`ai/PackClient` fetches when an app comes to the front (`ScreenControlService`), caches to
+`filesDir/packs/`, and loads the cache at startup; `ControlVocabulary` now tries a fetched
+pack **ahead of** its baked-in seeds (server is the newer, correctable knowledge; seeds are
+the offline fallback). The pure store + merge + TTL logic (`control/AppPack.kt` / `PackStore`)
+is off-device tested; the `org.json` parse + network are CI/Robolectric like `ProxyClient`.
+
+**Why packs win over per-device tricks (the whole point of C2).** On-device learning helps
+the one phone that did the errand; a served pack helps every install the moment it's
+deployed — the same leverage the server-side system prompt already has. This ships the
+*plumbing*; the labels grow via C2.3 (share a trace → bake a pack → deploy).
+
+**Gotcha carried forward.** `jvmcheck` compiles the whole non-UI main + test set together,
+so each new `org.json`/Robolectric test needs its own exclusion line — `PackClientParseTest`
+joins `ProxyClientTest`/`IdentityParseTest`. Off-device gate green at **728 tests**; backend
+**98**.
+
 ## 2026-09-08 — Part C2.0 / Part H Phase 0: the trace now survives a restart
 
 **Why this first.** With Part C (screen-control) parked at best-effort, the scalable path

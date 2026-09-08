@@ -96,9 +96,14 @@ internal object ControlVocabulary {
         val app = pkg?.lowercase().orEmpty()
         if (app.isEmpty()) return emptyList()
         val requested = normalise(label)
-        return SEEDED
+        // A server pack (C2.2) wins over the baked-in seeds: it is the newer, shared
+        // knowledge and can be corrected without a reinstall. Seeds remain the offline
+        // fallback for an app no pack has been fetched for. Deduped, best-known first.
+        val fromPack = PackStore.candidatesFor(pkg, intent)
+        val fromSeed = SEEDED
             .filter { it.intent == intent && app.contains(it.packageFragment) }
             .flatMap { it.labels }
+        return (fromPack + fromSeed)
             .distinct()
             .filterNot { normalise(it) == requested }
     }

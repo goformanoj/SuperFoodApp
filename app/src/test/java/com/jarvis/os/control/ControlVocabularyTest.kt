@@ -1,5 +1,6 @@
 package com.jarvis.os.control
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -13,6 +14,21 @@ import org.junit.Test
  * exist until the app was open.
  */
 class ControlVocabularyTest {
+
+    // The seed tests below assume an empty PackStore (nothing fetched); a server pack
+    // (C2.2) is layered on top, so keep the singleton clean between tests.
+    @After fun clearPacks() = PackStore.clear()
+
+    @Test
+    fun `a server pack is tried ahead of the baked-in seeds`() {
+        // A pack fetched from the Worker is the newer, shared knowledge, so its label
+        // is tried first; the seed remains as an offline fallback below it.
+        PackStore.put(AppPack("com.grofers.customerapp", 1, mapOf("search" to listOf("New Search Label")), fetchedAt = 0L))
+
+        val candidates = ControlVocabulary.candidatesFor("com.grofers.customerapp", "search")
+        assertEquals("the pack label is tried first", "New Search Label", candidates.first())
+        assertTrue("the seed stays as a fallback", candidates.contains("Search for atta, dal, coke and more"))
+    }
 
     @Test
     fun `Blinkit's real search label is offered for a generic Search`() {

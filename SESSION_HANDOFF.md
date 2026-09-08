@@ -1,6 +1,41 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-08 — Part C2.0 / Part H Phase 0: DebugLog persists to disk
+## Current position — 2026-09-08 — Part C2.1 + C2.2: shareable traces + per-app packs
+
+**Branch.** `claude/next-task-5g9l6t`. C2.0 merged to `main` (`20cb9d6`). C2.1 + C2.2 are
+committed on the branch on top of it — awaiting CI's `jarvis-debug-apk`, then fast-forward
+`main`.
+
+### What shipped this session (on the branch, after C2.0)
+- **C2.1 — shareable structured trace.** `trace/AppTrace.kt` (pure): segments the flat
+  `DebugLog` into turns → steps → outcome; hand-rolled JSON (off-device tested); extra
+  digit scrub (`\d{4,}`, broader than ScreenMatch's OTP `\d{4,8}` — it misses a 16-digit
+  card). Diagnostics → **App trace** button shares it as `application/json`.
+- **C2.2 — packs, server → device.** `backend/src/packs.js` + `GET /apps/<package>` (behind
+  the shared secret, 404/400 handled, no user data). Device: `control/AppPack.kt` +
+  `PackStore` (pure, TTL), `ai/PackClient` (fetch on app-foreground via
+  `ScreenControlService`, disk cache under `filesDir/packs/`, loaded at startup via
+  `MainActivity`), and `ControlVocabulary` tries a fetched pack ahead of its seeds.
+- **Green:** off-device gate 728 tests / 62 classes; backend `node --test` 98.
+
+### Start here next session
+1. Confirm CI's `jarvis-debug-apk` for the branch head, then fast-forward `main`.
+2. **On-device checks:** open Blinkit → Diagnostics shows a `pack loaded` line; run an
+   errand and share the **App trace** (confirm it's structured JSON and digits are scrubbed).
+3. **C2.3 — the bake loop:** user shares a trace → turn it into a `packs.js` entry (or a new
+   served blob) → deploy. The pieces now exist end-to-end; C2.3 is the human/Claude step that
+   closes the loop. Recipes (ordered step sequences, not just labels) are the natural
+   extension of the pack format.
+
+### Gotcha earned this session
+- **A pack must never carry user data.** The pack is distilled from a trace (which is
+  sensitive and redacted before sharing), but the pack itself is generic UI knowledge served
+  to everyone — a `packs.test.mjs` test pins that a pack has only `controls/match/name/
+  package/version`, nothing user-specific. Keep it that way when C2.3 adds real labels.
+
+---
+
+## Earlier — 2026-09-08 — Part C2.0 / Part H Phase 0: DebugLog persists to disk
 
 **Branch/shas.** Session branch `claude/next-task-5g9l6t`, based on `main` @ `daa2712`
 (the previous session's 7-commit branch is now merged into `main`). Working tree has the

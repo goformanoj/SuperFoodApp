@@ -116,6 +116,7 @@ sourceSets {
             // lines here. They run in CI.
             "**/ProxyClientTest.kt",
             "**/IdentityParseTest.kt",
+            "**/PackClientParseTest.kt",
         )
         // Same rule as `main`: the tests for the pure files run here too.
         kotlin.exclude { isNonPureUi(it, PURE_UI_TESTS) }
