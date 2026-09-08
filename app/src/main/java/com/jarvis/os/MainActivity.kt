@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.jarvis.os.ai.Identity
 import com.jarvis.os.assistant.AssistantEngine
+import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.ui.home.JarvisApp
 import com.jarvis.os.ui.theme.JarvisPalette
 import com.jarvis.os.ui.theme.JarvisTheme
@@ -59,6 +60,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Lets the anonymous Firebase identity persist across restarts (Phase 4).
         Identity.init(applicationContext)
+        // Persist the diagnostic trace to disk so a failure — and the labelled
+        // examples it carries — survives a restart instead of being wiped (Part C2/H).
+        DebugLog.attach(applicationContext.filesDir)
         engine = AssistantEngine(applicationContext)
         setContent {
             // Held above the theme so a change repaints the whole app immediately,

@@ -1,5 +1,48 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-08 — Part C2.0 / Part H Phase 0: the trace now survives a restart
+
+**Why this first.** With Part C (screen-control) parked at best-effort, the scalable path
+is Part C2 (Test Mode → shared server-side app packs) and, independently, Part H (our own
+tuned model). Both need one thing before anything else: the labelled examples the app
+already produces every turn (`HEARD → REPLY → MARKS → SCREEN`, with the outcome attached).
+`DebugLog` was memory-only, capped at 300, **never written to disk** — so every one of
+those examples was deleted on restart. The plan flags this as the single item that gets
+*more expensive by waiting* and worth doing regardless of the rest. You cannot learn from
+data you threw away.
+
+**What was built.** `DebugLog` now persists. `attach(dir)` (called once from
+`MainActivity` with `filesDir`, mirroring `Identity.init`) points it at a newline-delimited
+file and loads the recent history back on launch; every `log()` appends its already-redacted
+entry. The file keeps up to `MAX_DISK_ENTRIES` (2000) and compacts the oldest away past a
+`COMPACT_SLACK` (200) drift, so it is bounded, not unbounded. Deliberately kept
+**Android-free** — it takes a `java.io.File`, not a `Context` — so the whole thing is real
+JUnit tested off-device against a temp dir (Rule 5), not reasoned about.
+
+**The design choices that mattered.**
+- **Redaction stays before the write.** The existing key-scrub already runs in `log()`, so a
+  key can never reach disk; a test asserts the raw file never contains a `gsk_…`.
+- **A single bad line must not lose the trace.** `encode`/`decode` are pure and round-trip
+  awkward detail (newlines, tabs, backslashes in a screen render) via escaping; `decode`
+  returns null for a malformed or half-written last line (a crash mid-append) and for an
+  unknown stage from another build — so loading skips it rather than aborting. Tested.
+- **Best-effort I/O.** A diagnostic must never crash the app, so every file op swallows its
+  own failure and the in-memory log carries on. No `attach` ⇒ exactly the old behaviour.
+
+**The gotcha this round: the off-device gate had silently rotted.** Running `jvmcheck`
+(the Maven-Central compile+test gate) surfaced that it had been **broken since Phase 4
+merged** — its `BuildConfig` stub was missing the Phase-4 fields (`WORKER_URL`,
+`FIREBASE_API_KEY`, `PROXY_SECRET`) so `:compileKotlin` failed, and both new Phase-4 tests
+(`ProxyClientTest`, `IdentityParseTest`) use Robolectric but aren't named `*RobolectricTest`,
+so they slipped the exclusion and failed `:compileTestKotlin`. Fixed the stub and the two
+exclusions; the gate is green again at **716 tests / 60 classes, 0 failures** (incl. the 17
+new DebugLog tests). Lesson: a new `buildConfigField` or a new Robolectric test needs a
+matching line in `scripts/jvmcheck/` or the only pre-CI gate goes dark without anyone noticing.
+
+**Still owed (on-device).** C2.1 next — extend Diagnostics → Share to emit the structured,
+redacted trace (not just the text log) so a run can actually be shared into a pack. And a
+device confirmation that the file persists across a real restart (deterministic, expected to).
+
 ## 2026-09-06 — Part C iteration 3: PICK ignored the app vocabulary (and the real lesson)
 
 **What the evidence showed.** A second Blinkit trace, this time with a fully step-by-step

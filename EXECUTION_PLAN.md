@@ -102,8 +102,10 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
   consistency is fine here — KV or a served static blob is acceptable (contrast the
   deliberate D1-not-KV choice for metering in `BACKEND_PLAN.md`).
 - **Staging (each shippable on its own):**
-  - **C2.0 — keep the data.** Persist traces to disk (today `DebugLog` is memory-only,
-    300-entry cap — see Part H Phase 0). Prerequisite: you can't share a trace you threw away.
+  - **C2.0 — keep the data.** ✅ **Done (2026-09-08).** `DebugLog` persists to disk
+    (`attach(filesDir)` from `MainActivity`; per-entry append, redacted-before-write, bounded
+    at 2000 with compaction; Android-free + real-JUnit tested off-device). This also satisfies
+    Part H Phase 0. Prerequisite met: you can't share a trace you threw away.
   - **C2.1 — shareable trace.** Extend Diagnostics → Share to emit a structured,
     redacted app trace (screens + steps + outcome), not just the text log.
   - **C2.2 — pack format + fetch.** Define the per-app pack (JSON: search/cart/checkout
@@ -198,10 +200,10 @@ this app's own traffic, on device, for the marker/agent work — hosted model ke
 for conversation and document writing. **A foundation model from scratch is not
 in scope and never will be**; the plan says why in its first section.
 
-- **Phase 0 — keep the data.** `DebugLog` is memory-only, capped at 300 entries,
-  never written to disk, so every labelled example is deleted on restart.
-  **Pure, small, gates off-device, and the only item here that gets more
-  expensive by waiting.** Do this one regardless of the rest.
+- **Phase 0 — keep the data.** ✅ **Done (2026-09-08)** — same change as Part C2.0.
+  `DebugLog` now persists to disk (append-per-entry, redacted-before-write, bounded +
+  compacted), Android-free and real-JUnit tested off-device. Was the only item here that
+  got more expensive by waiting; done regardless of the rest, as planned.
 - **Phase 0b — manufacture the data** (synthetic screens, APK string resources,
   the emulator rig in `androidTest/e2e/`, distillation). No phone needed.
 - **Phase 1 — prove it offline**, judged by the app's own parsers. **Hard gate:**

@@ -111,6 +111,11 @@ sourceSets {
             "**/*RobolectricTest.kt",
             "**/GroqClientParseTest.kt",
             "**/GeminiClientParseTest.kt",
+            // The Phase-4 proxy tests are @RunWith(RobolectricTestRunner) /
+            // @Config but are not named *RobolectricTest, so they need their own
+            // lines here. They run in CI.
+            "**/ProxyClientTest.kt",
+            "**/IdentityParseTest.kt",
         )
         // Same rule as `main`: the tests for the pure files run here too.
         kotlin.exclude { isNonPureUi(it, PURE_UI_TESTS) }

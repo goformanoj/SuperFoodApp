@@ -1,6 +1,44 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-07 (HANDED OFF) — backend done & live; screen-control parked; pivoting to reliable features
+## Current position — 2026-09-08 — Part C2.0 / Part H Phase 0: DebugLog persists to disk
+
+**Branch/shas.** Session branch `claude/next-task-5g9l6t`, based on `main` @ `daa2712`
+(the previous session's 7-commit branch is now merged into `main`). Working tree has the
+C2.0 change committed on the branch; **not yet merged to `main`** — awaiting CI's
+`jarvis-debug-apk` artifact (Rule 2), then fast-forward `main`.
+
+### What shipped this session (on the branch)
+- **`DebugLog` now persists (Part C2.0 / Part H Phase 0).** It was memory-only (300 cap,
+  never written to disk); every labelled `HEARD→REPLY→MARKS→SCREEN` example was deleted on
+  restart. Now `attach(dir)` — called from `MainActivity` with `filesDir`, right after
+  `Identity.init` — loads recent history on launch and each `log()` appends its
+  already-redacted entry to a newline-delimited file (`debug-trace.log`), bounded at
+  `MAX_DISK_ENTRIES=2000` with lazy compaction (`COMPACT_SLACK=200`). Kept **Android-free**
+  (takes a `java.io.File`) so it is real-JUnit tested off-device — 17 tests incl.
+  survive-a-restart, multi-line round-trip, malformed/half-written line skipped, redaction
+  reaches disk redacted, bounded compaction keeps the newest, `clear()` wipes disk.
+- **Un-rotted `jvmcheck`.** The off-device gate had been broken since Phase 4: its
+  `BuildConfig` stub lacked `WORKER_URL`/`FIREBASE_API_KEY`/`PROXY_SECRET`, and
+  `ProxyClientTest`/`IdentityParseTest` use Robolectric but weren't in the exclusion list.
+  Fixed both; gate is green at **716 tests / 60 classes**.
+
+### Start here next session
+1. **Confirm CI green** (`jarvis-debug-apk` for the branch head), then fast-forward `main`.
+2. **On-device:** confirm the trace file survives a real restart (deterministic; expected).
+3. **C2.1 — shareable trace.** Extend Diagnostics → Share to emit a structured, redacted app
+   trace (screens + steps + outcome) rather than only the text log. This is the next stage
+   toward server-side app packs; the disk persistence just built is its prerequisite.
+
+### Gotcha earned this session
+- **A new `buildConfigField` or a new Robolectric test silently breaks `jvmcheck`.** The
+  gate compiles the whole non-UI main set and the whole test set together, so a missing
+  `BuildConfig` stub field or a Robolectric test not matching `*RobolectricTest.kt` (nor
+  listed by name) fails the compile for *everything* — and nobody notices until they next
+  run the gate. When adding either, add the matching line in `scripts/jvmcheck/`.
+
+---
+
+## Earlier position — 2026-09-07 (HANDED OFF) — backend done & live; screen-control parked; pivoting to reliable features
 
 **Branches/shas.** Session branch `claude/next-steps-phase-order-wwvyk9`; **`main`
 fast-forwarded to `daa2712` — all session commits merged (2026-09-07)** at the user's

@@ -11,6 +11,9 @@ import android.app.Activity
 object BuildConfig {
     const val GROQ_API_KEY: String = ""
     const val GEMINI_API_KEY: String = ""
+    const val WORKER_URL: String = ""
+    const val FIREBASE_API_KEY: String = ""
+    const val PROXY_SECRET: String = ""
     const val DEBUG: Boolean = true
 }
 

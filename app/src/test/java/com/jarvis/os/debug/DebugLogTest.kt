@@ -13,7 +13,11 @@ import org.junit.Test
 class DebugLogTest {
 
     @Before
-    fun reset() = DebugLog.clear()
+    fun reset() {
+        // Drop any file a persistence test attached, so these in-memory tests stay pure.
+        DebugLog.detach()
+        DebugLog.clear()
+    }
 
     @Test
     fun `a groq key is never written to the log`() {
