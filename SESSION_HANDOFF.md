@@ -2,10 +2,12 @@
 
 ## Current position — 2026-09-07 (HANDED OFF) — backend done & live; screen-control parked; pivoting to reliable features
 
-**Branches/shas.** Session branch `claude/next-steps-phase-order-wwvyk9` @ `a0e305b`,
-**7 CI-green commits ahead of `main` (@ `b754705`), none merged** — Part C was held off
-`main` pending an on-device confirmation that never came good (see below). Working tree
-clean. Latest CI run (#431, `f18c8b0`) fully green (770+ unit tests, APK built).
+**Branches/shas.** Session branch `claude/next-steps-phase-order-wwvyk9`; **`main`
+fast-forwarded to `daa2712` — all session commits merged (2026-09-07)** at the user's
+go-ahead, since Part C is parked and the commits are strict, CI-green improvements that
+don't regress. Working tree clean. Last code change (iteration 3, `f18c8b0`) was green in
+CI run #431 (770+ unit tests, APK built); everything after it is docs-only. `backend/` was
+untouched by these commits, so the live Worker is unchanged by the merge.
 
 ### What is DONE and live
 - **Backend Phases 1–4 (Part E core).** Worker live (`superfoodapp.goformanoj.workers.dev`);
