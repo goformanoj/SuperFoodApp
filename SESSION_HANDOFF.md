@@ -1,6 +1,78 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-06 — Part C iteration 2 (follow the plan)
+## Current position — 2026-09-07 (HANDED OFF) — backend done & live; screen-control parked; pivoting to reliable features
+
+**Branches/shas.** Session branch `claude/next-steps-phase-order-wwvyk9` @ `a0e305b`,
+**7 CI-green commits ahead of `main` (@ `b754705`), none merged** — Part C was held off
+`main` pending an on-device confirmation that never came good (see below). Working tree
+clean. Latest CI run (#431, `f18c8b0`) fully green (770+ unit tests, APK built).
+
+### What is DONE and live
+- **Backend Phases 1–4 (Part E core).** Worker live (`superfoodapp.goformanoj.workers.dev`);
+  D1 metering; eval harness (38 rows, token-authed); **Phase 3 Firebase identity** verified
+  in-Worker (project `jarvis-os-4efe3`, anon auth); **Phase 4 app→Worker** — the phone runs
+  on the Worker (Diagnostics shows **Provider: Worker**), Groq key off-device. The
+  `provider_failed` transient-retry fix is deployed **on `main`** (`b754705`), so it reached
+  the phone with no reinstall. This is the big win of the session and it works.
+- **Part F (Files).** Already built end-to-end and working (was mis-marked ⏸️ — now ✅):
+  `<<FILE|pdf|Title>>…<<ENDFILE>>` → real PDFs (`PdfDocument`) / notes → Files tab; the
+  **server** prompt teaches the marker so it works on the Worker path. Test: "make a PDF
+  of …". Open: image generation (no Groq image model) and diagrams (not built).
+
+### What is PARKED (deliberate decision, 2026-09-07)
+- **Part C — screen-control accuracy.** Three iterations landed on the branch this session
+  and are CI-green but **NOT merged and NOT reliable on real apps** (Blinkit still fails):
+  - iter 1 `ScreenMatch.normalizeLabel` (strip appended arg from a tap label);
+  - iter 2 `AgentLoop.planTail`/`plannedMove` (follow the up-front plan, re-plan only on a
+    failed step);
+  - iter 3 PICK resolves generic intents ("search bar"/"cart") via `ControlVocabulary`
+    first (it previously ignored the vocabulary) + seeded Blinkit ADD/View-Cart.
+  Each fixed a real bug and the failure moved down a layer every time, but Blinkit still
+  doesn't complete end-to-end. **Decision, agreed with the user:** driving arbitrary
+  third-party apps by accessibility is the brittle frontier (the project's own
+  Prioritization principle says reliable/API-backed before screen-poking, and to stop
+  over-patching). **So Part C is parked at best-effort. Do NOT resume hand-patching labels.**
+  The scalable path is Part C2 (below), which needs real captured flows, not guesses.
+
+### The RIGHT long-term path for app mastery (planned, not built)
+- **Part C2 — App Learning: Test Mode → shared server-side pack** (written up in
+  `EXECUTION_PLAN.md`). On-device Test Mode records a redacted trace → user shares it →
+  it's baked into a **server-side** app pack served by the Worker → every install benefits
+  (no reinstall). Passive capture first; supervised read-only exploration later. Two
+  non-negotiables: redact-before-share; never tap an irreversible control. Staged C2.0–C2.4.
+
+### Open decisions for next session (asked, not yet answered by the user)
+1. **Did Files work on-device?** (Expected to — it's deterministic.)
+2. **Bluetooth "control my own devices" skill** — build the *reliable slice* or park it?
+   Honest Android-15 limits: **turn ON** (system consent dialog) + **list/status** are
+   reliable; **turn OFF** and **force-connect a speaker** are NOT possible for a normal app
+   (open Settings instead). Not built — awaiting the go/park call.
+3. **Merge the 7 branch commits to `main`?** They are strict, CI-green improvements
+   (matching + Files-doc + plans) that don't regress; they were held only because Part C
+   wasn't device-*confirmed*. Reasonable to fast-forward `main` now that Part C is parked
+   (the improvements help simple cases and are harmless), but get the user's nod.
+
+### Known device bugs worth a "polish" pass (Part D), from the last Blinkit trace
+- **Barge-in false-stop:** the errand cancelled itself when it "heard 'Hey Jarvis' over the
+  reply" (self-interrupt / ambient). Annoying and real.
+- **Truthfulness slip:** it said "I've searched for milk" when the type had failed.
+- **Type-before-field-ready:** on Blinkit, `TYPE` ran before the search screen's field
+  existed ("no editable field appeared") — a device-timing issue in `typeWhenReady`.
+
+### Gotchas earned this session
+- **The backend can't fix screen-control.** Prompt/guard/model fixes deploy centrally
+  (no reinstall); on-device accessibility code (tapping inside apps) still needs a new APK
+  + device test, because it runs on the phone. Set expectations accordingly.
+- **Confirm each push's CI before stacking the next commit** — a stale test from the
+  message reword (`0f487c9`) went red and iteration 2 rode on top of it (both red) before
+  the fix (`a7b6a32`). Cost a wasted cycle.
+- **A capability must be wired into EVERY path that needs it.** TAP consulted
+  `ControlVocabulary`; PICK didn't — so a plan using `<<PICK|search bar>>` failed even
+  though the app *knew* Blinkit's search box. The model picks either marker.
+
+---
+
+## Earlier — 2026-09-06 — Part C iteration 2 (follow the plan)
 
 On the branch (needs on-device test): `driveErrand` now **follows the up-front plan**
 step by step (`AgentLoop.planTail`) instead of re-deriving each step from the model,
