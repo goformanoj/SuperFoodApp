@@ -1,5 +1,37 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-09 — Part C2.3: the bake loop closes (the near-term C2 phase is complete)
+
+**The realisation that made this small.** C2.3 sounded like it needed a new capture
+system — record which control was tapped, for which intent, in which app. It didn't: the
+executor *already* logs exactly that the moment a generic intent resolves to a real label
+(`ScreenControlService.seek`: `"Search" is called "Search for atta…" here`). That one
+line, already in the persisted C2.1 trace, is the learned literal the whole of C2 is
+about. The only change on device was to **name the package** in it, so a shared trace is
+self-keying and the baker needn't guess the app.
+
+**What was built.** `backend/src/packBake.js` (pure): parse those `"<generic>" is called
+"<literal>" in <pkg>` lines out of a shared trace, classify each generic word to an intent
+(the same search/cart/add/checkout map the device and `packs.js` use), and **merge** the
+learned literals onto whatever pack is already served for that app — so a distil never
+drops a known label, and `added` reports exactly what the trace taught that wasn't already
+served. `backend/scripts/bake-pack.mjs` turns that into a one-command dev step: read the
+shared trace, print a `packs.js`-ready entry. Smoke-tested end-to-end (a synthetic Blinkit
+trace with a new search label produced the right merged entry and a one-item `added`).
+
+**Why this is the honest shape of C2.3.** The plan always scoped the near-term bake as
+Claude-assisted — share a trace, I turn it into a pack, deploy — "exactly how prompt tuning
+already works." So C2.3 is a *tool*, not an ingestion service: `distill` + a runner, fully
+tested, that makes the manual step real and repeatable. Automated crowd ingestion (with
+review) and supervised active exploration are C2.4, deliberately deferred until volume
+justifies automating a step that now takes one command.
+
+**The C2 phase, end to end, now works:** a trace **persists** (C2.0) → **shares** as
+structured redacted JSON (C2.1) → is **served** as a per-app pack every install fetches
+(C2.2) → a shared trace **bakes back** into that pack (C2.3). That is the app-learning path
+that replaces per-device screen-poking — reliable for everyone, no reinstall. backend
+`node --test` 107, off-device gate green.
+
 ## 2026-09-08 — Part C2.1 + C2.2: shareable traces, and packs served to every install
 
 **The arc.** C2.0 made the trace survive a restart. C2.1 makes it *shareable* as

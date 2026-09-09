@@ -701,16 +701,20 @@ class ScreenControlService : AccessibilityService() {
         // Strictly additive: it only runs where the old code was already heading
         // for a scroll or a weak-match tap, and it only acts on a CONFIDENT match,
         // so a stale entry fails exactly like any other wrong label.
+        val activePkg = rootInActiveWindow?.packageName?.toString()
         val known = ControlVocabulary.candidatesFor(
-            rootInActiveWindow?.packageName?.toString(),
+            activePkg,
             ScreenMatch.normalizeLabel(label),
         )
         for (candidate in known) {
             val (altNode, altScore) = bestMatch(root, candidate)
             if (altNode != null && altScore >= GOOD_SCORE) {
+                // A generic intent resolved to this app's real label. Naming the
+                // package makes the line self-keying, so a shared trace (C2.1) can be
+                // baked into a server pack (C2.3) without the baker guessing the app.
                 DebugLog.log(
                     DebugLog.Stage.SCREEN,
-                    "\"$label\" is called \"$candidate\" here — tapping that",
+                    "\"$label\" is called \"$candidate\" in ${activePkg ?: "?"} — tapping that",
                 )
                 onDone(tapNode(altNode))
                 return

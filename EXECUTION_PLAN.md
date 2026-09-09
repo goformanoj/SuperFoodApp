@@ -116,10 +116,21 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
     warm on app-foreground via `ScreenControlService`, disk-cached, loaded at startup) and
     `ControlVocabulary` tries a fetched pack ahead of its baked-in seeds. Pure parts tested
     off-device; parse/route in CI + backend `node --test`. Recipes (beyond labels) are C2.3+.
-  - **C2.3 — bake loop.** User shares a trace → Claude turns it into a pack → deploy to
-    the Worker → every install benefits.
-  - **C2.4 — later:** automated/crowd-sourced ingestion with review, and the supervised
-    active-exploration mode.
+  - **C2.3 — bake loop.** ✅ **Done (2026-09-09).** The device already logs the learned
+    literal the moment a generic intent resolves (`"Search" is called "…" in <pkg>`), now
+    self-keyed with the package. `backend/src/packBake.js` distils those lines from a shared
+    trace into pack controls, merging over what is already served (nothing dropped);
+    `backend/scripts/bake-pack.mjs` prints a `packs.js`-ready entry + what the trace *adds*.
+    So: user shares a trace → run the baker → review → paste into `packs.js` → commit →
+    Git-Builds redeploys `main` → every install benefits. Near-term Claude-assisted, as
+    planned; automated ingestion is C2.4. Pure + `node --test`.
+  - **C2.4 — later (deferred, as always scoped):** automated/crowd-sourced ingestion with
+    review, and the supervised active-exploration mode. Not part of the near-term C2 phase;
+    picked up when volume justifies automating the manual bake step C2.3 now provides.
+
+  **C2 status:** the near-term phase (C2.0–C2.3) is **complete** — traces persist, share as
+  structured redacted JSON, become server packs, reach every install, and a shared trace
+  bakes back into a pack. C2.4 (automation) is the deliberate later step.
 - **Depends on / feeds:** builds on Part C (matching + plan-follow) and Phase 4
   (app↔Worker, already live); reuses `ScreenMatch.redactSensitive`; and the same traces
   are the labelled corpus a future on-device fine-tune (Part H) needs — so this is not a

@@ -1,6 +1,42 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-08 — Part C2.1 + C2.2: shareable traces + per-app packs
+## Current position — 2026-09-09 — Part C2 near-term phase COMPLETE (C2.0–C2.3)
+
+**Branch.** `claude/next-task-5g9l6t`. C2.0–C2.2 merged to `main` (`65a12e5`). C2.3 committed
+on the branch on top of it — awaiting CI's `jarvis-debug-apk`, then fast-forward `main`.
+
+**The whole C2 loop now runs end to end:** a trace **persists** (C2.0) → **shares** as
+structured redacted JSON (C2.1) → is **served** as a per-app pack every install fetches
+(C2.2) → a shared trace **bakes back** into that pack (C2.3). This is the app-learning path
+that replaces brittle per-device screen-poking. **Ready for on-device testing.**
+
+### What shipped this session for C2.3
+- **Device:** the learned-literal log line (`ScreenControlService.seek`, fired when a generic
+  intent resolves to a real label) now **names the package**, so a shared trace is self-keying.
+- **Backend (pure, tested):** `packBake.js` distils those lines from a shared trace into pack
+  controls, merging over what's already served (nothing dropped) and reporting what's `added`;
+  `scripts/bake-pack.mjs` prints a `packs.js`-ready entry. Smoke-tested end-to-end.
+- **Green:** backend `node --test` 107; off-device gate green.
+
+### The bake step, for next time a trace comes in
+`node backend/scripts/bake-pack.mjs <trace.json> [package] [name]` → review the `added`
+labels → paste the entry into the `PACKS` array in `backend/src/packs.js` → commit to `main`.
+Cloudflare Git-Builds redeploys, and every install gets the new labels with no reinstall.
+
+### What's deferred (C2.4, as always scoped)
+Automated/crowd-sourced ingestion with review, and supervised active exploration. Not part of
+the near-term phase; it automates the one-command manual bake C2.3 now provides, once volume
+justifies it.
+
+### On-device checks for the user
+1. Open Blinkit → Diagnostics logs a `pack loaded` line (C2.2 fetch).
+2. Run an errand, then Diagnostics → **App trace**: confirm structured JSON, digits scrubbed
+   (C2.1), and — on a run that landed via a renamed control — a `"X" is called "Y" in <pkg>`
+   line (the C2.3 signal). Share that trace back and it bakes into a pack.
+
+---
+
+## Earlier — 2026-09-08 — Part C2.1 + C2.2: shareable traces + per-app packs
 
 **Branch.** `claude/next-task-5g9l6t`. C2.0 merged to `main` (`20cb9d6`). C2.1 + C2.2 are
 committed on the branch on top of it — awaiting CI's `jarvis-debug-apk`, then fast-forward
