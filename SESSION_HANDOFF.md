@@ -1,6 +1,50 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-12 — brain-500 fixed + per-account data isolation
+## Current position — 2026-09-12 (evening) — device-feedback round complete, all merged
+
+Everything from this session is merged to `main` (`1756a65`). The app is on-device and the
+brain is healthy. Branch `claude/next-task-5g9l6t`; `main` == branch head.
+
+**Shipped this session (newest first):**
+- **Pull-to-refresh** on the account page (`AccountScreen`, Material3 `PullToRefreshBox`) — swipe
+  down re-reads plan + usage in place.
+- **Owner is Pro by EMAIL** — `PRO_EMAILS = "goforpranjal@gmail.com"` in `wrangler.toml [vars]`;
+  `/chat` forces `plan=pro` when the verified token's email (or a `PRO_UIDS` uid) is allowlisted.
+  **Why email:** the owner's uid changes between anonymous and Google-linked sessions (linking
+  "signs in as the existing account" with a different uid), so a uid allowlist kept missing — the
+  email is stable. Deploys server-side on this merge; **the owner takes ONE turn to see Pro** (the
+  app only learns `pro` from a `/chat` reply, via `Identity.cachePlan`).
+- **Account screen refreshes live** on open + after sign-in/out (was `remember`-cached, needed a
+  restart).
+- **Friendly brain-error messages** — `ProxyClient.errorMessage` speaks the Worker's `spoken`
+  line, never a raw code like `quota_exhausted`.
+- **Per-account data isolation** — chats/memory/instructions/files/usage partition by
+  `Profiles.idFor` (`guest` / `u_<email>`); `ProfileMigration.runOnce` lifted existing data in.
+- **Account page + red confirm sign-out + Great Vibes wordmark + name-initial monogram.**
+- **Brain-500 fixed** — `/chat` read a `subscriptions` table that never existed in prod D1;
+  created it + guarded the read so a dormant feature can't 500 the brain.
+
+**Owner-pro / billing state (READ IF PRO LOOKS WRONG):**
+- Prod D1 id `1dc3695c-1f4b-4e17-980e-b6f90122d35f` (name `jarvis`). The owner's *current* signed-in
+  uid is `GHqijQCTduNHNFR9roqWF82v60v2` (Google); `ytX2…` (60k used) was an old anonymous session.
+- `users.plan` stays `free` in the table — the override is applied at request time, not persisted.
+- Direct prod D1 writes are blocked by the session's safety classifier (that's why the override is
+  code/config, not a plan flip). Confirm the live Worker with `workers_get_worker_code superfoodapp`
+  and grep for `proEmails`.
+- Real Play Billing (the "Upgrade to Pro — Soon" button) is still a later slice.
+
+**Gotchas added this session:** merging a schema/config change ≠ applying it (a new D1 table needs
+the migration RUN; `[vars]` deploy with `main` via Cloudflare Git-Builds); a Firebase uid is NOT
+stable across anonymous↔Google linking — key owner/allowlist logic on the email claim; bundled-font
+downloads use `raw.githubusercontent.com`, not `github.com/…/raw/…`.
+
+**Next:** the launch track — E3 release engineering (AAB, R8, versionCode), device Play Billing +
+Play Console product + service account (activates the real Pro upgrade), E2 compliance, E4 naming
+(JARVIS is a Marvel trademark), E6 launch. Then resume app-training (C2.4 + Part H), deferred.
+
+---
+
+## Prior position — 2026-09-12 — brain-500 fixed + per-account data isolation
 
 **CRITICAL FIX — the brain was returning HTTP 500 on every request.** `/chat` reads
 `store.subscription(uid)` (Part E billing) but the **`subscriptions` table was never created in
