@@ -1,5 +1,35 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-12 — Chat becomes Chat & Memory (commercial redesign 2/2)
+
+**What was built.** The last of the user-approved slab redesigns ("everything else looks
+epic, make it now" — Custom Instructions deliberately excluded). `Chat` was a flat
+terminal-style transcript; it is now a two-tab screen. **Conversation** keeps the shaped
+message bubbles and gains a **type bar** wired to the existing `onSubmitCommand`
+(`engine.submitText`) — the same pipeline the microphone drives — with `imePadding()` so it
+rides the keyboard. **Memory** is new: it shows the standing facts JARVIS injects into every
+reply (`UserPreferences.learnedFacts()`), grouped by kind, private values blurred, each
+removable in a tap, plus a field to add one (new engine seam `rememberFact` →
+`UserPreferences.remember`).
+
+**Why these two together, and why tabs.** "What was said" and "what is known" are the two
+halves of the same trust question — you notice a wrong belief *in* a conversation, so the fix
+belongs one tap away, not in a separate drawer entry. And a memory the user trusts has to read
+as *organised* and *safe to show*: a flat `List<String>` dump is what made the old surfaces feel
+"built for myself". Grouping by category (Contact / About you / People / Places / Preferences /
+Other) and **blurring the obviously-private bits** (emails → `g•••@domain`, 5+ digit runs →
+`•••••••210`, with a lock marker) means the screen can be held up in a meeting without leaking a
+contact — a differentiator, not just decoration.
+
+**The evidence.** The fiddly part — which bucket a fact falls in, and what counts as sensitive —
+is pure string work, so it lives in `memory/MemoryFormat` (`categorize`/`masked`/`isSensitive`/
+`grouped`) with real JUnit tests, per Rule 5. **jvmcheck: 748 green** (was 747; +6 MemoryFormat
+tests, one of which caught my own wrong test literal — the local part of `goformanoj@` starts
+with `g`, not `m`). Only the Compose shell relies on CI. Ran the duplicate-import guard
+(`grep '^import' | sort | uniq -d`) that bit runs #451/#452 — clean; all icons resolve from
+`material-icons-extended`. This **closes the commercial-design pass**; next is the launch track
+(E3 release engineering, device Play Billing, compliance, naming) and on-device testing.
+
 ## 2026-09-12 — PIVOT to launch (Part E); Google sign-in without the Firebase SDK
 
 **The decision.** Testing C2 on device made the tradeoff concrete: the pack pipeline works

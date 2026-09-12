@@ -1,6 +1,32 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-12 — PIVOT to Part E; Google sign-in code done (dormant)
+## Current position — 2026-09-12 — commercial-design pass complete (Chat & Memory shipped)
+
+**The three approved slab redesigns are done** (Calendar, Files, and now Chat & Memory —
+Custom Instructions intentionally left as-is). `Chat` is a two-tab screen: **Conversation**
+(bubbles + a type bar on the existing `onSubmitCommand` pipeline, `imePadding` for the keyboard)
+and **Memory** (facts grouped by kind, private values blurred with a lock marker, one-tap forget,
+add-a-fact via the new `rememberFact` engine seam). Grouping/masking is the pure, tested
+`memory/MemoryFormat`; **jvmcheck 748 green**; only the Compose shell is CI-gated.
+
+**Branch.** `claude/next-task-5g9l6t`. Commit `63d1629` (Chat & Memory) pushed — awaiting CI's
+`jarvis-debug-apk` (run #457), then fast-forward `main` (which is at `5a4f4d5`, Calendar+Files).
+A `send_later` check-in is scheduled to verify the artifact and merge.
+
+**Gotcha reinforced this session.** jvmcheck compiles non-UI Kotlin only, so a new pure helper
+(`MemoryFormat`) IS gated, but the Compose file that uses it (`ChatScreen.kt`) is not — the
+duplicate-import class of failure only shows in CI. Kept the `grep '^import' | sort | uniq -d`
+pre-push check as the guard. Also: a `mutableIntStateOf` refresh counter is how the Memory tab
+repaints after a forget/add without leaving and re-entering the screen (`learnedFacts()` reads
+current prefs each time it's re-invoked).
+
+**Next.** Back to the launch track: E3 release engineering (AAB, R8, versionCode), the device
+Play Billing flow + Play Console product + service account to activate billing, E2 compliance,
+E4 naming, E6 launch. Then on-device testing of all the redesigns.
+
+---
+
+## Prior position — 2026-09-12 — PIVOT to Part E; Google sign-in code done (dormant)
 
 **Strategic pivot (user's call).** Finish the app for launch — sign-in, free/paid tiers,
 billing, release — **before** resuming app-training. C2 is at C2.3 (loop works end to end);
