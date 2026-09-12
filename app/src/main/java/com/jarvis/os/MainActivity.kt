@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.jarvis.os.ai.Identity
 import com.jarvis.os.ai.PackClient
+import com.jarvis.os.ai.UsageStats
 import com.jarvis.os.assistant.AssistantEngine
 import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.ui.home.JarvisApp
@@ -67,6 +68,8 @@ class MainActivity : ComponentActivity() {
         // Load any cached per-app packs so the first errand after launch starts warm
         // (Part C2.2). Fresh packs are fetched lazily when an app comes to the front.
         PackClient.init(applicationContext)
+        // Today's token allowance, updated from each Worker reply and shown in the drawer.
+        UsageStats.init(applicationContext)
         engine = AssistantEngine(applicationContext)
         setContent {
             // Held above the theme so a change repaints the whole app immediately,

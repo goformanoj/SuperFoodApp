@@ -54,6 +54,21 @@ class ProxyClientTest {
     }
 
     @Test
+    fun `plan and remaining are read from the reply for the usage display`() {
+        val body = """{"reply":"ok","plan":"pro","usage":{"input":10,"output":5},"remaining":1999985}"""
+        assertEquals("pro", ProxyClient.parsePlan(body))
+        assertEquals(1_999_985, ProxyClient.parseRemaining(body))
+    }
+
+    @Test
+    fun `plan and remaining are null when absent or unparseable`() {
+        assertEquals(null, ProxyClient.parsePlan("""{"reply":"ok"}"""))
+        assertEquals(null, ProxyClient.parseRemaining("""{"reply":"ok"}"""))
+        assertEquals(null, ProxyClient.parsePlan("not json"))
+        assertEquals(null, ProxyClient.parseRemaining("not json"))
+    }
+
+    @Test
     fun `error messages are safe and never leak internals`() {
         assertTrue(ProxyClient.errorMessage(401, "").contains("verify", ignoreCase = true))
         assertTrue(ProxyClient.errorMessage(403, "").contains("authoris", ignoreCase = true))

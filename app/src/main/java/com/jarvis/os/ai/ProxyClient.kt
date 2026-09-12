@@ -111,6 +111,11 @@ object ProxyClient {
             val stream = if (ok) conn.inputStream else conn.errorStream
             val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
             if (ok) {
+                // The reply carries the day's metering (plan + remaining). Cache it so
+                // the drawer can show the plan and today's token usage with no extra call.
+                val plan = parsePlan(body)
+                if (plan != null) Identity.cachePlan(plan)
+                parseRemaining(body)?.let { UsageStats.record(plan, it) }
                 val reply = parseReply(body)
                 if (reply.isBlank()) Res(code, null, "Empty reply from Worker") else Res(code, reply, null)
             } else {
@@ -147,6 +152,21 @@ object ProxyClient {
         } catch (e: Exception) {
             ""
         }
+    }
+
+    /** The plan the Worker metered this turn at, or null if absent/unparseable. */
+    internal fun parsePlan(json: String): String? = try {
+        JSONObject(json).optString("plan").ifBlank { null }
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Tokens left in today's allowance, or null if the field is absent. */
+    internal fun parseRemaining(json: String): Int? = try {
+        val o = JSONObject(json)
+        if (o.has("remaining")) o.optInt("remaining") else null
+    } catch (e: Exception) {
+        null
     }
 
     /** A short, user-safe reason from a non-2xx Worker response. Never leaks the token. */

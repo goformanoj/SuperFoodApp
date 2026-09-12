@@ -49,6 +49,7 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
@@ -103,6 +104,7 @@ import com.jarvis.os.ui.speech.VOICE_SAMPLE
 import com.jarvis.os.ui.theme.BackdropStyle
 import com.jarvis.os.ai.GoogleAuth
 import com.jarvis.os.ai.Identity
+import com.jarvis.os.ai.UsageStats
 import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.ErrorRed
 import com.jarvis.os.ui.theme.GlassBorder
@@ -970,6 +972,9 @@ private fun DrawerAccountRow() {
     var error by remember { mutableStateOf<String?>(null) }
     val configured = GoogleAuth.isConfigured()
     val accent = LocalAccent.current
+    // Today's token allowance, as last reported by the Worker. Null before the first
+    // turn of the day, in which case the usage line is simply omitted.
+    val usage = remember { UsageStats.today() }
 
     val signIn: () -> Unit = {
         if (configured && !busy) {
@@ -987,61 +992,81 @@ private fun DrawerAccountRow() {
         }
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = configured && !account.isSignedIn) { signIn() }
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Avatar: the email's initial when signed in, else a neutral glyph.
-        Box(
-            Modifier.size(40.dp).clip(CircleShape).background(accent.copy(alpha = 0.18f)),
-            contentAlignment = Alignment.Center,
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = configured && !account.isSignedIn) { signIn() },
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                (account.email?.trim()?.firstOrNull()?.uppercaseChar()
-                    ?: if (account.isSignedIn) 'J' else 'G').toString(),
-                fontWeight = FontWeight.Medium,
-                color = accent,
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            if (account.isSignedIn) {
+            // Avatar: the email's initial when signed in, else a neutral glyph.
+            Box(
+                Modifier.size(40.dp).clip(CircleShape).background(accent.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) {
                 Text(
-                    account.email ?: "Signed in",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    "Sign out",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary,
-                    modifier = Modifier.clickable {
-                        Identity.signOut(); account = Identity.account(); error = null
-                    },
-                )
-            } else {
-                Text(
-                    if (busy) "Signing in…" else if (configured) "Sign in with Google" else "Guest",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary,
-                )
-                Text(
-                    error ?: if (configured) "Keep JARVIS across devices" else "Not signed in",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (error != null) ErrorRed else TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    (account.email?.trim()?.firstOrNull()?.uppercaseChar()
+                        ?: if (account.isSignedIn) 'J' else 'G').toString(),
+                    fontWeight = FontWeight.Medium,
+                    color = accent,
                 )
             }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                if (account.isSignedIn) {
+                    Text(
+                        account.email ?: "Signed in",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "Sign out",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary,
+                        modifier = Modifier.clickable {
+                            Identity.signOut(); account = Identity.account(); error = null
+                        },
+                    )
+                } else {
+                    Text(
+                        if (busy) "Signing in…" else if (configured) "Sign in with Google" else "Guest",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary,
+                    )
+                    Text(
+                        error ?: if (configured) "Keep JARVIS across devices" else "Not signed in",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (error != null) ErrorRed else TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (account.isSignedIn) {
+                Spacer(Modifier.width(10.dp))
+                AccountPlanPill(pro = account.isPro)
+            }
         }
-        if (account.isSignedIn) {
-            Spacer(Modifier.width(10.dp))
-            AccountPlanPill(pro = account.isPro)
+
+        // Today's token usage: a slim bar plus "used of cap · left". Only shown once
+        // there is a figure for today (after the first turn); the allowance is UTC-daily.
+        if (usage != null) {
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { usage.fraction },
+                color = accent,
+                trackColor = JarvisTheme.glassBorder,
+                modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(50)),
+            )
+            Spacer(Modifier.height(5.dp))
+            Text(
+                "${UsageStats.format(usage.used)} of ${UsageStats.format(usage.cap)} tokens today · " +
+                    "${UsageStats.format(usage.remaining)} left",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+            )
         }
     }
 }
