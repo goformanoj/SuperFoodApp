@@ -87,6 +87,9 @@ jobs:
           PROXY_SECRET: ${{ secrets.PROXY_SECRET }}
           FIREBASE_WEB_API_KEY: ${{ vars.FIREBASE_WEB_API_KEY }}
           WORKER_URL: ${{ vars.WORKER_URL }}
+          # Part E — Google sign-in. Public OAuth Web client id (a repo Variable).
+          # Without this the account card / sign-in stays hidden in the app.
+          GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID }}
         run: ./gradlew assembleDebug
 
       - name: Upload debug APK
