@@ -36,14 +36,23 @@ committed on the branch — awaiting CI's `jarvis-debug-apk`, then fast-forward 
 4. Rebuild. The Account row appears; "Sign in with Google" shows the account chooser and links.
    (Package must stay `com.jarvis.os`, which matches the OAuth Android client.)
 
+### Also shipped 2026-09-12 — subscription billing backend (monthly), dormant
+`backend/src/billing.js` (pure: parse Play `subscriptionsv2`, `isActive`/`effectivePlan`) +
+a `subscriptions` D1 table + `db.js` `subscription`/`setSubscription` + `POST /billing/verify`
+(auth shared with `/chat` via an extracted `authenticate()`). `/chat` meters at the effective
+plan (pro while a sub is active). `verifySubscription` is injected (fake in tests), so the real
+Google Play verifier is a dormant switch (503 until a service account is set). 119 backend tests.
+User did the full Firebase Google-sign-in setup (provider, Web client id, Android app + SHA-1);
+`GOOGLE_WEB_CLIENT_ID` takes effect on the next CI build.
+
 ### Start here next session
 1. Confirm CI's `jarvis-debug-apk` for the branch head, then fast-forward `main`.
-2. **Subscription billing (Phase 6 server half)** — buildable + testable now: a `/billing/verify`
-   endpoint that verifies a Play subscription purchase token (pure verifier injected, like
-   `auth.js`), sets `plan = pro` in D1, and an RTDN webhook to downgrade on cancel/expire. The
-   free cap (60k/day) and pro cap (2M/day) already exist in `quota.js`. Activation needs the
-   user's Play service account (dormant switch, like `FIREBASE_PROJECT_ID`).
-3. Then E3 release engineering (AAB, R8, versionCode), E2 compliance, E4 naming, E6 launch.
+2. **UI: Claude-style Settings/Account redesign + JARVIS app-drawer logo** (user request,
+   screenshots in-thread): a top account card (email + plan pill Free/Pro), grouped rows with
+   icons, and a real launcher icon (adaptive `ic_launcher` from the orb motif). Compose +
+   asset work, CI-gated.
+3. Then E3 release engineering (AAB, R8, versionCode), the device Play Billing flow + Play
+   Console product + service account to activate billing, E2 compliance, E4 naming, E6 launch.
 
 ---
 

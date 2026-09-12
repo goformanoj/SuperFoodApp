@@ -19,6 +19,7 @@ import { MIGRATIONS } from './schema.js'
 import { SYSTEM_PROMPT } from './systemPrompt.js'
 import { dropSecretMemories } from './guards.js'
 import { packFor } from './packs.js'
+import { effectivePlan, isActive } from './billing.js'
 import { groqProvider } from './providers/groq.js'
 import { AuthError, firebaseVerifier } from './auth.js'
 
@@ -34,11 +35,37 @@ export function createWorker({
   provider,
   proxySecret = null,
   verifyToken = null,
+  verifySubscription = null,
   now = () => Date.now(),
 }) {
   return {
     async fetch(request) {
       const url = new URL(request.url)
+
+      // Shared auth for the per-user routes (/chat, /billing/verify): the app secret
+      // gates the build, and the uid comes from a verified Firebase token (Phase 3)
+      // or the stubbed X-Uid before that. Returns { uid } or { error: Response }.
+      const authenticate = async () => {
+        if (!checkSecret(request, proxySecret)) {
+          return { error: Response.json({ error: 'forbidden' }, { status: 403 }) }
+        }
+        if (verifyToken) {
+          const authz = request.headers.get('Authorization') ?? ''
+          if (!authz.startsWith('Bearer ')) {
+            return { error: Response.json({ error: 'no_token' }, { status: 401 }) }
+          }
+          try {
+            const { uid } = await verifyToken(authz.slice(7).trim())
+            return { uid }
+          } catch (e) {
+            const code = e instanceof AuthError ? e.code : 'bad_token'
+            return { error: Response.json({ error: 'unauthorized', code }, { status: 401 }) }
+          }
+        }
+        const uid = request.headers.get('X-Uid')
+        if (!uid) return { error: Response.json({ error: 'no_uid' }, { status: 401 }) }
+        return { uid }
+      }
 
       if (request.method === 'GET' && url.pathname === '/health') {
         return Response.json({ ok: true })
@@ -82,50 +109,53 @@ export function createWorker({
         return Response.json({ ok: true, tables: MIGRATIONS.length })
       }
 
+      // PART E — subscription verification. The phone posts a Play purchase token
+      // after a successful subscribe; we verify it, record the subscription, and the
+      // user's plan is `pro` while it is active. Dormant (503) until a Play service
+      // account wires the verifier, exactly like Firebase identity's project-id switch.
+      if (request.method === 'POST' && url.pathname === '/billing/verify') {
+        const a = await authenticate()
+        if (a.error) return a.error
+        if (!verifySubscription) {
+          return Response.json({ error: 'billing_unconfigured' }, { status: 503 })
+        }
+        let body
+        try {
+          body = await request.json()
+        } catch {
+          return Response.json({ error: 'bad_json' }, { status: 400 })
+        }
+        const productId = body?.productId
+        const purchaseToken = body?.purchaseToken
+        if (!productId || !purchaseToken) {
+          return Response.json({ error: 'missing_purchase' }, { status: 400 })
+        }
+        let sub
+        try {
+          sub = await verifySubscription({ productId, purchaseToken })
+        } catch (e) {
+          return Response.json({ error: 'verify_failed', detail: String(e?.message ?? e) }, { status: 502 })
+        }
+        const nowMs = now()
+        await store.setSubscription(a.uid, { ...sub, productId, purchaseToken }, nowMs)
+        const active = isActive(sub, nowMs)
+        return Response.json({
+          plan: active ? 'pro' : 'free',
+          state: sub.state,
+          expiresAt: sub.expiryMs || null,
+          active,
+        })
+      }
+
       if (request.method !== 'POST' || url.pathname !== '/chat') {
         return Response.json({ error: 'not_found' }, { status: 404 })
       }
 
-      // A shared secret, until Firebase lands in Phase 3.
-      //
-      // Crude, and not a substitute for real auth — everyone shares one string,
-      // so it identifies the APP, not a user. But without it a deployed Worker is
-      // an open relay to somebody's Groq account: the uid below is self-declared,
-      // so anyone who finds the URL could spend the whole allowance. This makes it
-      // a closed relay in the meantime.
-      if (!checkSecret(request, proxySecret)) {
-        return Response.json({ error: 'forbidden' }, { status: 403 })
-      }
-
-      // PHASE 3 — identity.
-      //
-      // When a verifier is wired (the deploy has a Firebase project id), the uid
-      // must come from a signed Firebase ID token: `Authorization: Bearer <jwt>`.
-      // A verified uid cannot be spoofed the way `X-Uid` could — that is the whole
-      // point of the phase — so once verification is on, `X-Uid` is ignored.
-      //
-      // When no verifier is wired (before the project id is configured), the old
-      // stubbed `X-Uid` path stays, so nothing breaks on the way to Phase 4 and
-      // the eval harness keeps running. The default export decides which by
-      // whether `FIREBASE_PROJECT_ID` is set.
-      let uid
-      if (verifyToken) {
-        const authz = request.headers.get('Authorization') ?? ''
-        if (!authz.startsWith('Bearer ')) {
-          return Response.json({ error: 'no_token' }, { status: 401 })
-        }
-        try {
-          ;({ uid } = await verifyToken(authz.slice(7).trim()))
-        } catch (e) {
-          // One 401 for every rejection; the code says which, for logs and the
-          // app, without ever leaking whether a uid exists.
-          const code = e instanceof AuthError ? e.code : 'bad_token'
-          return Response.json({ error: 'unauthorized', code }, { status: 401 })
-        }
-      } else {
-        uid = request.headers.get('X-Uid')
-        if (!uid) return Response.json({ error: 'no_uid' }, { status: 401 })
-      }
+      // Auth (shared app secret + a verified Firebase uid, or the stubbed X-Uid
+      // before Phase 3 activation) is shared with /billing/verify above.
+      const auth = await authenticate()
+      if (auth.error) return auth.error
+      const uid = auth.uid
 
       let body
       try {
@@ -140,7 +170,12 @@ export function createWorker({
 
       const nowMs = now()
       const day = dayKey(nowMs)
-      const plan = await store.userPlan(uid)
+      // Effective plan: `pro` while a subscription is active, else the stored plan
+      // (which stays `free` unless manually overridden). No subscription ⇒ identical
+      // to the old behaviour, so nothing changes for a user who never subscribed.
+      const userPlan = await store.userPlan(uid)
+      const sub = await store.subscription(uid)
+      const plan = effectivePlan(userPlan, sub, nowMs)
       const cap = capFor(plan)
       const used = await store.usedToday(uid, day)
 

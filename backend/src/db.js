@@ -62,6 +62,36 @@ export function d1Store(db, nowMs = () => Date.now()) {
         .bind(uid, day, inTok, outTok)
         .run()
     },
+
+    async subscription(uid) {
+      const row = await db
+        .prepare('SELECT state, expiry_ms, product_id, purchase_token FROM subscriptions WHERE uid = ?1')
+        .bind(uid)
+        .first()
+      if (!row) return null
+      return {
+        state: row.state,
+        expiryMs: row.expiry_ms,
+        productId: row.product_id,
+        purchaseToken: row.purchase_token,
+      }
+    },
+
+    async setSubscription(uid, sub, updatedAtMs = nowMs()) {
+      await db
+        .prepare(
+          `INSERT INTO subscriptions (uid, product_id, purchase_token, state, expiry_ms, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+           ON CONFLICT(uid) DO UPDATE SET
+             product_id     = excluded.product_id,
+             purchase_token = excluded.purchase_token,
+             state          = excluded.state,
+             expiry_ms      = excluded.expiry_ms,
+             updated_at     = excluded.updated_at`,
+        )
+        .bind(uid, sub.productId ?? null, sub.purchaseToken ?? null, sub.state, sub.expiryMs ?? 0, updatedAtMs)
+        .run()
+    },
   }
 }
 
@@ -76,6 +106,7 @@ export function memoryStore(seed = {}) {
   const migrations = []
   const users = new Map(Object.entries(seed.users ?? {}))
   const usage = new Map(Object.entries(seed.usage ?? {}))
+  const subs = new Map(Object.entries(seed.subscriptions ?? {}))
   const key = (uid, day) => `${uid}|${day}`
 
   return {
@@ -98,9 +129,22 @@ export function memoryStore(seed = {}) {
       row.requests += 1
       usage.set(k, row)
     },
+    async subscription(uid) {
+      return subs.get(uid) ?? null
+    },
+    async setSubscription(uid, sub, updatedAtMs = Date.now()) {
+      subs.set(uid, {
+        state: sub.state,
+        expiryMs: sub.expiryMs ?? 0,
+        productId: sub.productId ?? null,
+        purchaseToken: sub.purchaseToken ?? null,
+        updatedAt: updatedAtMs,
+      })
+    },
     // Test-only windows onto the state.
     _migrations: migrations,
     _users: users,
     _usage: usage,
+    _subs: subs,
   }
 }

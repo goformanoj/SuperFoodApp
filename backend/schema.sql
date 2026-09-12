@@ -18,3 +18,15 @@ CREATE TABLE IF NOT EXISTS usage_daily (
   requests      INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (uid, day)
 );
+
+-- One subscription per user (Part E billing). Effective plan is 'pro' while this
+-- row is active (an accepted state and not past expiry). Separate table, not a
+-- column on users, so the migration is a plain idempotent CREATE (no ALTER).
+CREATE TABLE IF NOT EXISTS subscriptions (
+  uid            TEXT PRIMARY KEY,
+  product_id     TEXT,
+  purchase_token TEXT,
+  state          TEXT NOT NULL,              -- Play subscriptionState
+  expiry_ms      INTEGER NOT NULL DEFAULT 0, -- epoch ms of latest line item expiry
+  updated_at     INTEGER NOT NULL
+);

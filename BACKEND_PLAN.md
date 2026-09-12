@@ -257,6 +257,19 @@ a documented bypass. The app sending the token is Phase 4.
    current.
 3. Free-tier daily cap enforced in the proxy.
 
+**Server half DONE (2026-09-12), off-device and tested — dormant.** Paid tier is a
+**monthly subscription**. `backend/src/billing.js` (pure) parses Play `subscriptionsv2`
+responses and decides `isActive`/`effectivePlan`; a `subscriptions` D1 table + `db.js`
+`subscription`/`setSubscription`; `POST /billing/verify` (auth shared with `/chat` via an
+extracted `authenticate()`) records a verified purchase and `/chat` meters at the effective
+plan. `verifySubscription` is an **injected** dependency (fake in tests), so the real Google
+Play Developer API call is a thin shell that activates when a service account is configured —
+until then the endpoint is `503 billing_unconfigured` and nothing changes for existing users.
+Expiry is stored, so a lapsed sub downgrades on its own even if RTDN never arrives.
+**Still the user's / a later slice:** the device Play Billing flow, a Play Console subscription
+product, the service account for the real verifier, and RTDN (Pub/Sub → a webhook) for prompt
+renewal/cancel updates. 119 backend tests green.
+
 ---
 
 ## Risks, stated plainly
