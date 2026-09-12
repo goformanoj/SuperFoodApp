@@ -72,13 +72,14 @@ class IdentityParseTest {
         val body = """
             {"federatedId":"https://accounts.google.com/1","providerId":"google.com",
              "localId":"uid-google-1","idToken":"IDG","refreshToken":"REFG","expiresIn":"3600",
-             "email":"user@example.com","isNewUser":false}
+             "email":"user@example.com","displayName":"Pranjal Sharma","isNewUser":false}
         """.trimIndent()
         val r = Identity.parseIdp(body)
         assertEquals("IDG", r.idToken)
         assertEquals("REFG", r.refreshToken)
         assertEquals("uid-google-1", r.localId)
         assertEquals("user@example.com", r.email)
+        assertEquals("Pranjal Sharma", r.name)
         assertEquals(3600L, r.expiresInSec)
         assertFalse(r.isNewUser)
     }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -27,7 +28,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Mood
+import androidx.compose.material.icons.filled.ShortText
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -120,6 +127,7 @@ fun InstructionsScreen(
             // Settings index, which reads well. Only the row being changed shows
             // a control, so the screen is a list rather than a form.
             FieldRow(
+                icon = Icons.Filled.Badge,
                 label = "Calls you",
                 value = draft.callMe.ifBlank { "Not set" },
                 open = openRow == Field.Name,
@@ -133,6 +141,7 @@ fun InstructionsScreen(
                 )
             }
             FieldRow(
+                icon = Icons.Filled.ShortText,
                 label = "Answer length",
                 value = draft.length?.label ?: "No preference",
                 open = openRow == Field.Length,
@@ -144,6 +153,7 @@ fun InstructionsScreen(
                 }
             }
             FieldRow(
+                icon = Icons.Filled.Mood,
                 label = "Tone",
                 value = draft.tone?.label ?: "No preference",
                 open = openRow == Field.Tone,
@@ -155,6 +165,7 @@ fun InstructionsScreen(
                 }
             }
             FieldRow(
+                icon = Icons.Filled.EditNote,
                 label = "Notes",
                 // The count lives on the row it belongs to. It used to sit beside
                 // a section heading, where it looked like a heading of its own.
@@ -328,7 +339,15 @@ private fun SummaryCard(summary: String) {
             .background(accent.copy(alpha = 0.10f))
             .border(1.dp, accent.copy(alpha = 0.30f), shape)
             .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
+        Icon(
+            imageVector = Icons.Filled.AutoAwesome,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(12.dp))
         Text(
             text = if (summary.isEmpty()) {
                 "Nothing set yet. JARVIS will answer however it thinks best."
@@ -351,6 +370,7 @@ private fun SummaryCard(summary: String) {
  */
 @Composable
 private fun FieldRow(
+    icon: ImageVector,
     label: String,
     value: String,
     open: Boolean,
@@ -373,6 +393,18 @@ private fun FieldRow(
                 .padding(horizontal = 16.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // A tinted glyph per row — the difference between a settings list that
+            // reads as a product and a stack of unlabelled text fields.
+            Box(
+                Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(JarvisTheme.accent.copy(alpha = if (open) 0.20f else 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription = null, tint = JarvisTheme.accent, modifier = Modifier.size(19.dp))
+            }
+            Spacer(Modifier.width(14.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.titleMedium,

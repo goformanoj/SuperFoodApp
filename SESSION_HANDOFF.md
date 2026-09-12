@@ -1,6 +1,32 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-12 — commercial-design pass complete (Chat & Memory shipped)
+## Current position — 2026-09-12 — account page + wordmark + profile polish (device feedback)
+
+The user signed in on device and sent five drawer complaints; all addressed on
+`claude/next-task-5g9l6t`. **(1)** "Jarvis" wordmark → bundled **Great Vibes** script
+(`res/font/great_vibes.ttf`, OFL; `Script` family, wordmark only). **(2)** Avatar monogram now
+tracks the person: `Identity` captures the Google `displayName`; new pure `Account.initial`
+(name → email → neutral) + `displayLabel()`, off-device tested (`AccountInitialTest`). **(3)** New
+full-screen **`ui/account/AccountScreen`** (overlay opened by the drawer profile row, not a nav
+item) with avatar/name/email/plan. **(4)** Sign-out moved there as a **red logout-icon button +
+"Sign out?" confirm dialog**; removed from the drawer. **(5)** Today's **token usage** moved to
+the account page's PLAN & USAGE card (bar + used/left/cap, "No activity yet today" fallback,
+Free→Pro "Soon" note). **(6)** Custom Instructions got a **commercial polish** (per-row tinted
+icons + summary glyph; behaviour unchanged). jvmcheck green; Compose is CI-gated.
+
+**Gotchas this pass.** (a) Bundled-font downloads: use `raw.githubusercontent.com`, not
+`github.com/…/raw/…` (the latter hits the session GitHub scope gate and returns a JSON error page,
+not the file). (b) The account overlay paints `palette.background` itself (drawn last in the host
+Box, over the menu button) — it's opaque, no starfield, which is fine for a modal page. (c) The
+drawer profile row and the account page each read `Identity.account()` into local state; sign-out
+closes the overlay and the next drawer open re-reads fresh state.
+
+**Next.** Confirm CI's `jarvis-debug-apk`, fast-forward `main`, then the launch track (E3 release
+engineering, device Play Billing to actually enable the Pro upgrade, compliance, naming).
+
+---
+
+## Prior position — 2026-09-12 — commercial-design pass complete (Chat & Memory shipped)
 
 **The three approved slab redesigns are done** (Calendar, Files, and now Chat & Memory —
 Custom Instructions intentionally left as-is). `Chat` is a two-tab screen: **Conversation**

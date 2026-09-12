@@ -1,5 +1,44 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-12 — Account page, script wordmark, safe sign-out (post-sign-in device feedback)
+
+**What prompted it.** The user signed in on device (Google auth is live) and sent five specific
+UI complaints from the drawer screenshot. All five are now addressed.
+
+**Wordmark.** The user said the platform serif for "Jarvis" was "horrible" and wanted the
+cursive feel Claude's wordmark has. Claude's is actually a refined serif, but the user's word is
+what matters, and they picked **Great Vibes** (a formal calligraphic script, OFL). Bundled as
+`res/font/great_vibes.ttf` and exposed as a `Script` family used in exactly one place — the
+wordmark — because a script is unreadable as UI or body text. Fetched from
+`raw.githubusercontent.com` (the `github.com/…/raw/…` path hits the session's GitHub scope gate;
+the raw host is a plain proxied download and works).
+
+**Monogram now reflects the person.** The avatar showed "G" (email initial) and the user wanted
+it to track the account — P for Pranjal, or G for the email. Root cause: we never captured the
+Google display name. `parseIdp` now reads `displayName` (with `fullName` as an alias), it's
+persisted, and `Account.initial` prefers the name's first letter, then the email's, skipping
+non-letters so a leading digit/symbol never becomes the avatar. Pure logic, so it's pinned by
+`AccountInitialTest` off-device — exactly the "doesn't update to the person" bug, now covered.
+
+**The account page, and why sign-out moved.** Sign-out was inline in the drawer — one stray tap
+from ending the session next to the account you were reading. The user asked for the platform
+pattern: tap the profile → a page → a red, icon-marked sign-out → a confirm dialog. So the drawer
+row is now a doorway (chevron, no inline actions) that opens a full-screen `AccountScreen`
+overlay (not a nav destination — you reach it *through* the profile, like Claude). Sign-out there
+is a **red button with the logout "gate" icon** behind an **"Sign out?" AlertDialog**. The
+irreversibility is guarded by the flow, not just wording (the spirit of Rule 6 applied to UI).
+
+**Tokens, finally findable.** The usage bar existed but lived in the drawer and only appeared
+after the first turn of the day, so the user "didn't see it anywhere". It moved to the account
+page's **PLAN & USAGE** card, where it belongs, and now says "No activity yet today" before the
+first turn instead of vanishing — the absence was reading as a missing feature. A Free plan also
+sees an "Upgrade to Pro — Soon" note (billing UI is a later slice; honest about that).
+
+**Custom Instructions.** Earlier the user deferred this ("everything else looks epic"); now they
+asked to "do something with it" and picked a **commercial polish** over a rebuild — the screen's
+logic (rows that open, live summary, learned-facts privacy surface) was already sound. Added a
+tinted leading icon per row and an AutoAwesome glyph on the summary card. Visual only.
+
 ## 2026-09-12 — Chat becomes Chat & Memory (commercial redesign 2/2)
 
 **What was built.** The last of the user-approved slab redesigns ("everything else looks

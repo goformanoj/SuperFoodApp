@@ -46,9 +46,24 @@ private fun inter(weight: Int) = Font(
  */
 private val michroma = Font(resId = R.font.michroma, weight = FontWeight.Normal)
 
+/**
+ * Great Vibes — the calligraphic script used for the "Jarvis" wordmark ONLY.
+ *
+ * A formal, flowing hand (SIL Open Font License), chosen to give the name the
+ * signature-like, hand-lettered feel the user asked for. It is a display face for
+ * one word — never body or UI text, where a script is unreadable — so it lives on
+ * its own family and appears in exactly one place (the drawer wordmark). Its caps
+ * carry long descending swashes, so wherever it is set it needs generous vertical
+ * room or the tails clip.
+ */
+private val greatVibes = Font(resId = R.font.great_vibes, weight = FontWeight.Normal)
+
 val Michroma = FontFamily(michroma)
 val Orbitron = FontFamily(orbitron(400), orbitron(500), orbitron(600), orbitron(700), orbitron(900))
 val Inter = FontFamily(inter(400), inter(500), inter(600), inter(700))
+
+/** The wordmark script. One word, one place — see [greatVibes]. */
+val Script = FontFamily(greatVibes)
 
 /**
  * The app's voice.

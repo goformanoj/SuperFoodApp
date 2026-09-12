@@ -50,10 +50,33 @@ object Identity {
     private const val KEY_EMAIL = "account_email"
     private const val KEY_PROVIDER = "account_provider"
     private const val KEY_PLAN = "account_plan"
+    private const val KEY_NAME = "account_name"
 
     /** What the UI needs to know about who is signed in and their tier. */
-    data class Account(val email: String?, val isSignedIn: Boolean, val plan: String = "free") {
+    data class Account(
+        val email: String?,
+        val isSignedIn: Boolean,
+        val plan: String = "free",
+        /** The Google display name, when the provider returned one. */
+        val name: String? = null,
+    ) {
         val isPro: Boolean get() = plan == "pro"
+
+        /**
+         * The monogram for the avatar: the person's name initial (so "Pranjal" →
+         * P), falling back to their email initial, then a neutral glyph. Skips
+         * non-letters so a leading digit or symbol never becomes the avatar.
+         */
+        val initial: Char
+            get() = (name?.trim()?.firstOrNull { it.isLetter() }
+                ?: email?.trim()?.firstOrNull { it.isLetter() })
+                ?.uppercaseChar()
+                ?: if (isSignedIn) 'J' else 'G'
+
+        /** A friendly display label: the name if known, else the email, else a default. */
+        fun displayLabel(): String = name?.takeIf { it.isNotBlank() }
+            ?: email?.takeIf { it.isNotBlank() }
+            ?: if (isSignedIn) "Signed in" else "Guest"
     }
 
     /** App context for persisting the refresh token. Null until [init]. */
@@ -81,6 +104,7 @@ object Identity {
         val expiresInSec: Long,
         val localId: String,
         val email: String?,
+        val name: String?,
         val isNewUser: Boolean,
     )
 
@@ -90,7 +114,8 @@ object Identity {
         val provider = prefs?.getString(KEY_PROVIDER, null)
         val email = prefs?.getString(KEY_EMAIL, null)
         val plan = prefs?.getString(KEY_PLAN, null) ?: "free"
-        return Account(email = email, isSignedIn = provider == "google.com", plan = plan)
+        val name = prefs?.getString(KEY_NAME, null)
+        return Account(email = email, isSignedIn = provider == "google.com", plan = plan, name = name)
     }
 
     /**
@@ -131,7 +156,7 @@ object Identity {
 
             val res = parseIdp(body)
             store(TokenSet(res.idToken, res.refreshToken, res.expiresInSec), System.currentTimeMillis())
-            saveAccount(res.email, "google.com")
+            saveAccount(res.email, "google.com", res.name)
             account()
         }
     }
@@ -142,12 +167,14 @@ object Identity {
         expiresAtMs = 0L
         refreshToken = null
         appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()
-            ?.remove(KEY_REFRESH)?.remove(KEY_EMAIL)?.remove(KEY_PROVIDER)?.remove(KEY_PLAN)?.apply()
+            ?.remove(KEY_REFRESH)?.remove(KEY_EMAIL)?.remove(KEY_PROVIDER)?.remove(KEY_PLAN)
+            ?.remove(KEY_NAME)?.apply()
     }
 
-    private fun saveAccount(email: String?, provider: String) {
+    private fun saveAccount(email: String?, provider: String, name: String?) {
         appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()
-            ?.putString(KEY_EMAIL, email)?.putString(KEY_PROVIDER, provider)?.apply()
+            ?.putString(KEY_EMAIL, email)?.putString(KEY_PROVIDER, provider)
+            ?.putString(KEY_NAME, name)?.apply()
     }
 
     /**
@@ -277,6 +304,9 @@ object Identity {
             expiresInSec = o.optString("expiresIn", "3600").toLongOrNull() ?: 3600L,
             localId = o.optString("localId"),
             email = o.optString("email").ifBlank { null },
+            // signInWithIdp returns the Google profile name as `displayName`
+            // (with `fullName` as an older alias) — take whichever is present.
+            name = o.optString("displayName").ifBlank { o.optString("fullName").ifBlank { null } },
             isNewUser = o.optBoolean("isNewUser", false),
         )
     }
