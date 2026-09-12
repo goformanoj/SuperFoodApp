@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
                         learnedFacts = { engine.learnedFacts() },
                         onSaveInstructions = { engine.saveCustomInstructions(it) },
                         onForgetFact = { engine.forgetFact(it) },
+                        onRememberFact = { engine.rememberFact(it) },
                         backgroundWakeEnabled = { engine.backgroundWakeEnabled() },
                         onSetBackgroundWake = { engine.setBackgroundWake(it) },
                         floatingOrbEnabled = { engine.floatingOrbEnabled() },

@@ -754,6 +754,9 @@ class AssistantEngine(context: Context) {
         userPrefs.forget(fact)
     }
 
+    /** Adds a fact the user typed on the Memory tab. Returns false if it was blank or a duplicate. */
+    fun rememberFact(fact: String): Boolean = userPrefs.remember(fact)
+
     // --- user preferences, surfaced to the settings screens -------------------
 
     fun customInstructions(): String = userPrefs.customInstructions

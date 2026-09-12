@@ -233,6 +233,7 @@ fun JarvisApp(
     learnedFacts: () -> List<String> = { emptyList() },
     onSaveInstructions: (String) -> Unit = {},
     onForgetFact: (String) -> Unit = {},
+    onRememberFact: (String) -> Unit = {},
     backgroundWakeEnabled: () -> Boolean = { true },
     onSetBackgroundWake: (Boolean) -> Unit = {},
     floatingOrbEnabled: () -> Boolean = { true },
@@ -402,7 +403,14 @@ fun JarvisApp(
                         onExpand = { universeOpen = true },
                         onOrbPlaced = { orbCentre = it },
                     )
-                    Dest.Chat -> ChatScreen(state.messages, onClearChat)
+                    Dest.Chat -> ChatScreen(
+                        messages = state.messages,
+                        onClear = onClearChat,
+                        onSubmitCommand = onSubmitCommand,
+                        learnedFacts = learnedFacts,
+                        onForgetFact = onForgetFact,
+                        onRememberFact = onRememberFact,
+                    )
                     Dest.Diagnostics -> DiagnosticsScreen(onSubmitCommand = onSubmitCommand)
                     Dest.Settings -> SettingsScreen(
                         voices = voiceOptions(),
