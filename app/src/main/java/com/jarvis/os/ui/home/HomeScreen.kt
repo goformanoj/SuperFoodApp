@@ -233,6 +233,8 @@ fun JarvisApp(
     onSaveInstructions: (String) -> Unit = {},
     onForgetFact: (String) -> Unit = {},
     onRememberFact: (String) -> Unit = {},
+    /** Called after a sign-in or sign-out so the engine reloads the account's data. */
+    onAccountChanged: () -> Unit = {},
     backgroundWakeEnabled: () -> Boolean = { true },
     onSetBackgroundWake: (Boolean) -> Unit = {},
     floatingOrbEnabled: () -> Boolean = { true },
@@ -558,7 +560,10 @@ fun JarvisApp(
             // theme's own background; Back or its own arrow closes it.
             if (accountOpen) {
                 Box(Modifier.fillMaxSize().background(palette.background)) {
-                    AccountScreen(onBack = { accountOpen = false })
+                    AccountScreen(
+                        onBack = { accountOpen = false },
+                        onAccountChanged = onAccountChanged,
+                    )
                 }
             }
         }

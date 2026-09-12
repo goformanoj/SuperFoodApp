@@ -1,6 +1,7 @@
 package com.jarvis.os.data
 
 import android.content.Context
+import com.jarvis.os.ai.Identity
 import org.json.JSONArray
 
 /**
@@ -9,15 +10,30 @@ import org.json.JSONArray
  * Custom instructions are appended to the model's context on every turn, so they
  * shape behaviour permanently rather than for one conversation — "call me sir",
  * "keep answers to one sentence", "I'm in Bangalore, use IST".
+ *
+ * Two kinds of setting live here, and they are stored differently:
+ *  - **Device / appearance** (theme, backdrop, wake word, orb) — one phone, one
+ *    choice, so they stay in the global `jarvis_user` file.
+ *  - **Per-account data** (custom instructions, learned facts) — this is content
+ *    about the person, so it is scoped to the signed-in account ([profilePrefs])
+ *    and a guest never sees a signed-in user's instructions or memory.
  */
 class UserPreferences(context: Context) {
 
-    private val prefs = context.applicationContext
-        .getSharedPreferences("jarvis_user", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+
+    private val prefs = appContext.getSharedPreferences("jarvis_user", Context.MODE_PRIVATE)
+
+    // Per-account, resolved on each access so a sign-in/out switches the partition
+    // with no rebind. Holds only content that belongs to a person, not the device.
+    private fun profilePrefs() = appContext.getSharedPreferences(
+        Profiles.scoped("jarvis_profile", Identity.profileId()),
+        Context.MODE_PRIVATE,
+    )
 
     var customInstructions: String
-        get() = prefs.getString(KEY_INSTRUCTIONS, "").orEmpty()
-        set(value) = prefs.edit().putString(KEY_INSTRUCTIONS, value.take(MAX_INSTRUCTIONS)).apply()
+        get() = profilePrefs().getString(KEY_INSTRUCTIONS, "").orEmpty()
+        set(value) = profilePrefs().edit().putString(KEY_INSTRUCTIONS, value.take(MAX_INSTRUCTIONS)).apply()
 
     var themeId: String
         get() = prefs.getString(KEY_THEME, "").orEmpty()
@@ -78,7 +94,7 @@ class UserPreferences(context: Context) {
      * preferences it was told once. Newest last, so context reads chronologically.
      */
     fun learnedFacts(): List<String> = try {
-        val raw = prefs.getString(KEY_FACTS, "[]").orEmpty()
+        val raw = profilePrefs().getString(KEY_FACTS, "[]").orEmpty()
         val arr = JSONArray(raw)
         (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
     } catch (e: Exception) {
@@ -116,7 +132,7 @@ class UserPreferences(context: Context) {
     private fun saveFacts(facts: List<String>) {
         val arr = JSONArray()
         facts.forEach { arr.put(it) }
-        prefs.edit().putString(KEY_FACTS, arr.toString()).apply()
+        profilePrefs().edit().putString(KEY_FACTS, arr.toString()).apply()
     }
 
     companion object {

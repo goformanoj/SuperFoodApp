@@ -119,6 +119,14 @@ object Identity {
     }
 
     /**
+     * Which on-device data partition is active — `guest`, or `u_<email>` for a
+     * signed-in account. Every per-account store (chats, memory, instructions,
+     * files, usage) keys its storage on this, so signing in or out swaps the whole
+     * data set at once. See [com.jarvis.os.data.Profiles].
+     */
+    fun profileId(): String = account().let { com.jarvis.os.data.Profiles.idFor(it.email, it.isSignedIn) }
+
+    /**
      * Remember the plan the Worker last reported (its `/chat` reply carries it), so
      * the Settings card can show Free/Pro without a round-trip. Best-effort display
      * only — the server remains the source of truth for metering.

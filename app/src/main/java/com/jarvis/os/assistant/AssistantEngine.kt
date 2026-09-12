@@ -729,6 +729,21 @@ class AssistantEngine(context: Context) {
     }
 
     /**
+     * Re-point the in-memory conversation at the newly-active account's data.
+     *
+     * The stores (chat, prefs, files, usage) key their storage on the signed-in
+     * account and pick it up on each call, so after a sign-in or sign-out they
+     * already read the right partition. The one thing held in memory is the loaded
+     * conversation, so it is reloaded here and pushed to the UI — otherwise the
+     * previous account's chat would linger on screen until a restart.
+     */
+    fun reloadForAccount() {
+        conversation.clear()
+        conversation.addAll(store.load())
+        set { it.copy(messages = conversation.toList(), transcript = "", reply = "") }
+    }
+
+    /**
      * Applies what JARVIS decided to remember about the user. Kept separate from
      * the typed instructions so the screen can show — and delete — exactly what
      * was learned automatically.

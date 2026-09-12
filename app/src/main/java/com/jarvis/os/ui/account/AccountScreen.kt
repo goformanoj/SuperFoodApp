@@ -64,7 +64,11 @@ import kotlinx.coroutines.launch
  * because it is irreversible for the session and was previously one stray tap away.
  */
 @Composable
-fun AccountScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun AccountScreen(
+    onBack: () -> Unit,
+    onAccountChanged: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var account by remember { mutableStateOf(Identity.account()) }
@@ -84,6 +88,8 @@ fun AccountScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
             scope.launch {
                 try {
                     account = GoogleAuth.signIn(context)
+                    // Switch the app's data to this account's partition immediately.
+                    onAccountChanged()
                 } catch (e: Exception) {
                     error = e.message ?: "Sign-in failed"
                 } finally {
@@ -168,6 +174,9 @@ fun AccountScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                     account = Identity.account()
                     error = null
                     confirmSignOut = false
+                    // Back to the guest partition — reload so the account's chat/memory
+                    // isn't left on screen.
+                    onAccountChanged()
                     onBack()
                 }) {
                     Text("Sign out", color = ErrorRed, fontWeight = FontWeight.Medium)

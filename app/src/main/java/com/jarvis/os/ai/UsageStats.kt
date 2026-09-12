@@ -1,6 +1,7 @@
 package com.jarvis.os.ai
 
 import android.content.Context
+import com.jarvis.os.data.Profiles
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
@@ -29,6 +30,11 @@ object UsageStats {
     private const val KEY_CAP = "cap"
 
     @Volatile private var appContext: Context? = null
+
+    // Scoped to the active account, so a guest doesn't see a signed-in user's
+    // spend and vice versa; resolved per call to follow a sign-in/out.
+    private fun prefs(): android.content.SharedPreferences? =
+        appContext?.getSharedPreferences(Profiles.scoped(PREFS, Identity.profileId()), Context.MODE_PRIVATE)
 
     data class Daily(val used: Int, val cap: Int) {
         val remaining: Int get() = (cap - used).coerceAtLeast(0)
@@ -60,7 +66,7 @@ object UsageStats {
         val cap = capFor(plan)
         val used = usedFrom(cap, remaining)
         runCatching {
-            appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()
+            prefs()?.edit()
                 ?.putString(KEY_DAY, dayKey(nowMs))
                 ?.putInt(KEY_USED, used)
                 ?.putInt(KEY_CAP, cap)
@@ -70,7 +76,7 @@ object UsageStats {
 
     /** Today's usage, or null when nothing was recorded today (a fresh day/install). */
     fun today(nowMs: Long = System.currentTimeMillis()): Daily? {
-        val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE) ?: return null
+        val prefs = prefs() ?: return null
         val day = prefs.getString(KEY_DAY, null) ?: return null
         if (day != dayKey(nowMs)) return null // yesterday's figure — the allowance has reset
         val cap = prefs.getInt(KEY_CAP, FREE_DAILY_TOKENS)

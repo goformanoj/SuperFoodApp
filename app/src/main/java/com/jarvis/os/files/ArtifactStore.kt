@@ -1,6 +1,8 @@
 package com.jarvis.os.files
 
 import android.content.Context
+import com.jarvis.os.ai.Identity
+import com.jarvis.os.data.Profiles
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -25,16 +27,22 @@ data class Artifact(
 class ArtifactStore(context: Context) {
 
     private val appContext = context.applicationContext
-    private val dir = File(appContext.filesDir, "artifacts").apply { mkdirs() }
-    private val index = File(dir, "index.json")
 
-    fun directory(): File = dir
+    // Scoped to the active account and resolved per call, so a signed-in user's
+    // files and a guest's live in different directories and switching account
+    // switches which one is listed — the files never cross between profiles.
+    private fun dir(): File = File(appContext.filesDir, Profiles.scoped("artifacts", Identity.profileId()))
+        .apply { mkdirs() }
 
-    fun fileFor(artifact: Artifact): File = File(dir, artifact.fileName)
+    private fun index(): File = File(dir(), "index.json")
+
+    fun directory(): File = dir()
+
+    fun fileFor(artifact: Artifact): File = File(dir(), artifact.fileName)
 
     /** Newest first — the thing just made is the thing most likely wanted. */
     fun list(): List<Artifact> = read()
-        .filter { File(dir, it.fileName).exists() }
+        .filter { File(dir(), it.fileName).exists() }
         .sortedByDescending { it.createdMillis }
 
     fun add(artifact: Artifact) {
@@ -42,11 +50,12 @@ class ArtifactStore(context: Context) {
     }
 
     fun delete(artifact: Artifact) {
-        File(dir, artifact.fileName).delete()
+        File(dir(), artifact.fileName).delete()
         write(read().filterNot { it.fileName == artifact.fileName })
     }
 
     private fun read(): List<Artifact> = try {
+        val index = index()
         if (!index.exists()) {
             emptyList()
         } else {
@@ -80,6 +89,6 @@ class ArtifactStore(context: Context) {
                     .put("size", it.sizeBytes),
             )
         }
-        runCatching { index.writeText(arr.toString()) }
+        runCatching { index().writeText(arr.toString()) }
     }
 }

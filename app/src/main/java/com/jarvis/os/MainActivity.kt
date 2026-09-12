@@ -24,6 +24,7 @@ import com.jarvis.os.ai.Identity
 import com.jarvis.os.ai.PackClient
 import com.jarvis.os.ai.UsageStats
 import com.jarvis.os.assistant.AssistantEngine
+import com.jarvis.os.data.ProfileMigration
 import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.ui.home.JarvisApp
 import com.jarvis.os.ui.theme.JarvisPalette
@@ -62,6 +63,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Lets the anonymous Firebase identity persist across restarts (Phase 4).
         Identity.init(applicationContext)
+        // Lift any pre-profile data into the current account's partition, once, so
+        // chats/memory/files aren't stranded when per-account scoping switches on.
+        ProfileMigration.runOnce(applicationContext, Identity.profileId())
         // Persist the diagnostic trace to disk so a failure — and the labelled
         // examples it carries — survives a restart instead of being wiped (Part C2/H).
         DebugLog.attach(applicationContext.filesDir)
@@ -105,6 +109,7 @@ class MainActivity : ComponentActivity() {
                         onSaveInstructions = { engine.saveCustomInstructions(it) },
                         onForgetFact = { engine.forgetFact(it) },
                         onRememberFact = { engine.rememberFact(it) },
+                        onAccountChanged = { engine.reloadForAccount() },
                         backgroundWakeEnabled = { engine.backgroundWakeEnabled() },
                         onSetBackgroundWake = { engine.setBackgroundWake(it) },
                         floatingOrbEnabled = { engine.floatingOrbEnabled() },
