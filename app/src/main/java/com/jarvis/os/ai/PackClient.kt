@@ -91,8 +91,17 @@ object PackClient {
             writeCache(pkg, body)
             DebugLog.log(DebugLog.Stage.SCREEN, "pack loaded for $pkg (${pack.controls.size} controls)")
         } catch (e: Exception) {
-            // Best-effort: a diagnostic line, never a crash and never a leaked secret.
-            DebugLog.log(DebugLog.Stage.ERROR, "pack fetch failed for $pkg: ${e.javaClass.simpleName}")
+            // Being offline is the common case, not a fault: pack warming is
+            // best-effort and the baked-in vocabulary still applies. Logging every
+            // UnknownHost/Connect/Timeout floods the trace (a device log showed
+            // dozens in a row while the phone had no network), so those are silent;
+            // only a genuinely unexpected failure gets a line.
+            if (e !is java.net.UnknownHostException &&
+                e !is java.net.ConnectException &&
+                e !is java.net.SocketTimeoutException
+            ) {
+                DebugLog.log(DebugLog.Stage.ERROR, "pack fetch failed for $pkg: ${e.javaClass.simpleName}")
+            }
         } finally {
             conn.disconnect()
         }

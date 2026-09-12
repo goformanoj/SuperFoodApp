@@ -174,7 +174,16 @@ export function createWorker({
       // (which stays `free` unless manually overridden). No subscription ⇒ identical
       // to the old behaviour, so nothing changes for a user who never subscribed.
       const userPlan = await store.userPlan(uid)
-      const sub = await store.subscription(uid)
+      // Billing is a DORMANT, optional feature. Reading the subscription must never
+      // be able to take down the brain: a missing `subscriptions` table (the exact
+      // outage this guards — the billing code deployed before the table was created)
+      // or any transient D1 error degrades to the base plan instead of a 500.
+      let sub = null
+      try {
+        sub = await store.subscription(uid)
+      } catch (e) {
+        sub = null
+      }
       const plan = effectivePlan(userPlan, sub, nowMs)
       const cap = capFor(plan)
       const used = await store.usedToday(uid, day)

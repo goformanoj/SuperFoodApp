@@ -57,6 +57,28 @@ test('a user seen for the first time is created on the free plan', async () => {
   assert.equal(store._users.get('brand-new'), 'free')
 })
 
+test('a failing subscription read never takes down the brain (dormant billing)', async () => {
+  // Regression: the billing code shipped a `SELECT ... FROM subscriptions` into
+  // /chat before that table existed in prod, so every turn threw and the Worker
+  // returned HTTP 500 — the brain was down. The subscription read must degrade to
+  // the base plan, not crash the request.
+  const base = memoryStore()
+  const store = {
+    ...base,
+    subscription: async () => {
+      throw new Error('no such table: subscriptions')
+    },
+  }
+  const { worker } = build({ store })
+
+  const res = await worker.fetch(chat())
+  const body = await res.json()
+
+  assert.equal(res.status, 200)
+  assert.equal(body.plan, 'free')
+  assert.equal(body.reply, 'This is a fake reply.')
+})
+
 // --- the cap ----------------------------------------------------------------
 
 test('over the cap the provider is NEVER called', async () => {
