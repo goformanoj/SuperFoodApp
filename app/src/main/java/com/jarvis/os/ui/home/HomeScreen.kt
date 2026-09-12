@@ -81,6 +81,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.jarvis.os.calendar.CalendarReader
 import com.jarvis.os.ui.calendar.CalendarScreen
@@ -98,6 +101,9 @@ import com.jarvis.os.ui.settings.InstructionsScreen
 import com.jarvis.os.ui.settings.SettingsScreen
 import com.jarvis.os.ui.speech.VOICE_SAMPLE
 import com.jarvis.os.ui.theme.BackdropStyle
+import com.jarvis.os.ai.GoogleAuth
+import com.jarvis.os.ai.Identity
+import com.jarvis.os.ui.theme.Background
 import com.jarvis.os.ui.theme.ErrorRed
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.JarvisPalette
@@ -863,18 +869,18 @@ private fun ScheduleSection() {
 @Composable
 private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
     ModalDrawerSheet(drawerContainerColor = JarvisTheme.surface) {
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(30.dp))
+        // The wordmark, set in a serif for a calm, editorial feel like Claude's own
+        // drawer. FontFamily.Serif is the platform serif (no bundled font, so it
+        // ships at once); it is a close stand-in for the proprietary serif and can
+        // be swapped for a specific bundled face later.
         Text(
-            text = "J.A.R.V.I.S.",
-            style = MaterialTheme.typography.headlineSmall,
-            color = LocalAccent.current,
-            modifier = Modifier.padding(start = 24.dp, bottom = 4.dp),
-        )
-        Text(
-            text = "OPERATING SYSTEM",
-            style = MaterialTheme.typography.labelSmall,
-            color = TextSecondary,
-            modifier = Modifier.padding(start = 24.dp, bottom = 16.dp),
+            text = "Jarvis",
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Medium,
+            fontSize = 30.sp,
+            color = TextPrimary,
+            modifier = Modifier.padding(start = 24.dp, bottom = 18.dp),
         )
         HorizontalDivider(color = JarvisTheme.glassBorder)
 
@@ -929,6 +935,12 @@ private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
             Spacer(Modifier.height(16.dp))
         }
 
+        // The profile, at the foot of the drawer like Claude's — an avatar with the
+        // account, or a sign-in prompt. This is the ONLY place the account lives now
+        // (it was removed from Settings).
+        HorizontalDivider(color = JarvisTheme.glassBorder)
+        DrawerAccountRow()
+
         // The version, where every app puts it. Small, but its absence is felt:
         // it is the line that says somebody ships this on a schedule.
         HorizontalDivider(color = JarvisTheme.glassBorder)
@@ -939,6 +951,114 @@ private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit) {
             modifier = Modifier.padding(start = 28.dp, top = 14.dp, bottom = 20.dp),
         )
     }
+}
+
+/**
+ * The account, at the foot of the drawer (Claude-style) and nowhere else.
+ *
+ * A monogram avatar with the signed-in email and a Free/Pro pill, or a "Sign in with
+ * Google" prompt. Self-contained — it reads and drives the [Identity]/[GoogleAuth]
+ * singletons directly. Shows a plain "Guest" avatar (no action) until Google sign-in
+ * is configured, so the profile circle is always present as asked.
+ */
+@Composable
+private fun DrawerAccountRow() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var account by remember { mutableStateOf(Identity.account()) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val configured = GoogleAuth.isConfigured()
+    val accent = LocalAccent.current
+
+    val signIn: () -> Unit = {
+        if (configured && !busy) {
+            busy = true
+            error = null
+            scope.launch {
+                try {
+                    account = GoogleAuth.signIn(context)
+                } catch (e: Exception) {
+                    error = e.message ?: "Sign-in failed"
+                } finally {
+                    busy = false
+                }
+            }
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = configured && !account.isSignedIn) { signIn() }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Avatar: the email's initial when signed in, else a neutral glyph.
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).background(accent.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                (account.email?.trim()?.firstOrNull()?.uppercaseChar()
+                    ?: if (account.isSignedIn) 'J' else 'G').toString(),
+                fontWeight = FontWeight.Medium,
+                color = accent,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            if (account.isSignedIn) {
+                Text(
+                    account.email ?: "Signed in",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "Sign out",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
+                    modifier = Modifier.clickable {
+                        Identity.signOut(); account = Identity.account(); error = null
+                    },
+                )
+            } else {
+                Text(
+                    if (busy) "Signing in…" else if (configured) "Sign in with Google" else "Guest",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextPrimary,
+                )
+                Text(
+                    error ?: if (configured) "Keep JARVIS across devices" else "Not signed in",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (error != null) ErrorRed else TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (account.isSignedIn) {
+            Spacer(Modifier.width(10.dp))
+            AccountPlanPill(pro = account.isPro)
+        }
+    }
+}
+
+/** The Free / Pro tier pill in the drawer's account row. */
+@Composable
+private fun AccountPlanPill(pro: Boolean) {
+    val accent = LocalAccent.current
+    Text(
+        if (pro) "Pro" else "Free",
+        style = MaterialTheme.typography.labelLarge,
+        color = if (pro) Background else TextSecondary,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(if (pro) accent else JarvisTheme.glassBorder)
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+    )
 }
 
 /** The marker beside a destination that is not ready — "SOON", a beta, a preview. */

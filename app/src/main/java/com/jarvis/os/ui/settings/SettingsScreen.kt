@@ -33,18 +33,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.jarvis.os.ai.GoogleAuth
-import com.jarvis.os.ai.Identity
-import com.jarvis.os.ui.theme.Background
-import com.jarvis.os.ui.theme.ErrorRed
 import com.jarvis.os.ui.components.ScreenHeader
 import com.jarvis.os.ui.components.SectionLabel
 import com.jarvis.os.ui.components.SettingSwitchRow
@@ -149,11 +142,8 @@ fun SettingsScreen(
     ) {
         ScreenHeader(title = "Settings")
 
-        // Account (Part E), Claude-style: an identity card at the very top with the
-        // plan pill. Shown only once Google sign-in is configured, so nothing
-        // broken-looking appears before then.
-        AccountCard()
-
+        // The account moved to the navigation drawer's footer (Claude-style), so it
+        // is deliberately absent here.
         SectionLabel("How JARVIS sounds and looks")
         NavRow(
             icon = Icons.Filled.RecordVoiceOver,
@@ -197,137 +187,6 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(40.dp))
     }
-}
-
-/**
- * The account card at the top of Settings, in the spirit of Claude's: an identity
- * row with the plan pill, or a full-width "Sign in with Google" call to action.
- *
- * Self-contained on purpose — it reads and drives the [Identity]/[GoogleAuth]
- * singletons directly rather than threading parameters through the whole Compose
- * tree from MainActivity, which is the kind of deep parameter pass this project has
- * broken on before. Hidden entirely until sign-in is configured.
- */
-@Composable
-private fun AccountCard() {
-    if (!GoogleAuth.isConfigured()) return
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var account by remember { mutableStateOf(Identity.account()) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val shape = RoundedCornerShape(20.dp)
-    val accent = JarvisTheme.accent
-
-    if (account.isSignedIn) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(JarvisTheme.card)
-                .border(1.dp, JarvisTheme.cardBorder, shape),
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Avatar(account.email, accent)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        account.email ?: "Signed in",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text("Google account", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                }
-                Spacer(Modifier.width(10.dp))
-                PlanPill(pro = account.isPro)
-            }
-            Text(
-                "Sign out",
-                style = MaterialTheme.typography.labelLarge,
-                color = TextSecondary,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { Identity.signOut(); account = Identity.account(); error = null }
-                    .padding(horizontal = 16.dp, vertical = 13.dp),
-            )
-        }
-    } else {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(shape)
-                .background(JarvisTheme.card)
-                .border(1.dp, JarvisTheme.cardBorder, shape)
-                .clickable(enabled = !busy) {
-                    busy = true
-                    error = null
-                    scope.launch {
-                        try {
-                            account = GoogleAuth.signIn(context)
-                        } catch (e: Exception) {
-                            error = e.message ?: "Sign-in failed"
-                        } finally {
-                            busy = false
-                        }
-                    }
-                }
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Avatar("G", accent)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    if (busy) "Signing in…" else "Sign in with Google",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary,
-                )
-                Text(
-                    error ?: "Keep JARVIS across devices, unlock Pro.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (error != null) ErrorRed else TextSecondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-    Spacer(Modifier.height(18.dp))
-}
-
-/** A round monogram: the first letter of the email (or a given glyph). */
-@Composable
-private fun Avatar(seed: String?, accent: androidx.compose.ui.graphics.Color) {
-    Box(
-        Modifier.size(40.dp).clip(CircleShape).background(accent.copy(alpha = 0.18f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            (seed?.trim()?.firstOrNull()?.uppercaseChar() ?: 'J').toString(),
-            style = MaterialTheme.typography.titleMedium,
-            color = accent,
-        )
-    }
-}
-
-/** The Free / Pro tier pill, à la Claude's plan badge. */
-@Composable
-private fun PlanPill(pro: Boolean) {
-    val accent = JarvisTheme.accent
-    Text(
-        if (pro) "Pro" else "Free",
-        style = MaterialTheme.typography.labelLarge,
-        color = if (pro) Background else TextSecondary,
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (pro) accent else JarvisTheme.cardBorder)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
-    )
 }
 
 /**
