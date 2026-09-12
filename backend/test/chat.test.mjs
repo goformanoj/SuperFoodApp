@@ -102,6 +102,32 @@ test('the owner list does not lift anyone else', async () => {
   assert.equal(res.status, 429) // still on free, still capped
 })
 
+test('an owner email from the verified token is always pro (survives uid changes)', async () => {
+  // The owner's uid changes between anonymous and Google-linked sessions; the email
+  // in the verified token does not. Matching the gmail is the robust "owner is pro".
+  const store = memoryStore()
+  await store.addUsage('any-google-uid', dayKey(NOW), FREE_DAILY_TOKENS, 0) // past the free cap
+  const verifyToken = async () => ({ uid: 'any-google-uid', claims: { email: 'GoForPranjal@Gmail.com' } })
+  const worker = createWorker({
+    store,
+    provider: fakeProvider(),
+    verifyToken,
+    proEmails: ['goforpranjal@gmail.com'], // stored lower-cased, matched case-insensitively
+    now: () => NOW,
+  })
+  const req = new Request('https://proxy/chat', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer tok', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+  })
+
+  const res = await worker.fetch(req)
+  const body = await res.json()
+
+  assert.equal(res.status, 200)
+  assert.equal(body.plan, 'pro')
+})
+
 // --- the cap ----------------------------------------------------------------
 
 test('over the cap the provider is NEVER called', async () => {

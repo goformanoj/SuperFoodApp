@@ -37,6 +37,7 @@ export function createWorker({
   verifyToken = null,
   verifySubscription = null,
   proUids = [],
+  proEmails = [],
   now = () => Date.now(),
 }) {
   return {
@@ -56,8 +57,11 @@ export function createWorker({
             return { error: Response.json({ error: 'no_token' }, { status: 401 }) }
           }
           try {
-            const { uid } = await verifyToken(authz.slice(7).trim())
-            return { uid }
+            const { uid, claims } = await verifyToken(authz.slice(7).trim())
+            // The email rides in the verified token for a Google sign-in — surfaced
+            // so an owner allowlist can match the person's gmail (stable across the
+            // anonymous↔Google uid changes that linking causes).
+            return { uid, email: claims?.email ?? null }
           } catch (e) {
             const code = e instanceof AuthError ? e.code : 'bad_token'
             return { error: Response.json({ error: 'unauthorized', code }, { status: 401 }) }
@@ -65,7 +69,7 @@ export function createWorker({
         }
         const uid = request.headers.get('X-Uid')
         if (!uid) return { error: Response.json({ error: 'no_uid' }, { status: 401 }) }
-        return { uid }
+        return { uid, email: null }
       }
 
       if (request.method === 'GET' && url.pathname === '/health') {
@@ -185,9 +189,12 @@ export function createWorker({
       } catch (e) {
         sub = null
       }
-      // Owner override: a uid in PRO_UIDS is always pro, so the owner's own testing
-      // isn't stopped by the free cap. Everyone else follows the normal effective plan.
-      const plan = proUids.includes(uid) ? 'pro' : effectivePlan(userPlan, sub, nowMs)
+      // Owner override: the owner's own account is always pro, so the free cap never
+      // stops development/testing. Matched by email (from the verified Google token —
+      // stable across the uid changes that anonymous↔Google linking causes) or by uid.
+      // Everyone else follows the normal effective plan.
+      const ownerEmail = auth.email && proEmails.includes(auth.email.toLowerCase())
+      const plan = ownerEmail || proUids.includes(uid) ? 'pro' : effectivePlan(userPlan, sub, nowMs)
       const cap = capFor(plan)
       const used = await store.usedToday(uid, day)
 
@@ -276,9 +283,13 @@ export default {
     const verifyToken = env.FIREBASE_PROJECT_ID
       ? firebaseVerifier({ projectId: env.FIREBASE_PROJECT_ID })
       : null
-    // Owner uids that are always pro (the free cap must not stop the owner's own
-    // testing). A committed [vars] value, not a secret — see wrangler.toml.
+    // Owner allowlist — always pro, so the free cap can't stop the owner's own
+    // testing. By email (primary; matches the person's gmail across uid changes) or
+    // uid. Committed [vars] values, not secrets — see wrangler.toml.
     const proUids = (env.PRO_UIDS ?? '').split(',').map((s) => s.trim()).filter(Boolean)
-    return createWorker({ store, provider, proxySecret: env.PROXY_SECRET, verifyToken, proUids }).fetch(request)
+    const proEmails = (env.PRO_EMAILS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+    return createWorker({
+      store, provider, proxySecret: env.PROXY_SECRET, verifyToken, proUids, proEmails,
+    }).fetch(request)
   },
 }
