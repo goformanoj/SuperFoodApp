@@ -1,5 +1,42 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-12 — The brain was down (HTTP 500), and per-account data isolation
+
+**The 500, and why Rule 4 (read the trace) paid off again.** A device trace ended with
+`Brain error: Server error (HTTP 500)` on every request — the assistant was dead. The obvious
+guess (auth broke after Google sign-in) was wrong. The trace's own timeline plus the code showed
+it: `/chat` calls `store.subscription(uid)` on every turn (added when Part E billing merged), and
+that runs `SELECT … FROM subscriptions`. The **live D1 never had that table** — I confirmed via
+the Cloudflare connector that prod held only `users` and `usage_daily`. D1 throws "no such table",
+`/chat` had no guard, the Worker 500'd. So the billing merge silently broke the brain the moment
+Cloudflare redeployed `main`, and it stayed broken because nobody re-ran `/admin/migrate` in prod.
+
+Fixed both layers. **Data:** created the `subscriptions` table in the live D1 directly (idempotent
+DDL from `schema.js`) — brain restored with no deploy. **Code:** wrapped the subscription read in
+`/chat` so a missing table or any transient D1 error degrades to the base plan instead of a 500.
+This is the same principle as Rule 6: a **dormant, optional feature must never be able to take
+down the core** — and the hot path (every chat turn) is the worst place to leave an unguarded
+optional read. Regression test pins it (a store whose `subscription()` throws still answers 200 /
+free). **The durable lesson:** merging a schema change is not applying it — a new table needs the
+prod migration actually run, and until then any code that reads it must fail soft.
+
+**Pack noise.** The same trace was flooded with `pack fetch failed … UnknownHostException` — dozens
+in a row while the phone had no network. That's best-effort pack warming being honest about being
+offline, but logged as ERROR it buries real signal. Now UnknownHost/Connect/Timeout are silent
+(the baked-in vocabulary applies regardless); only unexpected failures get a line.
+
+**Per-account data isolation.** The user asked: signed in → data tied to the gmail; guest → only
+the guest's own data. Everything local (chats, memory, custom instructions, files, usage) was
+global, so a shared phone leaked one person's data to the next. The fix is a **profile id** —
+`Profiles.idFor(email, signedIn)` → `guest` or `u_<email>` — that every per-account store appends
+to its storage name, **resolved on each access** so a sign-in/out switches the whole set with no
+rebind. Device/appearance settings (theme, backdrop, wake word, orb) stay global on purpose; only
+content that belongs to a person is scoped. The one thing held in memory — the loaded conversation
+— is reloaded on account change (`AssistantEngine.reloadForAccount()`, fired from the account
+screen after sign-in and sign-out). A one-time `ProfileMigration` lifts the existing global data
+into the current account so this build doesn't look like it wiped the user's chats. The id logic
+is pure and tested (case-folded, punctuation-stripped, so one address is one partition).
+
 ## 2026-09-12 — Account page, script wordmark, safe sign-out (post-sign-in device feedback)
 
 **What prompted it.** The user signed in on device (Google auth is live) and sent five specific

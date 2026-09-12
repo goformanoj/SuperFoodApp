@@ -1,6 +1,34 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-12 — account page + wordmark + profile polish (device feedback)
+## Current position — 2026-09-12 — brain-500 fixed + per-account data isolation
+
+**CRITICAL FIX — the brain was returning HTTP 500 on every request.** `/chat` reads
+`store.subscription(uid)` (Part E billing) but the **`subscriptions` table was never created in
+the live D1** (prod had only `users` + `usage_daily`; `/admin/migrate` was never re-run after the
+billing merge). "no such table" was unguarded → Worker 500. **Fixed:** (1) created the table in
+prod D1 via the Cloudflare connector (idempotent DDL) — brain live again, no deploy needed; (2)
+guarded the read in `/chat` so a missing table / D1 error degrades to base plan (regression test;
+`node --test` 120). **If the brain 500s again:** check prod D1 has all of `schema.js`'s tables
+(`SELECT name FROM sqlite_master`), and remember a merged schema change still needs the prod
+migration RUN. Prod D1 id: `1dc3695c-1f4b-4e17-980e-b6f90122d35f` (name `jarvis`).
+
+**Per-account data isolation.** Chats/memory/instructions/files/usage now partition by
+`Profiles.idFor` (`guest` / `u_<email>`), resolved per access; `AssistantEngine.reloadForAccount()`
+(fired from `AccountScreen.onAccountChanged` on sign-in/out) reloads the in-memory conversation;
+`ProfileMigration.runOnce` lifts existing global data into the current account once. Device
+settings (theme/backdrop/wake/orb) stay global. Also quieted offline pack-fetch noise.
+
+**Still WIP in this session (not yet built when the 500 surfaced):** the per-account work above is
+complete and committed. Everything is on `claude/next-task-5g9l6t`; awaiting CI's `jarvis-debug-apk`
+then fast-forward `main`.
+
+**Next.** Confirm CI + fast-forward `main` (Cloudflare redeploys the Worker with the /chat guard);
+have the user re-test the brain on device; then the launch track (E3 release engineering, device
+Play Billing, compliance, naming).
+
+---
+
+## Prior position — 2026-09-12 — account page + wordmark + profile polish (device feedback)
 
 The user signed in on device and sent five drawer complaints; all addressed on
 `claude/next-task-5g9l6t`. **(1)** "Jarvis" wordmark → bundled **Great Vibes** script
