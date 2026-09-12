@@ -169,19 +169,32 @@ object ProxyClient {
         null
     }
 
-    /** A short, user-safe reason from a non-2xx Worker response. Never leaks the token. */
+    /**
+     * A short, speakable reason from a non-2xx Worker response.
+     *
+     * JARVIS says this line out loud, so it must read like a sentence, never a
+     * machine code. The Worker already composes the right wording for the cases it
+     * knows — the over-cap refusal ships a ready-to-speak `spoken` field — so we
+     * prefer that, then a human `message`, and only then a per-status fallback. The
+     * raw `error` token (`quota_exhausted`, `no_token`, …) is NEVER surfaced: it is
+     * for logs, not for the user (a device once showed "quota_exhausted" as JARVIS's
+     * whole reply).
+     */
     internal fun errorMessage(code: Int, body: String): String {
-        val detail = try {
+        val (spoken, message) = try {
             val o = JSONObject(body)
-            o.optString("message").ifBlank { o.optString("error") }
+            o.optString("spoken").trim().ifBlank { null } to o.optString("message").trim().ifBlank { null }
         } catch (e: Exception) {
-            ""
+            null to null
         }
+        if (spoken != null) return spoken
+        if (message != null) return message
         return when (code) {
-            401 -> "Sign-in failed — could not verify this device"
-            403 -> "This app build is not authorised for the server"
-            429 -> if (detail.isNotBlank()) detail else "Daily limit reached — try again tomorrow"
-            else -> if (detail.isNotBlank()) "Server error: ${detail.take(160)}" else "Server error (HTTP $code)"
+            401 -> "I couldn't verify this device — try signing in again."
+            403 -> "This app build isn't authorised for the server."
+            429 -> "That's today's AI allowance used up. It resets after midnight."
+            in 500..599 -> "My server hit a snag. Give it a moment and try again."
+            else -> "I couldn't reach my brain just now. Try again in a moment."
         }
     }
 }

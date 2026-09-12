@@ -69,16 +69,32 @@ class ProxyClientTest {
     }
 
     @Test
-    fun `error messages are safe and never leak internals`() {
+    fun `error messages are speakable and never leak the raw code`() {
         assertTrue(ProxyClient.errorMessage(401, "").contains("verify", ignoreCase = true))
         assertTrue(ProxyClient.errorMessage(403, "").contains("authoris", ignoreCase = true))
-        // 429 surfaces the Worker's own spoken message when it gives one.
+
+        // The over-cap refusal: the Worker ships a ready-to-speak `spoken` line, and
+        // that is exactly what JARVIS should say — never the machine `error` token.
+        val overCap = ProxyClient.errorMessage(
+            429,
+            """{"error":"quota_exhausted","spoken":"That's today's AI allowance used up. It resets in about 8 hours.","resetsInSeconds":28800}""",
+        )
+        assertEquals("That's today's AI allowance used up. It resets in about 8 hours.", overCap)
+        assertFalse(overCap.contains("quota_exhausted"))
+
+        // A human `message` is used when there is no `spoken`.
         assertEquals(
             "You've used today's free turns.",
             ProxyClient.errorMessage(429, """{"error":"over_cap","message":"You've used today's free turns."}"""),
         )
-        assertTrue(ProxyClient.errorMessage(429, "").contains("limit", ignoreCase = true))
-        assertTrue(ProxyClient.errorMessage(500, """{"error":"boom"}""").contains("boom"))
-        assertTrue(ProxyClient.errorMessage(502, "").contains("502"))
+
+        // With no spoken/message, a friendly per-status fallback — and the raw `error`
+        // token is NEVER surfaced (a device once showed "quota_exhausted" as the reply).
+        val bareCap = ProxyClient.errorMessage(429, "")
+        assertTrue(bareCap.contains("allowance", ignoreCase = true) || bareCap.contains("resets", ignoreCase = true))
+        val serverErr = ProxyClient.errorMessage(500, """{"error":"boom"}""")
+        assertFalse(serverErr.contains("boom"))
+        assertTrue(serverErr.contains("server", ignoreCase = true) || serverErr.contains("snag", ignoreCase = true))
+        assertFalse(ProxyClient.errorMessage(502, "").contains("502"))
     }
 }
