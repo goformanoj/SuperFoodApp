@@ -1,0 +1,19 @@
+<!-- The themed-icon (Android 13+) silhouette: the same orb in one flat colour the
+     system tints. Rings + core only, no glow. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M54,32 a22,22 0 1,0 0,44 a22,22 0 1,0 0,-44 z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5" />
+    <path
+        android:pathData="M54,40 a14,14 0 1,0 0,28 a14,14 0 1,0 0,-28 z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2" />
+    <path
+        android:pathData="M54,46 a8,8 0 1,0 0,16 a8,8 0 1,0 0,-16 z"
+        android:fillColor="#FFFFFF" />
+</vector>

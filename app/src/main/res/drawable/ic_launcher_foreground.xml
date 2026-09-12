@@ -1,0 +1,46 @@
+<!--
+    The JARVIS orb, as a vector so it stays crisp at every launcher size and needs
+    no per-density PNGs. minSdk is 26, so the adaptive icon is always used.
+
+    The 108dp canvas is masked to the centre; launchers guarantee only the inner
+    66dp circle (radius 33 from 54,54). The whole assembly is kept inside radius ~30
+    so a circular mask clips nothing: concentric cyan rings around a bright core,
+    the app's own orb motif reduced to its recognisable essentials.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer halo ring, faint. -->
+    <path
+        android:pathData="M54,25 a29,29 0 1,0 0,58 a29,29 0 1,0 0,-58 z"
+        android:strokeColor="#3300D4FF"
+        android:strokeWidth="2" />
+    <!-- Main ring. -->
+    <path
+        android:pathData="M54,32 a22,22 0 1,0 0,44 a22,22 0 1,0 0,-44 z"
+        android:strokeColor="#00D4FF"
+        android:strokeWidth="3.5" />
+    <!-- Inner ring. -->
+    <path
+        android:pathData="M54,40 a14,14 0 1,0 0,28 a14,14 0 1,0 0,-28 z"
+        android:strokeColor="#66E4FF"
+        android:strokeWidth="2" />
+    <!-- Bright core. -->
+    <path
+        android:pathData="M54,45 a9,9 0 1,0 0,18 a9,9 0 1,0 0,-18 z"
+        android:fillColor="#00D4FF" />
+    <path
+        android:pathData="M54,48 a5,5 0 1,0 0,10 a5,5 0 1,0 0,-10 z"
+        android:fillColor="#EAFBFF" />
+
+    <!-- Two energy beads on the main ring, like the app's orb. -->
+    <path
+        android:pathData="M76,54 a2.6,2.6 0 1,0 0,0.01 z"
+        android:fillColor="#EAFBFF" />
+    <path
+        android:pathData="M32,54 a2.2,2.2 0 1,0 0,0.01 z"
+        android:fillColor="#66E4FF" />
+</vector>

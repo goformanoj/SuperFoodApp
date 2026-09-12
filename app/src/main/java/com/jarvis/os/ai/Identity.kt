@@ -49,9 +49,12 @@ object Identity {
     private const val KEY_REFRESH = "refresh_token"
     private const val KEY_EMAIL = "account_email"
     private const val KEY_PROVIDER = "account_provider"
+    private const val KEY_PLAN = "account_plan"
 
-    /** What the UI needs to know about who is signed in. */
-    data class Account(val email: String?, val isSignedIn: Boolean)
+    /** What the UI needs to know about who is signed in and their tier. */
+    data class Account(val email: String?, val isSignedIn: Boolean, val plan: String = "free") {
+        val isPro: Boolean get() = plan == "pro"
+    }
 
     /** App context for persisting the refresh token. Null until [init]. */
     @Volatile private var appContext: Context? = null
@@ -86,7 +89,18 @@ object Identity {
         val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val provider = prefs?.getString(KEY_PROVIDER, null)
         val email = prefs?.getString(KEY_EMAIL, null)
-        return Account(email = email, isSignedIn = provider == "google.com")
+        val plan = prefs?.getString(KEY_PLAN, null) ?: "free"
+        return Account(email = email, isSignedIn = provider == "google.com", plan = plan)
+    }
+
+    /**
+     * Remember the plan the Worker last reported (its `/chat` reply carries it), so
+     * the Settings card can show Free/Pro without a round-trip. Best-effort display
+     * only — the server remains the source of truth for metering.
+     */
+    fun cachePlan(plan: String) {
+        appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()
+            ?.putString(KEY_PLAN, plan)?.apply()
     }
 
     /**
@@ -118,7 +132,7 @@ object Identity {
             val res = parseIdp(body)
             store(TokenSet(res.idToken, res.refreshToken, res.expiresInSec), System.currentTimeMillis())
             saveAccount(res.email, "google.com")
-            Account(email = res.email, isSignedIn = true)
+            account()
         }
     }
 
@@ -128,7 +142,7 @@ object Identity {
         expiresAtMs = 0L
         refreshToken = null
         appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()
-            ?.remove(KEY_REFRESH)?.remove(KEY_EMAIL)?.remove(KEY_PROVIDER)?.apply()
+            ?.remove(KEY_REFRESH)?.remove(KEY_EMAIL)?.remove(KEY_PROVIDER)?.remove(KEY_PLAN)?.apply()
     }
 
     private fun saveAccount(email: String?, provider: String) {
