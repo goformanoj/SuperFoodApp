@@ -29,6 +29,12 @@ val firebaseApiKey: String = (project.findProperty("FIREBASE_WEB_API_KEY") as St
 val proxySecret: String = (project.findProperty("PROXY_SECRET") as String?)
     ?: System.getenv("PROXY_SECRET")
     ?: ""
+// The Firebase-created Web (server) OAuth client id for Google sign-in. PUBLIC (it
+// is a client id, not a secret), so it rides as a repo Variable like the web api
+// key. Blank until the user enables the Google provider; sign-in stays hidden then.
+val googleWebClientId: String = (project.findProperty("GOOGLE_WEB_CLIENT_ID") as String?)?.takeIf { it.isNotBlank() }
+    ?: System.getenv("GOOGLE_WEB_CLIENT_ID")?.takeIf { it.isNotBlank() }
+    ?: ""
 
 android {
     namespace = "com.jarvis.os"
@@ -46,6 +52,7 @@ android {
         buildConfigField("String", "WORKER_URL", "\"$workerUrl\"")
         buildConfigField("String", "FIREBASE_API_KEY", "\"$firebaseApiKey\"")
         buildConfigField("String", "PROXY_SECRET", "\"$proxySecret\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
 
     signingConfigs {
@@ -128,6 +135,15 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // Google sign-in without the Firebase SDK (Part E). Credential Manager gets a
+    // Google ID token on device; it is then exchanged for a Firebase token over the
+    // Auth REST API (see ai/Identity.kt), so no google-services plugin / json is
+    // needed — consistent with this project's inject-don't-commit rule for keys.
+    // Only a public Web client id and the app's SHA-1 (registered in Firebase) are required.
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")

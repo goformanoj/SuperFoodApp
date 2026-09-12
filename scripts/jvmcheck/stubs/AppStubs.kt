@@ -14,6 +14,7 @@ object BuildConfig {
     const val WORKER_URL: String = ""
     const val FIREBASE_API_KEY: String = ""
     const val PROXY_SECRET: String = ""
+    const val GOOGLE_WEB_CLIENT_ID: String = ""
     const val DEBUG: Boolean = true
 }
 

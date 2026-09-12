@@ -44,8 +44,14 @@ object Identity {
 
     private const val SIGNUP = "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key="
     private const val REFRESH = "https://securetoken.googleapis.com/v1/token?key="
+    private const val IDP = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key="
     private const val PREFS = "jarvis_identity"
     private const val KEY_REFRESH = "refresh_token"
+    private const val KEY_EMAIL = "account_email"
+    private const val KEY_PROVIDER = "account_provider"
+
+    /** What the UI needs to know about who is signed in. */
+    data class Account(val email: String?, val isSignedIn: Boolean)
 
     /** App context for persisting the refresh token. Null until [init]. */
     @Volatile private var appContext: Context? = null
@@ -65,6 +71,70 @@ object Identity {
     fun isConfigured(): Boolean = BuildConfig.FIREBASE_API_KEY.isNotBlank()
 
     internal data class TokenSet(val idToken: String, val refreshToken: String, val expiresInSec: Long)
+
+    internal data class IdpResult(
+        val idToken: String,
+        val refreshToken: String,
+        val expiresInSec: Long,
+        val localId: String,
+        val email: String?,
+        val isNewUser: Boolean,
+    )
+
+    /** The account as last persisted: a Google email means signed in, else anonymous. */
+    fun account(): Account {
+        val prefs = appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val provider = prefs?.getString(KEY_PROVIDER, null)
+        val email = prefs?.getString(KEY_EMAIL, null)
+        return Account(email = email, isSignedIn = provider == "google.com")
+    }
+
+    /**
+     * Upgrade the current (anonymous) identity to a Google account.
+     *
+     * The Google ID token — obtained on device by [GoogleAuth] — is exchanged for a
+     * Firebase token via `accounts:signInWithIdp`. We pass the CURRENT anonymous
+     * token as `idToken` so Firebase **links** Google to that same uid, keeping the
+     * user's quota and (later) their subscription. If that Google account already
+     * exists as its own Firebase user, linking is refused; we then sign in as that
+     * account instead (the uid changes to it — entitlement follows the account,
+     * which is exactly what a returning user on a new phone wants).
+     */
+    suspend fun linkGoogle(googleIdToken: String): Account {
+        // Current anonymous token to link onto (minted if this is a first run).
+        val anon = runCatching { token() }.getOrNull()
+        return withContext(Dispatchers.IO) {
+            val key = BuildConfig.FIREBASE_API_KEY
+            if (key.isBlank()) throw IdentityException("No Firebase API key set")
+
+            var (code, body) = post(IDP + key, "application/json", buildIdpPayload(googleIdToken, anon))
+            if (code !in 200..299 && isLinkConflict(code, body)) {
+                DebugLog.log(DebugLog.Stage.SESSION, "google account already exists — signing in as it")
+                val retry = post(IDP + key, "application/json", buildIdpPayload(googleIdToken, null))
+                code = retry.first; body = retry.second
+            }
+            if (code !in 200..299) throw IdentityException("Google sign-in failed: HTTP $code")
+
+            val res = parseIdp(body)
+            store(TokenSet(res.idToken, res.refreshToken, res.expiresInSec), System.currentTimeMillis())
+            saveAccount(res.email, "google.com")
+            Account(email = res.email, isSignedIn = true)
+        }
+    }
+
+    /** Sign out to a fresh anonymous identity (the next [token] signs up anew). */
+    fun signOut() {
+        idToken = null
+        expiresAtMs = 0L
+        refreshToken = null
+        appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()
+            ?.remove(KEY_REFRESH)?.remove(KEY_EMAIL)?.remove(KEY_PROVIDER)?.apply()
+    }
+
+    private fun saveAccount(email: String?, provider: String) {
+        appContext?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()
+            ?.putString(KEY_EMAIL, email)?.putString(KEY_PROVIDER, provider)?.apply()
+    }
 
     /**
      * A valid Firebase ID token, minting or refreshing as needed. Refresh is tried
@@ -171,5 +241,40 @@ object Identity {
             refreshToken = o.getString("refresh_token"),
             expiresInSec = o.optString("expires_in", "3600").toLongOrNull() ?: 3600L,
         )
+    }
+
+    /** The `signInWithIdp` request body — links to [anonIdToken] when one is given. */
+    internal fun buildIdpPayload(googleIdToken: String, anonIdToken: String?): String {
+        // A Google ID token is base64url + dots — URL-safe — so it goes into the
+        // form-encoded postBody as-is. requestUri is required but unused for a native app.
+        return JSONObject().apply {
+            put("postBody", "id_token=$googleIdToken&providerId=google.com")
+            put("requestUri", "http://localhost")
+            put("returnSecureToken", true)
+            if (anonIdToken != null) put("idToken", anonIdToken)
+        }.toString()
+    }
+
+    internal fun parseIdp(json: String): IdpResult {
+        val o = JSONObject(json)
+        return IdpResult(
+            idToken = o.getString("idToken"),
+            refreshToken = o.getString("refreshToken"),
+            expiresInSec = o.optString("expiresIn", "3600").toLongOrNull() ?: 3600L,
+            localId = o.optString("localId"),
+            email = o.optString("email").ifBlank { null },
+            isNewUser = o.optBoolean("isNewUser", false),
+        )
+    }
+
+    /** True when a link failed only because that Google account already exists on its own. */
+    internal fun isLinkConflict(code: Int, json: String): Boolean {
+        if (code in 200..299) return false
+        val msg = runCatching {
+            JSONObject(json).optJSONObject("error")?.optString("message").orEmpty()
+        }.getOrDefault("")
+        return msg.contains("FEDERATED_USER_ID_ALREADY_LINKED") ||
+            msg.contains("EMAIL_EXISTS") ||
+            msg.contains("CREDENTIAL_ALREADY_IN_USE")
     }
 }

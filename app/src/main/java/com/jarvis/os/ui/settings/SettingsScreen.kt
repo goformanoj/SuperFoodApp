@@ -33,16 +33,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.jarvis.os.ai.GoogleAuth
+import com.jarvis.os.ai.Identity
 import com.jarvis.os.ui.components.ScreenHeader
 import com.jarvis.os.ui.components.SectionLabel
 import com.jarvis.os.ui.components.SettingSwitchRow
 import com.jarvis.os.ui.components.SettingActionRow
 import com.jarvis.os.ui.speech.SpeechScreen
+import kotlinx.coroutines.launch
 import com.jarvis.os.ui.theme.Cyan
 import com.jarvis.os.ui.theme.GlassBorder
 import com.jarvis.os.ui.theme.JarvisPalette
@@ -141,6 +146,12 @@ fun SettingsScreen(
     ) {
         ScreenHeader(title = "Settings")
 
+        // Account (Part E). Shown only once Google sign-in is configured (a Web
+        // client id is set), so nothing broken-looking appears before then. Signing
+        // in links this device's identity to a Google account, which is what lets an
+        // entitlement — and, later, a Pro subscription — follow the user to a new phone.
+        AccountSection()
+
         SectionLabel("How JARVIS sounds and looks")
         NavRow(
             icon = Icons.Filled.RecordVoiceOver,
@@ -184,6 +195,60 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(40.dp))
     }
+}
+
+/**
+ * The account row: sign in with Google, or the signed-in email with a way out.
+ *
+ * Self-contained on purpose — it reads and drives the [Identity]/[GoogleAuth]
+ * singletons directly rather than threading four more parameters through the whole
+ * Compose tree from MainActivity, which is exactly the kind of deep parameter pass
+ * this project has broken on before. Hidden entirely until sign-in is configured.
+ */
+@Composable
+private fun AccountSection() {
+    if (!GoogleAuth.isConfigured()) return
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var account by remember { mutableStateOf(Identity.account()) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    SectionLabel("Account")
+    if (account.isSignedIn) {
+        SettingActionRow(
+            title = "Signed in",
+            description = account.email ?: "Google account",
+            actionLabel = "Sign out",
+            onAction = {
+                Identity.signOut()
+                account = Identity.account()
+                error = null
+            },
+        )
+    } else {
+        SettingActionRow(
+            title = "Sign in with Google",
+            description = error ?: "Keep JARVIS across devices, and unlock Pro when it's ready.",
+            actionLabel = if (busy) "…" else "Sign in",
+            onAction = {
+                if (!busy) {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        try {
+                            account = GoogleAuth.signIn(context)
+                        } catch (e: Exception) {
+                            error = e.message ?: "Sign-in failed"
+                        } finally {
+                            busy = false
+                        }
+                    }
+                }
+            },
+        )
+    }
+    Spacer(Modifier.height(10.dp))
 }
 
 /**

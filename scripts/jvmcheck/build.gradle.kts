@@ -83,6 +83,10 @@ sourceSets {
         kotlin.exclude(
             // Pulls in ComponentActivity and the Compose entry point.
             "**/MainActivity.kt",
+            // Uses androidx.credentials + googleid, which live only on Google's
+            // Maven (dl.google.com) and cannot be resolved here — CI is its first
+            // compile. Its pure logic lives in Identity.kt, which IS checked here.
+            "**/GoogleAuth.kt",
         )
         // Compose + androidx are not resolvable without dl.google.com, so `ui/`
         // is out — EXCEPT the handful of files in it that import no Compose at

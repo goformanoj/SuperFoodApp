@@ -182,7 +182,21 @@ Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open
 ### Part D — polish ⏸️
 - Tap-to-talk toggle (always-on vs press-to-talk); clear idle transcript/reply; first-run permission onboarding (mic/calendar/accessibility incl. the Realme "Downloaded apps" path).
 
-### Part E — commercialization ⏸️ **← NEXT, by the user's request (2026-08-05)**
+### Part E — commercialization 🔨 **← ACTIVE TRACK (user's call, 2026-09-12)**
+> **Strategic pivot (2026-09-12):** complete the whole app for launch — sign-in, free/paid
+> tiers, billing, release — **before** returning to app-training. Part C2 mastery is at
+> C2.3 (the loop works end to end); **C2.4 (automated ingestion + supervised exploration)
+> and Part H (on-device tuned model) are DEFERRED until after the Play launch** — they are
+> the open-ended, time-consuming research track and were halting product progress. Paid tier
+> is a **monthly subscription**. Sub-order chosen with the user: **Google sign-in → subscription
+> billing → release engineering + compliance → launch.**
+>
+> **E-progress:** Backend Phases 0–4 done & live. **Google sign-in — code done (2026-09-12),
+> dormant until the user activates it** (`ai/GoogleAuth.kt` via Credential Manager → Firebase
+> REST `signInWithIdp`, linking Google to the anonymous uid so quota/entitlement carries over;
+> Account row in Settings). **User console steps to activate — see SESSION_HANDOFF "Google
+> sign-in activation".** Next: subscription billing (Phase 6 server half is buildable + testable now).
+
 **Ordered build, all phases, with what each is blocked on: [`BACKEND_PLAN.md`](BACKEND_PLAN.md).**
 Architecture and gotchas (schema, endpoint flow, auth choice): **[`COMMERCIALIZATION.md` §1d](COMMERCIALIZATION.md)**.
 **Phase 0 is startable with nothing from the user** — the Worker against a fake provider, fully

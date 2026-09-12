@@ -1,5 +1,37 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-12 — PIVOT to launch (Part E); Google sign-in without the Firebase SDK
+
+**The decision.** Testing C2 on device made the tradeoff concrete: the pack pipeline works
+(a served label resolves correctly on real Blinkit), but the remaining Blinkit failure is an
+executor timing bug (typing before the search field exists) — the brittle, open-ended
+screen-control frontier. The user's call: **stop letting the app-training grind hold up the
+product. Finish the whole app for launch — sign-in, free/paid tiers, billing, release — then
+return to training (C2.4 automation + Part H) afterwards.** Paid tier is a monthly subscription.
+
+**Google sign-in, the REST way (consistent with the rest of identity).** The project
+deliberately avoids the Firebase SDK / `google-services` plugin (it hard-fails without a
+committed `google-services.json`, against this repo's inject-don't-commit rule). So sign-in
+reuses the same seam as anonymous auth: **Credential Manager** (`ai/GoogleAuth.kt`) gets a
+Google ID token on device, and **`Identity.linkGoogle()`** exchanges it via the Firebase Auth
+REST endpoint `accounts:signInWithIdp`. The one design choice that matters: we pass the current
+**anonymous** token as `idToken`, so Firebase *links* Google to that same uid — the user's
+quota (and, later, their subscription) survives the upgrade. If that Google account already
+exists as its own Firebase user, linking is refused (`FEDERATED_USER_ID_ALREADY_LINKED` /
+`EMAIL_EXISTS`); we then sign in as it instead — entitlement follows the account, which is what
+a returning user on a new phone wants. Pure `parseIdp`/`isLinkConflict`/`buildIdpPayload` are
+tested; the Credential Manager glue is device-only (CI-compiled, jvmcheck-excluded).
+
+**Why it ships dormant, and the SHA-1 gift.** No behaviour changes until the user sets
+`GOOGLE_WEB_CLIENT_ID` (a public repo Variable) — the Account row stays hidden otherwise, so a
+half-configured build never shows a broken button. Because the **debug keystore is committed**,
+its SHA-1 is deterministic and I computed it for the user
+(`D3:04:74:5A:C5:E8:62:27:B8:2D:47:AE:C2:54:7D:07:47:99:5F:92`) — that plus enabling the Google
+provider and copying the Web client ID is the whole activation. Steps in SESSION_HANDOFF.
+
+**Deferred, deliberately:** C2.4 (automated/crowd trace ingestion + supervised exploration) and
+Part H (on-device tuned model) — the research track — until after the Play launch.
+
 ## 2026-09-09 — Part C2.3: the bake loop closes (the near-term C2 phase is complete)
 
 **The realisation that made this small.** C2.3 sounded like it needed a new capture

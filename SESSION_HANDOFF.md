@@ -1,6 +1,53 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-09 — Part C2 near-term phase COMPLETE (C2.0–C2.3)
+## Current position — 2026-09-12 — PIVOT to Part E; Google sign-in code done (dormant)
+
+**Strategic pivot (user's call).** Finish the app for launch — sign-in, free/paid tiers,
+billing, release — **before** resuming app-training. C2 is at C2.3 (loop works end to end);
+**C2.4 + Part H are deferred until after the Play launch.** Paid tier = **monthly subscription.**
+Sub-order: **Google sign-in → subscription billing → release/compliance → launch.**
+
+**Branch.** `claude/next-task-5g9l6t`. C2.0–C2.3 merged to `main` (`dad6fa8`). Google sign-in
+committed on the branch — awaiting CI's `jarvis-debug-apk`, then fast-forward `main`.
+
+### What shipped this session — Google sign-in (no Firebase SDK, REST-based)
+- **`Identity.linkGoogle()`** exchanges a Google ID token via Firebase `accounts:signInWithIdp`,
+  passing the current anonymous token so Google **links to the same uid** (quota/entitlement
+  carries over); falls back to plain sign-in if that Google account already exists. Account
+  state (email/provider) persisted; `signOut()`. Pure `parseIdp`/`isLinkConflict`/`buildIdpPayload`
+  are Robolectric-tested.
+- **`ai/GoogleAuth.kt`** — Credential Manager + googleid glue to get the Google ID token
+  (device-only; excluded from jvmcheck, CI-compiled). Deps added; `GOOGLE_WEB_CLIENT_ID`
+  BuildConfig (public repo Variable) + jvmcheck stub.
+- **Settings → Account** row: "Sign in with Google" / signed-in email + "Sign out". Hidden
+  until `GOOGLE_WEB_CLIENT_ID` is set, so nothing broken shows pre-activation.
+- Off-device gate green (`Identity.kt` compiles); the rest is CI-gated.
+
+### 🔑 Google sign-in activation — the user's console steps (do these to turn it on)
+1. **Firebase console → Authentication → Sign-in method → enable Google.**
+2. **Register the app's SHA-1** (Firebase → Project settings → your Android app → Add
+   fingerprint). Debug build SHA-1 (from the committed `app/debug.keystore`):
+   **`D3:04:74:5A:C5:E8:62:27:B8:2D:47:AE:C2:54:7D:07:47:99:5F:92`**
+   (add the release SHA-1 too once the release keystore exists — E3).
+3. **Get the Web client ID** — enabling Google auto-creates an OAuth 2.0 **"Web client"**
+   (Firebase → Authentication → Google → Web SDK configuration, or Google Cloud → Credentials).
+   It ends in `.apps.googleusercontent.com`. It's **public** — add it as a GitHub repo
+   **Variable** named `GOOGLE_WEB_CLIENT_ID`.
+4. Rebuild. The Account row appears; "Sign in with Google" shows the account chooser and links.
+   (Package must stay `com.jarvis.os`, which matches the OAuth Android client.)
+
+### Start here next session
+1. Confirm CI's `jarvis-debug-apk` for the branch head, then fast-forward `main`.
+2. **Subscription billing (Phase 6 server half)** — buildable + testable now: a `/billing/verify`
+   endpoint that verifies a Play subscription purchase token (pure verifier injected, like
+   `auth.js`), sets `plan = pro` in D1, and an RTDN webhook to downgrade on cancel/expire. The
+   free cap (60k/day) and pro cap (2M/day) already exist in `quota.js`. Activation needs the
+   user's Play service account (dormant switch, like `FIREBASE_PROJECT_ID`).
+3. Then E3 release engineering (AAB, R8, versionCode), E2 compliance, E4 naming, E6 launch.
+
+---
+
+## Earlier — 2026-09-09 — Part C2 near-term phase COMPLETE (C2.0–C2.3)
 
 **Branch.** `claude/next-task-5g9l6t`. C2.0–C2.2 merged to `main` (`65a12e5`). C2.3 committed
 on the branch on top of it — awaiting CI's `jarvis-debug-apk`, then fast-forward `main`.
