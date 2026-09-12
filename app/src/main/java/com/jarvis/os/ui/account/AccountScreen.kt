@@ -24,11 +24,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import com.jarvis.os.ai.GoogleAuth
 import com.jarvis.os.ai.Identity
 import com.jarvis.os.ai.UsageStats
@@ -64,6 +67,7 @@ import kotlinx.coroutines.launch
  * a two-step action here — a red, icon-marked button behind a confirmation dialog —
  * because it is irreversible for the session and was previously one stray tap away.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AccountScreen(
     onBack: () -> Unit,
@@ -82,6 +86,7 @@ fun AccountScreen(
     // Held as state and re-read on entry / after sign-in-out, so the plan and usage
     // reflect the current account without needing the app restarted.
     var usage by remember { mutableStateOf(UsageStats.today()) }
+    var refreshing by remember { mutableStateOf(false) }
     val accent = LocalAccent.current
 
     // Re-read whenever this screen is (re)opened: a turn taken since it was last shown
@@ -112,8 +117,25 @@ fun AccountScreen(
         }
     }
 
+    // Swipe down to reload the plan and today's usage — after a turn flips the cached
+    // plan (e.g. Free → Pro), a pull refreshes the screen in place without reopening.
+    val doRefresh: () -> Unit = {
+        refreshing = true
+        scope.launch {
+            account = Identity.account()
+            usage = UsageStats.today()
+            delay(450) // let the indicator register even when the read is instant
+            refreshing = false
+        }
+    }
+
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = doRefresh,
+        modifier = modifier.fillMaxSize(),
+    ) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
@@ -168,6 +190,7 @@ fun AccountScreen(
         )
         Spacer(Modifier.navigationBarsPadding())
         Spacer(Modifier.height(24.dp))
+    }
     }
 
     if (confirmSignOut) {
