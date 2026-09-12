@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,8 +79,17 @@ fun AccountScreen(
     val configured = GoogleAuth.isConfigured()
     // Today's allowance as last reported by the Worker (UTC-daily). Null before the
     // first turn of the day, when we say so rather than showing a made-up zero.
-    val usage = remember { UsageStats.today() }
+    // Held as state and re-read on entry / after sign-in-out, so the plan and usage
+    // reflect the current account without needing the app restarted.
+    var usage by remember { mutableStateOf(UsageStats.today()) }
     val accent = LocalAccent.current
+
+    // Re-read whenever this screen is (re)opened: a turn taken since it was last shown
+    // may have changed the cached plan (e.g. Free → Pro) or today's usage.
+    LaunchedEffect(Unit) {
+        account = Identity.account()
+        usage = UsageStats.today()
+    }
 
     val signIn: () -> Unit = {
         if (configured && !busy) {
@@ -88,8 +98,11 @@ fun AccountScreen(
             scope.launch {
                 try {
                     account = GoogleAuth.signIn(context)
-                    // Switch the app's data to this account's partition immediately.
+                    // Switch the app's data to this account's partition immediately,
+                    // and refresh what this screen shows for the new account.
                     onAccountChanged()
+                    account = Identity.account()
+                    usage = UsageStats.today()
                 } catch (e: Exception) {
                     error = e.message ?: "Sign-in failed"
                 } finally {
@@ -172,6 +185,7 @@ fun AccountScreen(
                 TextButton(onClick = {
                     Identity.signOut()
                     account = Identity.account()
+                    usage = UsageStats.today()
                     error = null
                     confirmSignOut = false
                     // Back to the guest partition — reload so the account's chat/memory
