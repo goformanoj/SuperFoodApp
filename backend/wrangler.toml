@@ -22,6 +22,14 @@ database_id = "1dc3695c-1f4b-4e17-980e-b6f90122d35f"
 [vars]
 FIREBASE_PROJECT_ID = "jarvis-os-4efe3"
 
+# Owner override — uids that are always treated as `pro` (2M tokens/day), no
+# subscription needed. This is the project owner's own account so development and
+# on-device testing aren't stopped by the free daily cap. NOT a secret and NOT a
+# credential: a uid only grants pro to whoever can already sign in as it (they need
+# a signed Firebase token for that uid), so listing it here gives nobody else
+# anything. Comma-separated to allow more later; empty/unset means "no overrides".
+PRO_UIDS = "ytX2kyJ9azVjGpENjPm4IK0Cl7b2"
+
 # Logs, so a failing deploy can be diagnosed from the dashboard rather than guessed at.
 [observability]
 enabled = true

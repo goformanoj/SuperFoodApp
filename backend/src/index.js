@@ -36,6 +36,7 @@ export function createWorker({
   proxySecret = null,
   verifyToken = null,
   verifySubscription = null,
+  proUids = [],
   now = () => Date.now(),
 }) {
   return {
@@ -184,7 +185,9 @@ export function createWorker({
       } catch (e) {
         sub = null
       }
-      const plan = effectivePlan(userPlan, sub, nowMs)
+      // Owner override: a uid in PRO_UIDS is always pro, so the owner's own testing
+      // isn't stopped by the free cap. Everyone else follows the normal effective plan.
+      const plan = proUids.includes(uid) ? 'pro' : effectivePlan(userPlan, sub, nowMs)
       const cap = capFor(plan)
       const used = await store.usedToday(uid, day)
 
@@ -273,6 +276,9 @@ export default {
     const verifyToken = env.FIREBASE_PROJECT_ID
       ? firebaseVerifier({ projectId: env.FIREBASE_PROJECT_ID })
       : null
-    return createWorker({ store, provider, proxySecret: env.PROXY_SECRET, verifyToken }).fetch(request)
+    // Owner uids that are always pro (the free cap must not stop the owner's own
+    // testing). A committed [vars] value, not a secret — see wrangler.toml.
+    const proUids = (env.PRO_UIDS ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    return createWorker({ store, provider, proxySecret: env.PROXY_SECRET, verifyToken, proUids }).fetch(request)
   },
 }

@@ -19,7 +19,7 @@ function chat(uid = 'u1', body = { messages: [{ role: 'user', content: 'hello' }
 function build(opts = {}) {
   const store = opts.store ?? memoryStore()
   const provider = opts.provider ?? fakeProvider(opts.providerOptions)
-  const worker = createWorker({ store, provider, now: () => opts.now ?? NOW })
+  const worker = createWorker({ store, provider, proUids: opts.proUids, now: () => opts.now ?? NOW })
   return { worker, store, provider }
 }
 
@@ -77,6 +77,29 @@ test('a failing subscription read never takes down the brain (dormant billing)',
   assert.equal(res.status, 200)
   assert.equal(body.plan, 'free')
   assert.equal(body.reply, 'This is a fake reply.')
+})
+
+test('an owner uid is always pro, so the free cap never stops it', async () => {
+  const store = memoryStore()
+  // Already past the FREE cap for today — a normal user would be refused.
+  await store.addUsage('owner', dayKey(NOW), FREE_DAILY_TOKENS, 0)
+  const { worker } = build({ store, proUids: ['owner'] })
+
+  const res = await worker.fetch(chat('owner'))
+  const body = await res.json()
+
+  assert.equal(res.status, 200) // pro cap (2M) is far above today's use
+  assert.equal(body.plan, 'pro')
+})
+
+test('the owner list does not lift anyone else', async () => {
+  const store = memoryStore()
+  await store.addUsage('someone-else', dayKey(NOW), FREE_DAILY_TOKENS, 0)
+  const { worker } = build({ store, proUids: ['owner'] })
+
+  const res = await worker.fetch(chat('someone-else'))
+
+  assert.equal(res.status, 429) // still on free, still capped
 })
 
 // --- the cap ----------------------------------------------------------------
