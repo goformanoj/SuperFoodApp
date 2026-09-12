@@ -1,5 +1,35 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-12 (night) — the drawer profile row was the one place still caching the account
+
+**The complaint.** "The profile panel isn't updating properly — I have to open and close the app
+for it." The screenshot circled the account row at the foot of the nav drawer (name + Free/Pro
+pill). So after a sign-in, a sign-out, or a plan flip (Free → Pro after a turn), the drawer row
+kept showing the old account until the app was fully restarted.
+
+**Why the earlier "refreshes live" fix missed it.** The evening session had already made the
+*full* account page (`AccountScreen`) re-read on open + after sign-in/out instead of
+`remember`-caching. But the drawer's own `DrawerAccountRow` still read `val account = remember {
+Identity.account() }` — a one-shot read with no key. The trap is specific to a drawer: the
+`ModalDrawerSheet` stays **in the composition** the whole time the app runs; closing it only
+translates it off-screen, it is never disposed. So a keyless `remember` there is effectively a
+process-lifetime cache — the row could only change when the whole activity was recreated, i.e. a
+cold restart. That is exactly the "close and reopen the app" symptom.
+
+**The fix.** `DrawerAccountRow` now holds the account as `mutableStateOf` and re-reads
+`Identity.account()` in a `LaunchedEffect(drawerState.targetValue)` whenever the drawer's target is
+`Open`. Keyed on `targetValue` (not `currentValue`/`isOpen`) so the re-read fires as the drawer
+*begins* to open, and the row is already current by the time it slides into view. `drawerState` is
+threaded from `JarvisApp` → `JarvisDrawer` → `DrawerAccountRow`. Compose-only change, so CI is the
+compile gate.
+
+**Lesson for the future.** In a drawer/bottom-sheet/dialog whose host stays composed, `remember {
+source() }` without a key is a bug, not a cache — it never sees a change. Read such
+"reads-external-state" values as state keyed on the visibility signal (here the drawer's
+`targetValue`). And when a "refresh on open" fix is applied to one surface, grep for **every** place
+that reads the same source — the account was read in both `AccountScreen` and `DrawerAccountRow`,
+and only one got the fix the first time.
+
 ## 2026-09-12 (evening) — owner-pro, and why a Firebase uid is the wrong key
 
 **The bug that took two tries.** The owner kept hitting the free cap and couldn't get Pro. A prod

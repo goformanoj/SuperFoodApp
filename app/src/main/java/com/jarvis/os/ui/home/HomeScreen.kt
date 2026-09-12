@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardDoubleArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -57,6 +58,7 @@ import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -325,6 +327,7 @@ fun JarvisApp(
         drawerContent = {
             JarvisDrawer(
                 selected = current,
+                drawerState = drawerState,
                 onSelect = {
                     current = it
                     scope.launch { drawerState.close() }
@@ -899,7 +902,12 @@ private fun ScheduleSection() {
 }
 
 @Composable
-private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit, onOpenAccount: () -> Unit) {
+private fun JarvisDrawer(
+    selected: Dest,
+    drawerState: DrawerState,
+    onSelect: (Dest) -> Unit,
+    onOpenAccount: () -> Unit,
+) {
     ModalDrawerSheet(drawerContainerColor = JarvisTheme.surface) {
         Spacer(Modifier.height(30.dp))
         // The wordmark, set in Great Vibes — a bundled calligraphic script, so the
@@ -972,7 +980,7 @@ private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit, onOpenAccount
         // account, or a sign-in prompt. This is the ONLY place the account lives now
         // (it was removed from Settings).
         HorizontalDivider(color = JarvisTheme.glassBorder)
-        DrawerAccountRow(onOpenAccount = onOpenAccount)
+        DrawerAccountRow(drawerState = drawerState, onOpenAccount = onOpenAccount)
 
         // The version, where every app puts it. Small, but its absence is felt:
         // it is the line that says somebody ships this on a schedule.
@@ -994,12 +1002,25 @@ private fun JarvisDrawer(selected: Dest, onSelect: (Dest) -> Unit, onOpenAccount
  * where sign-in, the plan, today's token usage and sign-out now live.
  */
 @Composable
-private fun DrawerAccountRow(onOpenAccount: () -> Unit) {
+private fun DrawerAccountRow(drawerState: DrawerState, onOpenAccount: () -> Unit) {
     // The row is a doorway now: the whole thing opens the account page, where
     // sign-in, the plan, today's usage, and sign-out all live. Sign-out no longer
     // sits inline (a one-tap irreversible action next to the account was easy to hit
     // by accident); it is behind the profile and a confirm dialog now.
-    val account = remember { Identity.account() }
+    //
+    // The account is STATE re-read every time the drawer opens, not a value cached
+    // once with a bare `remember`. The drawer sheet stays in the composition while
+    // closed (it is only translated off-screen), so a one-shot read never saw a
+    // sign-in, a sign-out, or a plan flip (Free → Pro after a turn) until the whole
+    // activity was recreated — i.e. the user had to close and reopen the app. Keying
+    // the re-read on the drawer's target value refreshes it as the drawer begins to
+    // open, so the row is already current by the time it slides into view.
+    var account by remember { mutableStateOf(Identity.account()) }
+    LaunchedEffect(drawerState.targetValue) {
+        if (drawerState.targetValue == DrawerValue.Open) {
+            account = Identity.account()
+        }
+    }
     val accent = LocalAccent.current
 
     Row(

@@ -1,5 +1,34 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-12 (night) — drawer profile row refresh fix, on the branch
+
+Branch `claude/profile-panel-update-bug-q9rmxt` (off `main` @ `1756a65`). **One Compose-only
+fix**, committed on the branch — awaiting CI's `jarvis-debug-apk` (Rule 2), then fast-forward
+`main`.
+
+**What shipped this turn.** The nav-drawer account row (`HomeScreen.DrawerAccountRow`) was the last
+place still reading the account with a **keyless `remember { Identity.account() }`**. A
+`ModalDrawerSheet` is never disposed while the app runs — closing it just translates it off-screen —
+so that one-shot read behaved like a process-lifetime cache: a sign-in / sign-out / plan flip
+(Free → Pro after a turn) didn't show on the row until a cold restart. That is the user's exact
+symptom: *"the profile panel isn't updating properly, I have to open and close the app for it."* Fix:
+the account is now `mutableStateOf`, re-read via `LaunchedEffect(drawerState.targetValue)` whenever
+the drawer's target is `Open`. `drawerState` is threaded `JarvisApp → JarvisDrawer →
+DrawerAccountRow`.
+
+**Gotcha earned.** In any drawer/sheet/dialog whose host composable stays in the tree, `remember {
+externalRead() }` with no key is a bug, not a cache — it never re-reads. Key such reads on the
+visibility signal (a drawer's `targetValue`, a sheet's expanded state). And the evening's
+"AccountScreen refreshes live" work fixed one of **two** readers of `Identity.account()`; the drawer
+row was the other and was missed — when you fix "refresh on open" for a source, grep for every
+reader of it.
+
+**Next.** Confirm CI's `jarvis-debug-apk` for the branch head, fast-forward `main`, then back to the
+launch track (E3 release engineering, device Play Billing, compliance, naming) per the evening entry
+below.
+
+---
+
 ## Current position — 2026-09-12 (evening) — device-feedback round complete, all merged
 
 Everything from this session is merged to `main` (`1756a65`). The app is on-device and the
