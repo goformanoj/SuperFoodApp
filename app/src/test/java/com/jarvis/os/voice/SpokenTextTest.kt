@@ -126,4 +126,65 @@ class SpokenTextTest {
         // The model does emit these. Left in, it is the exact bug being fixed.
         assertFalse(SpokenText.plain("**Almost bold").contains("*"))
     }
+
+    // --- emoji ----------------------------------------------------------------
+
+    @Test
+    fun `emoji are dropped and the words around them survive`() {
+        val out = SpokenText.plain("All set ✅ and ready to go 🔥")
+
+        assertEquals("All set and ready to go", out)
+    }
+
+    @Test
+    fun `multi-part emoji with skin tone, joiners and flags are fully removed`() {
+        // A thumbs-up with a skin-tone modifier and a flag are each several code
+        // points; none of them should leave a stray character behind.
+        val out = SpokenText.plain("Nice work 👍🏽 from 🇮🇳 team 👨‍👩‍👧")
+
+        assertEquals("Nice work from team", out)
+    }
+
+    // --- blockquotes ----------------------------------------------------------
+
+    @Test
+    fun `a blockquote arrow is dropped and the quote is kept`() {
+        assertEquals("To be or not to be", SpokenText.plain("> To be or not to be"))
+    }
+
+    // --- tables ---------------------------------------------------------------
+
+    @Test
+    fun `a markdown table is spoken as rows, not vertical bars`() {
+        val table = """
+            | Feature | Status |
+            | --- | --- |
+            | Voice | Done |
+        """.trimIndent()
+
+        val out = SpokenText.plain(table)
+
+        assertEquals("Feature, Status\n\nVoice, Done", out)
+        assertFalse("a pipe would be read as \"vertical bar\": $out", out.contains("|"))
+    }
+
+    // --- what must NOT be touched (proving the strip is targeted) --------------
+
+    @Test
+    fun `degree, currency and arrow symbols are left alone`() {
+        // These are not emoji: removing them would change the meaning of a sentence
+        // (a temperature, a price, a relationship), which is worse than reading them.
+        val text = "It is 20°C and the ticket costs £5 → a bargain"
+
+        assertEquals(text, SpokenText.plain(text))
+    }
+
+    @Test
+    fun `a lone pipe in ordinary prose is left alone`() {
+        // Only a real table row (pipes at both ends) is rewritten; a stray pipe in a
+        // sentence is not a table and must not be guessed at.
+        val text = "choose rock | paper here"
+
+        assertEquals(text, SpokenText.plain(text))
+    }
 }

@@ -1,5 +1,37 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-13 — quality polish: spoken-symbols fix shipped, four bugs need a trace
+
+Branch `claude/profile-panel-update-bug-q9rmxt` (continuing on it; prior work already in `main`).
+**One fix committed — awaiting CI (`jarvis-debug-apk`, Rule 2), then fast-forward `main`.**
+
+The user reported five device bugs. I read the code for all five and split them by what's provable
+from code vs. what needs a device trace.
+
+**Shipped: #4 "speaks symbols."** `voice/SpokenText.plain` now also strips **emoji** (targeted
+Unicode blocks, not broad `\p{So}` — so °/→/currency survive), **blockquote `>`**, and **markdown
+tables** (`| a | b |` → "a, b", separator line dropped). Real JUnit tests added; Python pre-flight of
+the expected strings passed. Pure logic, jvmcheck-gated.
+
+**Held for a device trace (Rule 4 — don't guess on device behaviour):**
+- **#1 media audio** — lead: `voice/VoiceController` **mutes `STREAM_MUSIC`** (the media stream) to
+  hide the recogniser earcon and restores on stop; a missed restore, or `isMusicActive` reading
+  false on a muted stream, would leave media silent. Needs a trace of the play-media scenario to
+  confirm the trigger before changing audio routing.
+- **#2 screen/execution** — the parked Part C problem; needs a real errand trace.
+- **#3 barge-in flaky** — `voice/BargeInListener` takes ~hundreds of ms to arm (model load), so a
+  short reply can finish first; "sometimes" = timing/threshold, trace says which.
+- **#5 can't pause mid-sentence** — `VoiceController` uses the recogniser's default end-of-speech
+  timing; custom silence-length hints were previously removed as "unreliable on some devices" (noted
+  in the file). Device tuning, not a blind edit.
+
+**To move the held four:** on device, reproduce the bug, then **Diagnostics → Share** the trace.
+For #1 play a song/video; for #3 interrupt a long reply with "Hey Jarvis"; for #2 run a real errand.
+
+**Next after this merges.** Either work a shared trace, or (launch track) E4 naming / E2 compliance.
+
+---
+
 ## Current position — 2026-09-13 — E3 release engineering (code/CI half), on the branch
 
 Branch `claude/profile-panel-update-bug-q9rmxt` (continuing on it; its prior work is already in

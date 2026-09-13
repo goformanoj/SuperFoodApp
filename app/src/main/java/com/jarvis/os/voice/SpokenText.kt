@@ -57,11 +57,30 @@ object SpokenText {
         out = UNDER_ITALIC.replace(out, "$1")
         out = STRIKE.replace(out, "$1")
 
-        // Leading list markers and heading hashes, per line. The NUMBER in "1."
-        // stays — a spoken list that counts is easier to follow, not harder.
-        out = out.lines().joinToString("\n") { line ->
-            line.replace(LEADING_BULLET, "").replace(LEADING_HEADING, "")
+        // Per-line cleanup. Leading list markers, heading hashes and blockquote
+        // arrows go; the NUMBER in "1." stays — a spoken list that counts is easier
+        // to follow, not harder. A markdown TABLE is turned into spoken rows: the
+        // `|---|` separator line is dropped, and each `| a | b |` row becomes
+        // "a, b" so the cells are read as a list instead of "vertical bar a
+        // vertical bar b vertical bar".
+        out = out.lines().joinToString("\n") { raw ->
+            val line = raw
+                .replace(LEADING_BULLET, "")
+                .replace(LEADING_HEADING, "")
+                .replace(LEADING_QUOTE, "")
+            when {
+                TABLE_SEPARATOR.matches(line) -> ""
+                TABLE_ROW.matches(line) ->
+                    line.trim().trim('|').split("|").joinToString(", ") { it.trim() }
+                else -> line
+            }
         }
+
+        // Emoji and pictographic symbols. TTS reads these as their name
+        // ("fire", "check mark") or a beat of nothing, and a reply peppered with
+        // them is the "reading symbols out loud" the user reported. Targeted at the
+        // emoji blocks only, so real punctuation, maths and currency are untouched.
+        out = EMOJI.replace(out, "")
 
         // Horizontal rules read as a run of dashes.
         out = RULE.replace(out, "")
@@ -101,6 +120,37 @@ object SpokenText {
 
     /** `#`, `##`, … at the start of a line. */
     private val LEADING_HEADING = Regex("""^\s*#{1,6}\s+""")
+
+    /** `>`, `>>` blockquote arrows at the start of a line. */
+    private val LEADING_QUOTE = Regex("""^\s*>+\s?""")
+
+    /**
+     * A markdown table separator row — only pipes, dashes, colons and spaces, and
+     * containing at least one of each of a pipe and a dash so it cannot match a
+     * plain rule or a stray line. Spoken, it is pure noise, so the whole line goes.
+     */
+    private val TABLE_SEPARATOR = Regex("""^(?=.*\|)(?=.*-)[\s|:-]+$""")
+
+    /** A table data row: begins and ends with a pipe. Its cells become a list. */
+    private val TABLE_ROW = Regex("""^\s*\|.*\|\s*$""")
+
+    /**
+     * Emoji and pictographic symbols, by Unicode block. Deliberately NOT the broad
+     * `\p{So}`, which would also take the degree sign, arrows and currency marks —
+     * targeted at the emoji ranges plus the joiners/variation-selectors that glue
+     * multi-part emoji together, and the ™ © ® marks TTS often verbalises.
+     */
+    private val EMOJI = Regex(
+        "[" +
+            "\\x{1F000}-\\x{1FAFF}" + // emoticons, pictographs, transport, supplemental symbols, flags
+            "\\x{2600}-\\x{27BF}" +   // miscellaneous symbols and dingbats
+            "\\x{2B00}-\\x{2BFF}" +   // stars and miscellaneous symbols/arrows
+            "\\x{FE00}-\\x{FE0F}" +   // variation selectors (emoji presentation)
+            "\\x{200D}" +             // zero-width joiner (in emoji sequences)
+            "\\x{20E3}" +             // combining enclosing keycap (e.g. 1️⃣)
+            "\\x{2122}\\x{00A9}\\x{00AE}" + // ™ © ®
+        "]",
+    )
 
     /** `---`, `***`, `___` alone on a line. */
     private val RULE = Regex("""(?m)^\s*([-*_])\1{2,}\s*$""")

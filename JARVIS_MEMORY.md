@@ -1,5 +1,41 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-13 — quality polish, and the discipline of not guessing on device bugs
+
+The user listed five device complaints and asked to fix them: (1) can't hear media JARVIS plays,
+(2) screen reading/execution still poor, (3) barge-in flaky, (4) it speaks symbols, (5) can't pause
+mid-sentence without the turn ending. I read the code for all five first (Rule 4) and split them by
+**what the code alone can prove** versus **what needs a device trace**.
+
+**Shipped: #4 (speaks symbols).** `SpokenText.plain` already stripped markdown + markers but not
+**emoji**, **blockquote `>`**, or **table pipes `|`** — all three read aloud badly (emoji as
+"fire"/"check mark", pipes as "vertical bar"). Extended it: emoji removed by targeted Unicode blocks
+(NOT the broad `\p{So}`, which would also eat °, →, currency — those must survive or the sentence
+changes meaning); leading `>` dropped like a bullet; a markdown table turned into spoken rows
+(`| a | b |` → "a, b", the `|---|` separator line dropped). Pure logic, so real JUnit tests, plus a
+Python pre-flight of the exact expected strings (Rule 5 — pre-flight only, the JUnit tests are the
+test). Kept the project's conservative rule: a stray pipe in prose (no table shape) and all
+non-emoji symbols are left untouched, because removing a real character is worse than reading one.
+
+**Deliberately NOT shipped blind: #1, #2, #3, #5.** The code gave a strong lead on each, but each is
+device-audio/timing/screen behaviour that this session cannot run (Rule 5) and that Rule 4 says to
+diagnose from a trace, not a guess — this project has lost cycles guessing here before.
+- **#1 (media):** `VoiceController` **mutes `STREAM_MUSIC`** (the media stream) to hide the
+  recogniser earcon, restoring it on stop. If a listen session ends abnormally, or `isMusicActive`
+  reads false on a muted stream so the media-check never releases the mic, media stays silent. A
+  strong lead — but the exact trigger and any fix need a device trace to confirm, because it's an
+  audio-routing behaviour, not pure logic.
+- **#2 (screen/execution):** the parked Part C problem; needs a real errand trace.
+- **#3 (barge-in):** the wake-word detector takes ~hundreds of ms to arm (model load), so a short
+  reply can finish before it's listening — "sometimes" = timing/threshold, only a trace says which.
+- **#5 (can't pause):** `VoiceController` uses the recogniser's **default end-of-speech timing**; a
+  prior attempt at custom silence-length hints was removed for being "unreliable on some devices"
+  (logged in the file). Re-adding them blind would repeat that; this is device tuning.
+
+**Lesson reinforced:** separate "the code proves it" bugs (ship with tests) from "only a device
+proves it" bugs (get the trace first). Shipping #4 and holding the other four is the Rule-4 call,
+not a lack of leads.
+
 ## 2026-09-13 — E3 release engineering (the parts that don't need a device)
 
 **Why now.** Launch track, E3. The pieces are: R8 minification + keep rules, a signed-AAB
