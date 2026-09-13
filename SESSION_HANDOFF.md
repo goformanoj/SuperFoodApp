@@ -1,10 +1,10 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-12 (night) — drawer profile row refresh fix, on the branch
+## Current position — 2026-09-12 (night) — drawer profile row refresh fix, MERGED
 
-Branch `claude/profile-panel-update-bug-q9rmxt` (off `main` @ `1756a65`). **One Compose-only
-fix**, committed on the branch — awaiting CI's `jarvis-debug-apk` (Rule 2), then fast-forward
-`main`.
+Branch `claude/profile-panel-update-bug-q9rmxt`. **One Compose-only fix**, now **merged to `main`
+@ `0847fb7`** — CI run #475 produced the `jarvis-debug-apk` artifact for that commit (Rule 2's green
+signal), and `main` was fast-forwarded and pushed. Working tree clean; nothing half-built.
 
 **What shipped this turn.** The nav-drawer account row (`HomeScreen.DrawerAccountRow`) was the last
 place still reading the account with a **keyless `remember { Identity.account() }`**. A
