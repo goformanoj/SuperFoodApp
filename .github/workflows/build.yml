@@ -99,6 +99,53 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
+  # E3 — prove the R8 (minified) RELEASE build compiles on every push, WITHOUT the
+  # upload keystore. bundleRelease with no signing config produces an unsigned AAB,
+  # which is all this check needs: it catches a broken proguard rule or an R8
+  # config error at build time, here, instead of in the signed release.yml run.
+  # (It can NOT catch a runtime R8 problem — a minified build still needs a device
+  # smoke-test before publishing.) Separate job so it never slows the debug artifact.
+  release-build-check:
+    name: Release build check (R8, unsigned)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Build release AAB (unsigned, R8 on)
+        env:
+          # Same injected config as the debug build so the release build compiles
+          # against real BuildConfig fields; empty is fine for a compile check.
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          PROXY_SECRET: ${{ secrets.PROXY_SECRET }}
+          FIREBASE_WEB_API_KEY: ${{ vars.FIREBASE_WEB_API_KEY }}
+          WORKER_URL: ${{ vars.WORKER_URL }}
+          GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID }}
+        run: ./gradlew bundleRelease
+
+      - name: Upload unsigned release AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-release-aab-unsigned
+          path: app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+
   # Fast check (~1 min): runs the openWakeWord streaming pipeline on a real "hey
   # jarvis" recording and asserts it detects the phrase and ignores silence. Verifies
   # the pipeline math + threshold without a device (the emulator job covers the load).

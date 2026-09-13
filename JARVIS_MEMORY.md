@@ -1,5 +1,45 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-13 — E3 release engineering (the parts that don't need a device)
+
+**Why now.** Launch track, E3. The pieces are: R8 minification + keep rules, a signed-AAB
+workflow, and a CI-derived versionCode. Three of those are pure code/CI I can build and verify
+here; the fourth (the actual keystore + Play App Signing enrolment) is inherently the owner's,
+because a signing key is a secret that must never touch a session.
+
+**What I built, and the reasoning behind each choice.**
+- **R8 on release, keep rules conservative on purpose.** The app hand-rolls all JSON with
+  `org.json` — no Gson/Moshi reflective serializer — so the reflection surface R8 could break is
+  tiny. The two real risks are the **native library** (TFLite loads its interpreter through
+  JNI/reflection) and the **Google Identity** id-token types; both get explicit keeps on top of
+  their AAR consumer rules. The subtle one I almost missed: `DebugLog.Stage.valueOf(name)` reads
+  enum constants **by name** out of the persisted trace log, and R8 renames enum constants by
+  default — so a trace written before an update would stop parsing. It's non-fatal (the parse is
+  guarded) but the trace log is the app-learning corpus, so I kept app enum constant names. Lesson
+  worth keeping: **anything persisted by `enum.name` and read back with `valueOf` needs a keep
+  rule under R8**, or it silently breaks across app updates.
+- **Resource shrinking left OFF.** E3 only asked for `isMinifyEnabled`. Resource shrinking can
+  strip a resource that's only referenced dynamically, and this app resolves some resources by
+  theme/backdrop id — so that's a separate, device-verified step, not a free rider on this one.
+- **Dormant-safe signing.** The release signing config is created **only when** the keystore is
+  actually present (`hasReleaseSigning`), and the release build is left unsigned otherwise. So a
+  local or CI `bundleRelease` with no secrets configures cleanly and still produces an (unsigned)
+  artifact — which is exactly what lets the new `release-build-check` job prove R8 compiles on
+  every push **without** the owner's keystore. Same inject-don't-commit pattern the whole project
+  uses for keys.
+- **versionCode from CI.** Play requires a strictly-increasing versionCode per upload; the release
+  workflow's run number is monotonic, so it's the source. Local/debug keep `1`/`1.0` — debug
+  builds are untouched.
+
+**The honest limit, stated in the code and the docs.** CI can prove the release build *compiles*
+under R8; it cannot prove it *runs*. A shrunk reflective path, or the wake-word/TFLite load, can
+only fail at runtime — so a minified release build must be smoke-tested on a device before it's
+published. That warning is in `proguard-rules.pro`, `release.yml`, and `COMMERCIALIZATION.md`.
+
+**Owner's half (documented, not blocking this merge):** generate the upload keystore, add four
+GitHub secrets, enrol in Play App Signing, register the release SHA-1 in Firebase. Checklist in
+`COMMERCIALIZATION.md` §Phase D.
+
 ## 2026-09-12 (night) — the drawer profile row was the one place still caching the account
 
 **The complaint.** "The profile panel isn't updating properly — I have to open and close the app

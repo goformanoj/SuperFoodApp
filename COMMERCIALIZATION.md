@@ -331,15 +331,39 @@ Two levers that matter more than they sound:
 - **Data safety form** covering voice audio, calendar data, conversation content, screen text,
   and the third-party LLM processor.
 
-### Phase D — Release engineering
-- Generate a **release keystore**; store it base64-encoded in a GitHub secret with its
-  passwords; enrol in **Play App Signing**.
-- Play requires an **AAB**, not an APK → add `.github/workflows/release.yml` running
-  `bundleRelease`. The existing debug workflow stays for personal installs.
-- Enable `isMinifyEnabled = true` on the release build type (currently `false`) and write the
-  `proguard-rules.pro` keep rules for Compose and the JSON models.
-- Derive `versionCode` from the CI run number so uploads never collide; `versionName` semver.
-- Optional: automate uploads with Gradle Play Publisher.
+### Phase D — Release engineering  ✅ **CODE/CI DONE (2026-09-13); owner activation pending**
+
+The code + CI half of E3 is built and dormant-safe (unset ⇒ nothing changes):
+- **R8 on release:** `isMinifyEnabled = true` with conservative `proguard-rules.pro` keep rules
+  (TFLite JNI, Google Identity id-token types, crash line numbers, and app enum constant names
+  so persisted `DebugLog.Stage` traces survive updates). Resource shrinking left OFF until a
+  device smoke-test of a minified build (some resources resolve by theme/backdrop id).
+- **AAB, signed:** `.github/workflows/release.yml` (manual `workflow_dispatch` or a `v*` tag)
+  runs `bundleRelease`, decoding the upload keystore from a secret; the debug workflow stays for
+  personal installs. Every push also runs a **`release-build-check`** in `build.yml` that does an
+  unsigned `bundleRelease`, so a broken R8/proguard rule is caught at build time here.
+- **`versionCode` from CI:** the release run number (monotonic), `versionName` from the dispatch
+  input. Local/debug builds keep the `1` / `1.0` defaults, unchanged.
+
+**Owner activation — do these to turn signed releases on (the build stays unsigned until all four
+secrets exist):**
+1. Generate an **upload keystore** (keep the `.jks` safe and OFF the repo):
+   `keytool -genkeypair -v -keystore upload-keystore.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000`
+2. base64-encode it: `base64 -w0 upload-keystore.jks` (macOS: `base64 -i upload-keystore.jks`).
+3. Add repository **Secrets** (Settings → Secrets and variables → Actions):
+   `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` (=`upload`),
+   `RELEASE_KEY_PASSWORD`.
+4. **Enrol in Play App Signing** when creating the app in the Play Console (Google holds the app
+   key and re-signs; this keystore is only the *upload* key, and losing it is recoverable).
+5. **Register the upload key's SHA-1 in Firebase** so Google sign-in works on release builds:
+   `keytool -list -v -keystore upload-keystore.jks -alias upload` → add the SHA-1 under the
+   Android app (this is the release counterpart of the debug SHA-1 already registered).
+
+Then run the **Release AAB (signed)** workflow; download the `jarvis-release-aab` artifact and the
+`release-mapping` (upload `mapping.txt` to Play for readable crash traces). **⚠️ A minified release
+build must be smoke-tested on a device before publishing** — R8 runtime issues (a shrunk reflective
+path, wake-word/TFLite load, speech) can't be caught in CI.
+- Optional later: automate uploads with Gradle Play Publisher.
 
 ### Phase E — Monetization (freemium subscription)
 - **Free tier:** ~20 AI requests/day on the cheap model, enforced **server-side in the proxy**

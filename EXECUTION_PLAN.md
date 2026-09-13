@@ -218,7 +218,7 @@ inside a Claude session rather than only on a device.
 - **E1 — key security:** BYOK settings screen (`EncryptedSharedPreferences`) *after* the proxy;
   add Play Integrity / App Check attestation and server-side quota.
 - **E2 — compliance cleanups:** drop `QUERY_ALL_PACKAGES` for a `<queries>` MAIN/LAUNCHER block; in-app accessibility disclosure + consent; Data safety inputs.
-- **E3 — release engineering:** release keystore + Play App Signing, `release.yml` building an AAB, `isMinifyEnabled = true` with proguard keep rules, CI-derived `versionCode`.
+- **E3 — release engineering:** ✅ **code/CI done (2026-09-13)** — `release.yml` builds a signed AAB (Play App Signing upload key from a secret), `isMinifyEnabled = true` with `proguard-rules.pro` keeps, CI-derived `versionCode`, and a per-push unsigned `release-build-check`. **Owner activation pending** (upload keystore + 4 secrets + Play App Signing enrol + release SHA-1 in Firebase — `COMMERCIALIZATION.md` §Phase D); a minified build needs a device smoke-test before publishing.
 - **E4 — name & identity gate:** final public name + `applicationId` (⚠️ immutable after the first publish; "JARVIS" is a Marvel trademark).
 - **E5 — billing:** Play Billing / RevenueCat, free-tier daily cap enforced in the proxy.
 - **E6 — launch:** internal → closed test (12 testers × 14 days) → production.

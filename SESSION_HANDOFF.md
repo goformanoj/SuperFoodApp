@@ -1,5 +1,42 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-13 — E3 release engineering (code/CI half), on the branch
+
+Branch `claude/profile-panel-update-bug-q9rmxt` (continuing on it; its prior work is already in
+`main` @ `837c63d`). **E3 code + CI committed** — awaiting CI (the debug `jarvis-debug-apk` artifact
+per Rule 2, and the new unsigned `release-build-check` proving R8 compiles), then fast-forward `main`.
+
+**What shipped this turn (E3 — the parts that don't need a device).**
+- **R8 on the release build** (`app/build.gradle.kts`: `isMinifyEnabled = true`) with real
+  `proguard-rules.pro` keeps: TFLite JNI, Google Identity id-token types, crash line numbers, and
+  **app enum constant names** (so persisted `DebugLog.Stage` traces still `valueOf()` after an
+  update — R8 renames enum constants by default). Resource shrinking left OFF (some resources
+  resolve by theme/backdrop id → needs a device check first).
+- **Signed AAB workflow** `.github/workflows/release.yml` (`workflow_dispatch` + `v*` tag): decodes
+  an upload keystore from a secret, `bundleRelease`, uploads the AAB + the R8 `mapping.txt`. **Play
+  App Signing** (upload key here; Google holds the app key).
+- **versionCode from CI** (release run number, monotonic); `versionName` from the dispatch input.
+  Local/debug keep `1`/`1.0`.
+- **`release-build-check`** job added to `build.yml`: unsigned `bundleRelease` on every push, so a
+  broken keep rule reds here at build time, not in the signed run.
+- **Dormant-safe:** the release signing config is created only when the keystore is present
+  (`hasReleaseSigning`), else the build is unsigned — nothing breaks before the owner sets up
+  signing.
+
+**Owner activation (does NOT block this merge; full checklist in `COMMERCIALIZATION.md` §Phase D):**
+generate the upload keystore, add secrets `RELEASE_KEYSTORE_BASE64` / `RELEASE_STORE_PASSWORD` /
+`RELEASE_KEY_ALIAS` / `RELEASE_KEY_PASSWORD`, enrol in Play App Signing, register the release SHA-1
+in Firebase. **⚠️ Smoke-test a minified release build on a device before publishing** — CI proves
+R8 compiles, not that it runs (reflective paths, wake-word/TFLite load, speech).
+
+**Next after this merges.** E3 is code-complete; the remaining E3 work is the owner's console steps
+above. Then the rest of the launch track — **E4 naming** ("JARVIS" is a Marvel trademark; decide the
+public name + final `applicationId`, immutable after first publish), device **Play Billing** (activates
+the dormant subscription backend), **E2 compliance** (Data Safety, accessibility disclosure, drop
+`QUERY_ALL_PACKAGES`), then **E6 launch**.
+
+---
+
 ## Current position — 2026-09-12 (night) — drawer profile row refresh fix, MERGED
 
 Branch `claude/profile-panel-update-bug-q9rmxt`. **One Compose-only fix**, now **merged to `main`

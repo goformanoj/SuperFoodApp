@@ -36,6 +36,34 @@ val googleWebClientId: String = (project.findProperty("GOOGLE_WEB_CLIENT_ID") as
     ?: System.getenv("GOOGLE_WEB_CLIENT_ID")?.takeIf { it.isNotBlank() }
     ?: ""
 
+// E3 — release engineering.
+//
+// versionCode/versionName come from CI so every uploaded build is strictly newer
+// than the last (Play requires a higher versionCode each upload). Local and debug
+// builds get the 1 / "1.0" defaults, unchanged. The release workflow passes
+// VERSION_CODE (a monotonic CI run number) and an optional VERSION_NAME.
+val versionCodeProp: Int = (project.findProperty("VERSION_CODE") as String?)?.toIntOrNull()
+    ?: System.getenv("VERSION_CODE")?.toIntOrNull()
+    ?: 1
+val versionNameProp: String = (project.findProperty("VERSION_NAME") as String?)?.takeIf { it.isNotBlank() }
+    ?: System.getenv("VERSION_NAME")?.takeIf { it.isNotBlank() }
+    ?: "1.0"
+
+// The release UPLOAD key (not the app-signing key — Play App Signing holds and
+// re-signs with the real app key; we sign the upload with this). Injected at build
+// time: CI decodes a base64 secret to a .jks and points RELEASE_STORE_FILE at it —
+// NEVER committed. When absent (local builds, or before signing is set up) the
+// release build is simply left unsigned, so the config is dormant and safe.
+val releaseStoreFile: String? = (System.getenv("RELEASE_STORE_FILE")
+    ?: project.findProperty("RELEASE_STORE_FILE") as String?)?.takeIf { it.isNotBlank() }
+val releaseStorePassword: String? = System.getenv("RELEASE_STORE_PASSWORD")
+    ?: project.findProperty("RELEASE_STORE_PASSWORD") as String?
+val releaseKeyAlias: String? = System.getenv("RELEASE_KEY_ALIAS")
+    ?: project.findProperty("RELEASE_KEY_ALIAS") as String?
+val releaseKeyPassword: String? = System.getenv("RELEASE_KEY_PASSWORD")
+    ?: project.findProperty("RELEASE_KEY_PASSWORD") as String?
+val hasReleaseSigning: Boolean = releaseStoreFile != null && file(releaseStoreFile).exists()
+
 android {
     namespace = "com.jarvis.os"
     compileSdk = 36
@@ -44,8 +72,8 @@ android {
         applicationId = "com.jarvis.os"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = versionCodeProp
+        versionName = versionNameProp
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GEMINI_API_KEY", "\"$geminiApiKey\"")
         buildConfigField("String", "GROQ_API_KEY", "\"$groqApiKey\"")
@@ -67,6 +95,17 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // The release upload key, created ONLY when CI has injected the keystore
+        // (see hasReleaseSigning). Guarded so a local `assembleRelease` with no
+        // keystore configures cleanly (unsigned) instead of failing to evaluate.
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -75,11 +114,20 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         release {
-            isMinifyEnabled = false
+            // R8: shrink + obfuscate. Resource shrinking is deliberately left OFF
+            // for now — this app resolves some resources by theme/backdrop id, and
+            // resource shrinking can strip a dynamically-referenced resource; enable
+            // it only after a device smoke-test of a minified build.
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Signed only when the upload key is present; otherwise the build
+            // produces an unsigned release artifact (fine for a CI R8/compile check).
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
