@@ -15,6 +15,32 @@
  * Rules behind this text, each earned by a real device bug, are documented in
  * that Kotlin file's header.
  */
+/**
+ * The SLIM prompt for a plain conversation turn — the token-saving half of the
+ * two-tier scheme (see `promptTier.js` and the `CONVO_TIER` switch in `index.js`).
+ *
+ * The full [SYSTEM_PROMPT] is ~1,900 tokens and rides EVERY call, even "hi", because
+ * it carries the whole marker protocol. A plain chat turn needs none of that. This
+ * is ~250 tokens: the conversational identity, plus one instruction — if the turn
+ * actually needs a device action, emit `<<NEEDS_ACTION>>` and the Worker re-runs it
+ * with the full prompt. So an errand is never answered from this prompt: a clearly
+ * actiony message never reaches it (the Worker routes it straight to the full
+ * prompt), and anything that slips through and needs to act escalates. It is used
+ * ONLY when `CONVO_TIER` is on; unset, the Worker always sends the full prompt.
+ *
+ * Deliberately does NOT list the markers — listing them is exactly the ~1,500
+ * tokens this avoids. The model's job here is to converse or to raise its hand.
+ */
+export const CONVERSATION_PROMPT = `You are JARVIS, a warm, capable voice assistant, in fast conversation mode.
+
+Your replies are SPOKEN: keep them to a sentence or two, going fuller only when asked to explain something. This is a continuing conversation — answer naturally, and to a bare greeting or your name, answer briefly. Ask one short question only when you need a missing detail. Never claim you did something you have not done.
+
+In this mode you have NO device tools: you cannot open or control apps, tap, type into apps, play or pause media, set alarms, timers or reminders, add calendar events, create or open files, place calls or send messages, or change settings.
+
+If — and ONLY if — fulfilling THIS turn needs any such on-device action, reply with EXACTLY this token and nothing else:
+<<NEEDS_ACTION>>
+That includes the user asking you to do one of those things, or confirming or continuing one from the conversation ("yes", "go ahead", "do it", "send it"). Put no words around it. Otherwise, just answer the question or chat normally, and never output any << >> marker.`
+
 export const SYSTEM_PROMPT = `You are JARVIS, a warm and capable voice assistant. Converse like a knowledgeable AI first. Reach for the tools below only when the user clearly wants an action on their phone.
 
 Your replies are SPOKEN. Keep them to a sentence or two; go fuller only when asked to explain something. This is a continuing conversation. Ask one short question when you need a missing detail.

@@ -1,5 +1,46 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-14 — two-tier prompt: cut ~2k tokens/turn to ~250 on plain chat, without risking errands
+
+The user noticed every turn costs ~2k tokens and asked why, then to fix it. Diagnosis (from the
+code, not memory): the ~1,900-token `SYSTEM_PROMPT` — almost all of it the marker protocol — rides
+EVERY `/chat` call, because the app sends no `system` and the Worker applies its default. So even
+"hi" pays the full agent-instruction cost. That's also why the free 60k/day lasts only ~25 turns.
+
+The fix is a two-tier prompt, and the whole design is bent around ONE constraint the user stated
+hard: **an errand must never run without the tools.** How each layer serves that:
+- **The full-prompt path is byte-identical to before.** Untiered turns, the explicit-override
+  (chooser) path, the keyword-gated path, and the escalated path all send exactly
+  `withContext(SYSTEM_PROMPT)` — the same string an errand gets today. So any errand that reaches
+  the full prompt behaves identically; nothing about how a plan is generated changed.
+- **A broad keyword pre-gate** (`promptTier.looksActiony`) routes any message with an action verb
+  or app/device noun straight to the full prompt — no model judgement involved. This catches the
+  overwhelming majority of errands deterministically. False positives (a question that names an
+  app) are harmless: they just pay the full prompt they'd have paid anyway.
+- **An escalation net** for the phrasings the gate misses: the slim `CONVERSATION_PROMPT` tells the
+  model to emit `<<NEEDS_ACTION>>` if the turn needs a device action (including "yes"/"do it"
+  follow-ups), and `shouldEscalate` re-runs the turn on the full prompt on that flag, on any stray
+  marker, or on an action-claim in the words. A dropped errand would need BOTH the keyword gate to
+  miss AND the model to not raise its hand — and even then the cost is a re-asked reply, not a
+  wrong action.
+
+**Why it ships dormant.** The eval (the only thing that proves the live model still emits markers)
+runs against the DEPLOYED Worker and only the user can trigger it — so I can't validate the model
+half here. So the whole thing is behind `CONVO_TIER` in `wrangler.toml [vars]`, default **off**
+(anything but "on" = off): merging changes nothing. Enabling is a one-word flip + deploy, reversible
+instantly, and gated on the eval score holding. Same "ships dormant, activates via config" pattern
+as Firebase identity and billing.
+
+**Tested (`node --test`, 139 green).** Pure `promptTier` unit tests (errands look actiony; chat
+does not; every escalation trigger fires; junk-safe) and worker integration tests proving: off ⇒
+full prompt always; on ⇒ chat is a single slim call, an errand skips slim and uses full, a
+keyword-less action escalates to full and the user gets the full reply (never the flag) with tokens
+summed, and an explicit override is never tiered. A subtlety the full-suite run caught (the
+two-file run didn't): after I added "put on" to the keyword net, the escalation test's "put on some
+music" started routing straight to full — so the escalation test needed a genuinely keyword-less
+message. Lesson: run the WHOLE suite after touching a shared classifier, not just the file you
+edited.
+
 ## 2026-09-13 — quality polish, and the discipline of not guessing on device bugs
 
 The user listed five device complaints and asked to fix them: (1) can't hear media JARVIS plays,

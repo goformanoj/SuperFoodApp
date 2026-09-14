@@ -32,6 +32,16 @@ FIREBASE_PROJECT_ID = "jarvis-os-4efe3"
 PRO_EMAILS = "goforpranjal@gmail.com"
 PRO_UIDS = "GHqijQCTduNHNFR9roqWF82v60v2"
 
+# Two-tier prompt — token saving. "off" (this value, and anything that isn't "on")
+# sends the full ~1,900-token agent prompt on EVERY turn, exactly as before. "on"
+# serves a plain chat turn from a slim ~250-token prompt and only pays for the full
+# prompt when a turn needs a device action: a clearly-actiony message goes straight
+# to the full prompt, and any slim answer that shows a sign of needing to act is
+# re-run on it — so an errand is never answered without the tools. Ships "off"; flip
+# to "on" and deploy ONLY after the eval confirms markers still fire, and flip back
+# to "off" to revert instantly.
+CONVO_TIER = "off"
+
 # Logs, so a failing deploy can be diagnosed from the dashboard rather than guessed at.
 [observability]
 enabled = true

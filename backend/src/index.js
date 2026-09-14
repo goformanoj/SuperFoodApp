@@ -16,7 +16,8 @@ import { capFor, dayKey, isOverCap, overCapBody, remaining } from './quota.js'
 import { modelsFor } from './models.js'
 import { d1Store } from './db.js'
 import { MIGRATIONS } from './schema.js'
-import { SYSTEM_PROMPT } from './systemPrompt.js'
+import { SYSTEM_PROMPT, CONVERSATION_PROMPT } from './systemPrompt.js'
+import { lastUserText, looksActiony, shouldEscalate } from './promptTier.js'
 import { dropSecretMemories } from './guards.js'
 import { packFor } from './packs.js'
 import { effectivePlan, isActive } from './billing.js'
@@ -38,6 +39,7 @@ export function createWorker({
   verifySubscription = null,
   proUids = [],
   proEmails = [],
+  conversationTier = false,
   now = () => Date.now(),
 }) {
   return {
@@ -213,11 +215,37 @@ export function createWorker({
       // the system prompt, exactly as the app's GroqClient.buildPayload does
       // (`base\n\ncontext`). Without it the model rightly asks "which app?"; with
       // it, the same call tests plan quality instead of penalising a fair question.
-      const baseSystem = body.system ?? SYSTEM_PROMPT
-      const system = body.context ? `${baseSystem}\n\n${body.context}` : baseSystem
+      const ctx = body.context
+      const withContext = (base) => (ctx ? `${base}\n\n${ctx}` : base)
+
+      // Two-tier prompt (dormant unless CONVO_TIER=on). Serves a plain chat turn
+      // from the slim CONVERSATION_PROMPT (~250 tokens) instead of the full ~1,900,
+      // but NEVER at the cost of an errand: a clearly-actiony message goes straight
+      // to the full prompt (byte-identical to the untiered path below), and a slim
+      // answer that shows any sign of needing to act is re-run on the full prompt.
+      // The user pays for both calls in that rare case — honest, and still far less
+      // over a day than paying the full prompt on every "hi".
+      const completeTiered = async () => {
+        if (looksActiony(lastUserText(messages))) {
+          return provider.complete({ models, messages, system: withContext(SYSTEM_PROMPT) })
+        }
+        const slim = await provider.complete({ models, messages, system: withContext(CONVERSATION_PROMPT) })
+        if (!shouldEscalate(slim.text)) return slim
+        const full = await provider.complete({ models, messages, system: withContext(SYSTEM_PROMPT) })
+        return { text: full.text, model: full.model, usage: sumUsage(slim.usage, full.usage) }
+      }
+
       let result
       try {
-        result = await provider.complete({ models, messages, system })
+        if (body.system) {
+          // An explicit system override (the app's PICK "chooser") is never tiered —
+          // the caller has already decided exactly what the model should see.
+          result = await provider.complete({ models, messages, system: withContext(body.system) })
+        } else if (conversationTier) {
+          result = await completeTiered()
+        } else {
+          result = await provider.complete({ models, messages, system: withContext(SYSTEM_PROMPT) })
+        }
       } catch (e) {
         // Nothing is charged. The user got no answer; billing them for the
         // provider's bad day would be the wrong way round.
@@ -243,6 +271,17 @@ export function createWorker({
         remaining: remaining(used + inTok + outTok, cap),
       })
     },
+  }
+}
+
+/**
+ * Add two provider usages (an escalated turn made two calls). Input and output
+ * stay apart, priced differently, exactly as a single call reports them.
+ */
+function sumUsage(a = {}, b = {}) {
+  return {
+    prompt_tokens: (a?.prompt_tokens ?? 0) + (b?.prompt_tokens ?? 0),
+    completion_tokens: (a?.completion_tokens ?? 0) + (b?.completion_tokens ?? 0),
   }
 }
 
@@ -288,8 +327,13 @@ export default {
     // uid. Committed [vars] values, not secrets — see wrangler.toml.
     const proUids = (env.PRO_UIDS ?? '').split(',').map((s) => s.trim()).filter(Boolean)
     const proEmails = (env.PRO_EMAILS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+    // Two-tier prompt. OFF (unset, or anything but "on") keeps the full agent prompt
+    // on every turn — unchanged behaviour, so this deploys dormant. Flip to "on" in
+    // wrangler.toml [vars] only once the eval confirms markers still fire; "off"
+    // reverts instantly.
+    const conversationTier = (env.CONVO_TIER ?? '').trim().toLowerCase() === 'on'
     return createWorker({
-      store, provider, proxySecret: env.PROXY_SECRET, verifyToken, proUids, proEmails,
+      store, provider, proxySecret: env.PROXY_SECRET, verifyToken, proUids, proEmails, conversationTier,
     }).fetch(request)
   },
 }

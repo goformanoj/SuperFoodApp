@@ -1,5 +1,40 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-14 — two-tier prompt (token saving), DORMANT, on the branch
+
+Branch `claude/profile-panel-update-bug-q9rmxt` (prior work already in `main`). **Backend change
+committed — awaiting CI's `backend` job (`node --test`), then fast-forward `main`. Ships dormant, so
+merging changes nothing.**
+
+**What it is.** Every `/chat` turn paid the full ~1,900-token `SYSTEM_PROMPT` (mostly the marker
+protocol), even "hi" — the reason free 60k/day ≈ 25 turns. New slim `CONVERSATION_PROMPT` (~250
+tokens) for plain chat, chosen by a pure classifier (`backend/src/promptTier.js`).
+
+**Errand safety (the whole point) — three layers, all in code + tested:**
+1. `looksActiony(message)` → any action verb / app-or-device noun goes STRAIGHT to the full prompt,
+   which is **byte-identical to today**. No model judgement. Catches almost all errands.
+2. Slim prompt emits `<<NEEDS_ACTION>>` when a turn needs a device action (incl. "yes"/"do it"); the
+   Worker re-runs on the full prompt (`shouldEscalate`).
+3. Any stray marker / action-claim in a slim reply also escalates.
+A dropped errand needs the gate to miss AND the model to not flag; worst case = re-asked reply.
+
+**Dormant + reversible.** `CONVO_TIER` in `wrangler.toml [vars]`, default `"off"` (anything but
+"on" = off). Only the normal (no-`system`) turn is tiered; the PICK chooser override is untouched.
+`node --test` 139 green.
+
+**⚠️ To ENABLE it (deliberate, eval-gated — I did NOT enable it):** set `CONVO_TIER = "on"` in
+`backend/wrangler.toml`, deploy (fast-forward `main` → Cloudflare Git-Builds), then **run the eval
+workflow** (Actions → eval, `workflow_dispatch`; needs `WORKER_URL` + `PROXY_SECRET` + optionally
+`FIREBASE_WEB_API_KEY`; the user triggers it — this session can't dispatch). Confirm the action rows
+still score their markers (an errand routes to full, so they should). If the score drops, flip
+`CONVO_TIER` back to `"off"` and redeploy — instant revert. The eval is the ONLY check of the live
+model's half; the `node --test` suite only proves the routing logic.
+
+**Next.** Enable + eval when the user is ready; or one of the four held device bugs (needs a trace);
+or the launch track (E4 naming / E2 compliance).
+
+---
+
 ## Current position — 2026-09-13 — quality polish: spoken-symbols fix shipped, four bugs need a trace
 
 Branch `claude/profile-panel-update-bug-q9rmxt` (continuing on it; prior work already in `main`).
