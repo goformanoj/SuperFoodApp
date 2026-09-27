@@ -243,6 +243,52 @@ in scope and never will be**; the plan says why in its first section.
 
 Independent of Part E: training does **not** wait for the backend.
 
+### Part I — Desktop / cross-device (Compose Multiplatform, monorepo) 🗺️ **planned 2026-09-27, not started**
+
+**Decision (user's call, 2026-09-27):** JARVIS is no longer mobile-only. A laptop is now
+both a **dev machine** (unblocks local builds, emulator, `adb logcat`, local eval + signing —
+see Rule 5) and a **product target**. The desktop client is a **native app via Compose
+Multiplatform Desktop** — native because JARVIS's identity is *acting on the device* (opening/
+controlling apps, files, OS), which a browser sandbox forbids; Compose Multiplatform because it
+**reuses the existing Kotlin/Compose code**. Structure is **Option 1 — monorepo**: the desktop is
+a module ADDED beside `app/`, never a rewrite. Timing: **after the Play launch** (don't split
+focus pre-launch). A thin web client on the same Worker is an optional cheap "reach" layer later.
+
+**Honest reuse map — set expectations:**
+- **Shared (moves to a `:shared` module):** the Worker client contract, the pure logic already
+  isolated for jvmcheck (marker parsers, `SpokenText`, `MemoryFormat`, `AgendaFormat`,
+  `FileFormat`, `Profiles`, identity/usage parsing), and much of the Compose UI look.
+- **NOT shared — desktop gets its OWN implementations** behind `expect/actual` seams: the
+  accessibility `ScreenControlService` (Android-only; desktop automation is a different, and more
+  reliable, world — scripts/OS APIs), wake word (TFLite load), mic + `SpeechRecognizer`, TTS,
+  `SharedPreferences` storage, `FileProvider`, foreground services, launcher/permissions.
+- **Untouched:** the **backend Worker** — both clients hit the same `/chat`; the per-account data
+  isolation already lets one Google account carry chats/memory across devices.
+
+**Migration — executed ON THE LAPTOP, on a branch, with a build after EVERY step (never blind in a
+cloud session — that's the one place the Android app could break unseen). Android app preserved
+throughout; fallback is branch `snapshot/android-1.0`.**
+1. ✅ Bookmark the known-good phone app — branch `snapshot/android-1.0` (done 2026-09-27). Optionally
+   add a `android-1.0` git tag from the laptop.
+2. On the laptop, branch `desktop-kmp`; confirm `./gradlew assembleDebug` is GREEN as the baseline.
+3. Add the Kotlin Multiplatform + Compose Multiplatform plugins (a version catalog if not present);
+   build Android → must stay green. (No source moved yet.)
+4. Add an empty `:shared` KMP module (targets: android + jvm/desktop); `app` depends on it; build
+   Android → green.
+5. Move the Android-free pure logic into `:shared` `commonMain` a few files at a time, **building
+   Android after each move**. Anything touching an Android API stays put or goes behind
+   `expect/actual`.
+6. Add the `:desktop` application module (Compose for Desktop: a `main()` + a window depending on
+   `:shared`); build desktop → a window runs.
+7. Build the desktop UI from shared Composables; write desktop `actual`s for the platform seams
+   (start with chat + the Worker client; add mic/TTS/automation incrementally).
+8. Desktop signs in with the same Google account and talks to the same Worker — no backend change.
+9. CI: add a desktop build/test job; keep every Android job exactly as is.
+
+**The headline desktop feature** is the reliable automation the phone never got: on a laptop,
+"do it for me" is scripts/OS APIs, not brittle accessibility screen-poking (the parked Part C) —
+so the Automation stub ("speak → runs on the desktop") finally becomes real and dependable.
+
 ### Later ⏸️
 - Proper wake word (Porcupine / openWakeWord); streaming replies; device skills via real intents (alarms/timers, SMS/calls with confirm, wifi/torch/DND/media); vision (screenshot → model).
 - **Call assistant** — appendix in [`JARVIS_AI_PLAN.md`](JARVIS_AI_PLAN.md); deferred to after the first Play Store launch.

@@ -1,5 +1,43 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-27 — the laptop pivot: dev unlock + desktop product, and protecting the phone app
+
+The user is bringing a laptop into the project — both to develop on and as a new target ("not only
+mobile anymore"). Two distinct pivots, both recorded in `EXECUTION_PLAN.md` (new Part I) and Rule 5.
+
+**Dev unlock (the bigger, immediate one).** The project's #1 constraint has always been "Claude
+can't build or see the app; everything goes through CI + the user's phone." A laptop running Claude
+Code (with Android Studio + SDK + `adb` + Node + `wrangler`) removes that: local builds in minutes,
+an emulator, **`adb logcat` live** — which turns the four held device bugs (media/barge-in/pause/
+screen) from "blocked on a shared trace" into "diagnosable in a live session" — plus local eval
+(safe `CONVO_TIER` enable) and local signing (E3). Rule 5 is now session-aware: cloud sessions
+stay build-blind (CI-only), laptop sessions can do device-facing work.
+
+**Product pivot.** Desktop client = **native, via Compose Multiplatform Desktop**, **monorepo**
+(Option 1): a module added beside `app/`, not a rewrite. Native because JARVIS's identity is acting
+on the device (open/control apps, files, OS) — a browser sandbox forbids all of that; a web client
+could only chat. Compose Multiplatform because it reuses the existing Kotlin/Compose code. Honest
+reuse line: the pure logic + Worker client + UI look move to `:shared`; the device-control guts
+(accessibility, wake word, mic, TTS, storage) are Android-specific and the desktop gets its own
+`actual`s — desktop automation via scripts/OS APIs, which is the *reliable* version of the parked
+Part C screen-poking.
+
+**Why I did NOT start the code restructure in this cloud session** (the user asked to "make the
+changes in all the important files"): a Compose-Multiplatform migration is unbuildable and
+unverifiable here (Rule 5) — and it's the one change where a mistake could break or "lose" the
+Android app the user is anxious about. Doing it blind, right after telling them it's safe, would be
+reckless. So the restructure is the FIRST laptop task, staged as an incremental checklist (build
+after every step) in Part I. What I changed safely now: the plan/rules that steer the work, and a
+protective bookmark.
+
+**Protecting the phone app.** Intended a `android-1.0` git tag; the cloud session's GitHub access
+**denies tag pushes (HTTP 403 org policy)** — not retryable per the proxy rules. Branch pushes ARE
+allowed, so the known-good state is bookmarked at **branch `snapshot/android-1.0`** (frozen at
+`main` @ `3719fdc`). The app was never actually at risk — it's in `main`'s history — but the branch
+gives an obvious "return here" label. Add the tag from the laptop if wanted. **Gotcha earned:** this
+session can push branches and `main` but not tags; and E3's `release.yml` triggers on `v*` tags, so
+a safety tag must NOT start with `v` (named it `android-1.0`, not `v1.0`).
+
 ## 2026-09-14 — two-tier prompt: cut ~2k tokens/turn to ~250 on plain chat, without risking errands
 
 The user noticed every turn costs ~2k tokens and asked why, then to fix it. Diagnosis (from the

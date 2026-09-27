@@ -13,6 +13,16 @@ A native Android AI voice assistant — **JARVIS OS** — built **entirely from 
 
 Order of work: **features first** (Parts B/C/D), then the commercial foundation (Part E).
 
+> **VISION EVOLVED — 2026-09-27: cross-device, and a laptop enters the loop.** Two shifts from the
+> original "phone only, built with no PC": **(1)** a **laptop is now a development machine** (local
+> builds, emulator, live `adb logcat`, local eval + signing), removing the CI-only constraint the
+> original vision was built around — the phone-only *build* story was a limitation, not a goal, and
+> it's lifting. **(2)** JARVIS is no longer mobile-only: the north star now includes a **native
+> desktop client (Compose Multiplatform, monorepo)** sharing the same backend and account, whose
+> headline is the reliable on-device automation the phone's accessibility approach never achieved.
+> Android remains the lead platform and ships first; desktop follows **after the Play launch**. Full
+> plan in [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) Part I.
+
 ## Non-negotiable constraints
 - **API keys are injected at build time via a GitHub Actions secret — NEVER committed** to the repo.
 - Commits are authored as **`Claude <noreply@anthropic.com>`**.

@@ -1,5 +1,34 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-27 — laptop pivot decided + phone app bookmarked (docs/plan only)
+
+Branch `claude/profile-panel-update-bug-q9rmxt`. **Docs + `CLAUDE.md` + a safety bookmark committed
+this turn — no app/backend code changed.** Awaiting the docs merge to `main`.
+
+**Decision (user).** JARVIS goes cross-device. Two pivots, both in `EXECUTION_PLAN.md` **Part I** and
+`CLAUDE.md` Rule 5:
+- **Dev:** a laptop (Claude Code + Android Studio + SDK + `adb` + Node + `wrangler`) unblocks local
+  builds, emulator, **live `adb logcat`** (→ the four held device bugs become fixable), local eval
+  (safe `CONVO_TIER` enable), local E3 signing. Rule 5 is now session-aware.
+- **Product:** desktop = **native, Compose Multiplatform Desktop, monorepo (Option 1)** — a module
+  added beside `app/`, not a rewrite; **after Play launch**.
+
+**The phone app is protected.** Known-good state bookmarked at branch **`snapshot/android-1.0`**
+(`main` @ `3719fdc`). Note: this cloud session **cannot push git tags** (org policy 403; branches
+are fine) — add a `android-1.0` tag from the laptop if wanted. Safety tag must NOT start with `v`
+(E3's `release.yml` triggers on `v*`).
+
+**IMPORTANT — the Compose-MP restructure was deliberately NOT started here.** It's unbuildable/
+unverifiable in a cloud session (Rule 5) and is the one change that could break the Android app
+unseen — so it is the **first laptop task**, staged as an incremental, build-after-every-step
+checklist in Part I, on a `desktop-kmp` branch, Android app preserved throughout.
+
+**Next (on the laptop, in order):** set up the dev environment → knock out the held device bugs via
+logcat + enable `CONVO_TIER` via local eval → finish the launch track (E3 local signing, Billing,
+E2, naming) → Play launch → THEN Part I desktop migration.
+
+---
+
 ## Current position — 2026-09-14 — two-tier prompt (token saving), DORMANT, on the branch
 
 Branch `claude/profile-panel-update-bug-q9rmxt` (prior work already in `main`). **Backend change

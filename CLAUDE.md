@@ -55,9 +55,22 @@ than speculating, and quote the timestamps that prove the diagnosis.
 - **Do not** "verify" logic by porting regexes to Python and running them. That
   tests the translation, not the code, and is thrown away. (Python is fine as a
   *pre-flight on test expectations* before pushing — never as the test itself.)
-- Claude cannot run the app here: no KVM, no Android SDK, and Gradle cannot fetch
-  through the proxy. Speech, TTS, and real third-party apps are confirmed by the
-  user on-device.
+- **Session-dependent (changed 2026-09-27 — a laptop is now in the loop):**
+  - **Cloud / web sessions** (like this one) still cannot run the app: no KVM, no
+    Android SDK, and Gradle cannot fetch through the proxy. Here, CI remains the
+    only compile gate and the artifact the only green signal (Rule 2), and speech,
+    TTS, screen-control and real third-party apps are confirmed by the user
+    on-device. **Never do an unbuildable, unverifiable change here** — above all the
+    Compose-Multiplatform restructure (see the plan's Part I): it belongs on the
+    laptop, built after every step.
+  - **A laptop session** (Claude Code installed on the laptop, with Android Studio +
+    SDK + `adb` + Node + `wrangler`) CAN build locally, run the emulator, read
+    `adb logcat` live, run the eval, and sign locally. Device-facing build/test/debug
+    and the desktop work happen there. CI stays the shared gate for both.
+- **Never lose the phone app.** The known-good Android v1.0 is bookmarked at branch
+  `snapshot/android-1.0` (a tag `android-1.0` couldn't be pushed from a cloud session
+  — org policy 403 on tags; add it from the laptop/GitHub if you want the tag too).
+  The desktop work is a monorepo module ADDED beside `app/`, never a rewrite of it.
 
 ## Rule 6 — irreversible actions need code, not just prompt wording
 
