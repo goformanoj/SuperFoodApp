@@ -22,3 +22,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "JarvisOS"
 include(":app")
+// Part I — the Windows/desktop client. Compose for Desktop; see desktop/README.md.
+include(":desktop")
