@@ -1,5 +1,25 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-27 — desktop client v0.1 + laptop env + CI fix
+
+Branch `desktop-kmp`, **`main` @ `465d6bd`** (CI all 7 jobs green, `jarvis-debug-apk` present). **`:desktop` (Compose for Desktop) added beside `app/`** — typed chat with JARVIS on
+Windows through the same Worker/`ProxyClient`; memory; persisted chat. See `desktop/README.md`.
+
+- **Run:** `./gradlew :desktop:run` · standalone: `:desktop:createDistributable` → `desktop/build/compose/binaries/main/app/JARVIS/JARVIS.exe`.
+- **Secrets (both builds):** user-level `%USERPROFILE%\.gradle\gradle.properties` — `PROXY_SECRET`,
+  `FIREBASE_WEB_API_KEY` (+ optional `GOOGLE_WEB_CLIENT_ID`). Baked in at build time → rebuild after editing.
+- **Shared code = `SHARED_FROM_APP` list** in `desktop/build.gradle.kts`: Android-free files compiled from
+  `app/src/main` (nothing moved). Only add a file that imports no `android.*`/`androidx.*`. Desktop versions of
+  `Identity`/`UsageStats`/`BuildConfig` live in `desktop/src/main/kotlin/com/jarvis/os/`.
+- **Gotcha — CI:** `setup-android@v3` broke on the 2026-09-27 runner image (legacy `tools` package gone) → all
+  Android jobs red on every branch. Now `@v4`. If SDK setup fails again, check the action before the code.
+- **Gotcha — laptop:** 16 GB / 4-core; `./gradlew --stop` before the emulator. Emulator only when the user asks.
+  No Python on the laptop — use Node for scripting.
+- **Next on desktop:** voice (mic STT + TTS), Google sign-in via loopback OAuth (so the owner is `pro` here too),
+  then the headline: real desktop automation (scripts/OS APIs). Device-bug work via logcat still pending.
+
+---
+
 ## Current position — 2026-09-27 — laptop pivot decided + phone app bookmarked (docs/plan only)
 
 Branch `claude/profile-panel-update-bug-q9rmxt`. **Docs + `CLAUDE.md` + a safety bookmark committed

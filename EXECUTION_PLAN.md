@@ -243,7 +243,7 @@ in scope and never will be**; the plan says why in its first section.
 
 Independent of Part E: training does **not** wait for the backend.
 
-### Part I — Desktop / cross-device (Compose Multiplatform, monorepo) 🗺️ **planned 2026-09-27, not started**
+### Part I — Desktop / cross-device (Compose Multiplatform, monorepo) 🚧 **v0.1 built 2026-09-27 — brought forward by the user**
 
 **Decision (user's call, 2026-09-27):** JARVIS is no longer mobile-only. A laptop is now
 both a **dev machine** (unblocks local builds, emulator, `adb logcat`, local eval + signing —
@@ -270,20 +270,24 @@ cloud session — that's the one place the Android app could break unseen). Andr
 throughout; fallback is branch `snapshot/android-1.0`.**
 1. ✅ Bookmark the known-good phone app — branch `snapshot/android-1.0` (done 2026-09-27). Optionally
    add a `android-1.0` git tag from the laptop.
-2. On the laptop, branch `desktop-kmp`; confirm `./gradlew assembleDebug` is GREEN as the baseline.
+2. ✅ On the laptop, branch `desktop-kmp`; `./gradlew testDebugUnitTest assembleDebug` GREEN as the baseline (2026-09-27).
 3. Add the Kotlin Multiplatform + Compose Multiplatform plugins (a version catalog if not present);
    build Android → must stay green. (No source moved yet.)
 4. Add an empty `:shared` KMP module (targets: android + jvm/desktop); `app` depends on it; build
    Android → green.
+   **2026-09-27 (v0.1):** steps 3–5 deferred in favour of a zero-risk seam: `:desktop` compiles an explicit
+   list of Android-free files straight from `app/src/main` (`SHARED_FROM_APP`, the jvmcheck trick), with
+   same-named desktop `Identity`/`UsageStats`/`BuildConfig`. Nothing in `app/` moved. Steps 3–5 remain the
+   target structure; do them when the list gets unwieldy.
 5. Move the Android-free pure logic into `:shared` `commonMain` a few files at a time, **building
    Android after each move**. Anything touching an Android API stays put or goes behind
    `expect/actual`.
-6. Add the `:desktop` application module (Compose for Desktop: a `main()` + a window depending on
+6. ✅ (v0.1) Add the `:desktop` application module (Compose for Desktop: a `main()` + a window depending on
    `:shared`); build desktop → a window runs.
-7. Build the desktop UI from shared Composables; write desktop `actual`s for the platform seams
+7. 🚧 (v0.1: chat + Worker client + memory done; mic/TTS/automation next) Build the desktop UI from shared Composables; write desktop `actual`s for the platform seams
    (start with chat + the Worker client; add mic/TTS/automation incrementally).
 8. Desktop signs in with the same Google account and talks to the same Worker — no backend change.
-9. CI: add a desktop build/test job; keep every Android job exactly as is.
+9. ✅ (v0.1) CI: add a desktop build/test job; keep every Android job exactly as is.
 
 **The headline desktop feature** is the reliable automation the phone never got: on a laptop,
 "do it for me" is scripts/OS APIs, not brittle accessibility screen-poking (the parked Part C) —

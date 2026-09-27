@@ -1,5 +1,33 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-27 — desktop client v0.1 on the laptop, and CI's setup-android break
+
+First laptop session. **Env:** Android Studio's JBR 21 as `JAVA_HOME`, SDK at `%LOCALAPPDATA%\Android\Sdk`,
+`local.properties` (ignored) for `sdk.dir`; AGP auto-installed Platform 36 (only 36.1 was present). Baseline
+`testDebugUnitTest assembleDebug` green on `c7f7922` (839 tests, 8 min cold); backend 139 green. The Pixel_7
+emulator lagged badly next to the Gradle daemons (16 GB, 4-core U-series CPU) — `./gradlew --stop` first,
+`-gpu host -no-boot-anim`. The user asked that the emulator only be used when they say so.
+
+**Desktop brought forward (user's call).** The plan put Part I after the Play launch; the user wants to use
+JARVIS on the laptop now. Built v0.1 as `:desktop` (Compose for Desktop). The key decision: **share code
+without moving it** — the plan's step 5 (move pure logic into a `:shared` KMP module) is the one step that
+touches the Android app's layout, so instead `SHARED_FROM_APP` compiles an explicit list of Android-free
+files straight from `app/src/main`, exactly as `scripts/jvmcheck` does. The phone's `ProxyClient` compiles
+unchanged because the desktop supplies same-named `Identity` (anonymous Firebase REST, file-backed),
+`UsageStats` and a generated `BuildConfig`. Zero risk to the Android build — verified locally, and `:app` is
+untouched. `:shared` remains the eventual structure; this list is the seam until then.
+
+**The Worker's prompt is the phone's**, so a desktop reply can contain `<<OPEN|…>>`/`<<TAP|…>>`. Two layers:
+the turn context tells the model it is on the desktop and must not emit device markers; `DesktopTurn.process`
+strips every marker (reusing `Markers`) and replaces a phone action with an honest "phone only for now" line —
+never a claim that it ran (Rule 6 spirit). Tested.
+
+**CI was red everywhere, and not because of us.** Every job with `android-actions/setup-android@v3` failed at SDK
+setup from 2026-09-27 — including `main` and the untouched `snapshot/android-1.0` commit that was green on 09-14.
+The runner's sdkmanager (cmdline-tools 16.0) no longer has the legacy `tools` package that v3 installs by
+default. `@v4` (2026-09-17) defaults to `platform-tools`. Evidence: identical "Failed to find package 'tools'"
+in every Android job, while the backend/wake-word jobs (no SDK) stayed green.
+
 ## 2026-09-27 — the laptop pivot: dev unlock + desktop product, and protecting the phone app
 
 The user is bringing a laptop into the project — both to develop on and as a new target ("not only
