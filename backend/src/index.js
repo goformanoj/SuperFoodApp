@@ -16,7 +16,7 @@ import { capFor, dayKey, isOverCap, overCapBody, remaining } from './quota.js'
 import { modelsFor } from './models.js'
 import { d1Store } from './db.js'
 import { MIGRATIONS } from './schema.js'
-import { SYSTEM_PROMPT, CONVERSATION_PROMPT } from './systemPrompt.js'
+import { SYSTEM_PROMPT, CONVERSATION_PROMPT, DESKTOP_AGENT_PROMPT } from './systemPrompt.js'
 import { lastUserText, looksActiony, shouldEscalate } from './promptTier.js'
 import { dropSecretMemories } from './guards.js'
 import { packFor } from './packs.js'
@@ -277,9 +277,17 @@ export function createWorker({
         return { text: full.text, model: full.model, usage: sumUsage(slim.usage, full.usage) }
       }
 
+      // The desktop agent (AGENT_PLAN §4): a client that runs tools sends their
+      // schemas; the model may answer with tool calls, which go back to the client to
+      // execute. Absent (the phone, the eval) ⇒ every path below is unchanged.
+      const tools = validTools(body.tools)
+      if (tools === INVALID) return Response.json({ error: 'bad_tools' }, { status: 400 })
+
       let result
       try {
-        if (body.system) {
+        if (tools) {
+          result = await provider.complete({ models, messages, system: withContext(body.system ?? DESKTOP_AGENT_PROMPT), tools })
+        } else if (body.system) {
           // An explicit system override (the app's PICK "chooser") is never tiered —
           // the caller has already decided exactly what the model should see.
           result = await provider.complete({ models, messages, system: withContext(body.system) })
@@ -306,7 +314,9 @@ export function createWorker({
       // Rule 6 guard: a code/PIN/password must never reach the device's memory,
       // whatever the model emitted. Strip secret <<REMEMBER>> markers server-side.
       return Response.json({
-        reply: dropSecretMemories(result.text),
+        reply: dropSecretMemories(result.text ?? ''),
+        // Only present when the model asked to act; the client runs them and calls again.
+        ...(result.toolCalls?.length ? { tool_calls: result.toolCalls } : {}),
         model: result.model,
         plan,
         usage: { input: inTok, output: outTok },
@@ -314,6 +324,27 @@ export function createWorker({
       })
     },
   }
+}
+
+const INVALID = Symbol('invalid')
+/** Most tools a client may declare — a guard on prompt size, not a feature limit. */
+export const MAX_TOOLS = 24
+
+/**
+ * The client's tool list, checked: absent → null (no agent), else each entry must be an
+ * OpenAI-shaped function with a sane name and an object schema. Anything malformed is
+ * refused whole rather than half-forwarded — a broken schema would only surface later
+ * as a confusing provider error.
+ */
+export function validTools(tools) {
+  if (tools === undefined || tools === null) return null
+  if (!Array.isArray(tools) || tools.length === 0 || tools.length > MAX_TOOLS) return INVALID
+  const ok = tools.every((t) =>
+    t?.type === 'function' &&
+    typeof t.function?.name === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(t.function.name) &&
+    (t.function.parameters === undefined || (typeof t.function.parameters === 'object' && !Array.isArray(t.function.parameters))),
+  )
+  return ok ? tools : INVALID
 }
 
 /**

@@ -45,12 +45,18 @@ export function groqProvider(apiKey, options = {}) {
   const maxAttempts = options.maxAttempts ?? 3
   const sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
 
-  async function once(model, messages, system) {
+  async function once(model, messages, system, tools) {
     const body = {
       model,
       temperature: 0.7,
       max_tokens: maxTokens,
       messages: system ? [{ role: 'system', content: system }, ...messages] : messages,
+    }
+    // Native tool calling (the desktop agent). Absent for every other caller, so
+    // their request body is exactly what it was.
+    if (tools && tools.length) {
+      body.tools = tools
+      body.tool_choice = 'auto'
     }
     const res = await fetch(ENDPOINT, {
       method: 'POST',
@@ -66,11 +72,16 @@ export function groqProvider(apiKey, options = {}) {
       } catch {
         return { error: 'bad_json_from_provider', retryable: false }
       }
-      const content = parsed?.choices?.[0]?.message?.content?.trim() ?? ''
+      const message = parsed?.choices?.[0]?.message ?? {}
+      const content = message.content?.trim() ?? ''
+      const toolCalls = toolCallsOf(message)
       // Empty is transient (a model that spent its budget without emitting text):
-      // worth another go on the SAME model.
-      if (!content) return { error: EMPTY_REPLY, retryable: true, transient: true }
-      return { text: content, usage: parsed.usage ?? {}, model }
+      // worth another go on the SAME model. A reply that is ONLY tool calls is not
+      // empty — it is the agent asking to act.
+      if (!content && toolCalls.length === 0) return { error: EMPTY_REPLY, retryable: true, transient: true }
+      return toolCalls.length
+        ? { text: content, toolCalls, usage: parsed.usage ?? {}, model }
+        : { text: content, usage: parsed.usage ?? {}, model }
     }
 
     if (res.status === 429) {
@@ -98,7 +109,7 @@ export function groqProvider(apiKey, options = {}) {
   }
 
   return {
-    async complete({ models, messages, system }) {
+    async complete({ models, messages, system, tools }) {
       let lastError = 'no_model_tried'
       let anyTried = false
 
@@ -112,8 +123,8 @@ export function groqProvider(apiKey, options = {}) {
         // A cooldown (429) or a retirement is not transient — those break out to the
         // next model. A fatal error (bad key) stops everything.
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          const outcome = await once(model, messages, system)
-          if (outcome.text) return outcome
+          const outcome = await once(model, messages, system, tools)
+          if (outcome.text || outcome.toolCalls?.length) return outcome
           lastError = outcome.error
           if (!outcome.retryable) throw new ProviderError(outcome.error, 502)
           if (!outcome.transient) break
@@ -155,4 +166,21 @@ export function retryAfterSeconds(header, body) {
 /** Groq has reported a dead model as both 404 and 400 — match on the words too. */
 export function looksRetired(body) {
   return /decommission|no longer supported|does not exist|deprecated/i.test(body ?? '')
+}
+
+/**
+ * The tool calls in an OpenAI-shaped assistant message, flattened to
+ * { id, name, arguments } with `arguments` kept as the model's JSON string (the
+ * client parses it, and a malformed one is the client's to report, not ours to
+ * silently repair). Calls without a name are dropped.
+ */
+export function toolCallsOf(message) {
+  const calls = Array.isArray(message?.tool_calls) ? message.tool_calls : []
+  return calls
+    .map((tc) => ({
+      id: String(tc?.id ?? ''),
+      name: String(tc?.function?.name ?? ''),
+      arguments: typeof tc?.function?.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc?.function?.arguments ?? {}),
+    }))
+    .filter((tc) => tc.name)
 }
