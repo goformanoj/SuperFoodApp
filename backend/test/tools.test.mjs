@@ -142,3 +142,10 @@ test('toolCallsOf keeps string arguments, stringifies objects, drops nameless ca
   ])
   assert.deepEqual(toolCallsOf({}), [])
 })
+
+test('the desktop prompt covers routines and never lets mail go out without approval', () => {
+  assert.match(DESKTOP_AGENT_PROMPT, /routine/i)
+  assert.match(DESKTOP_AGENT_PROMPT, /Sending an email always goes through the user's approval/)
+  // Room for the Google tools once an account is connected (the laptop declares ~30).
+  assert.ok(MAX_TOOLS >= 32)
+})

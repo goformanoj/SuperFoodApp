@@ -391,8 +391,9 @@ export function createWorker({
 }
 
 const INVALID = Symbol('invalid')
-/** Most tools a client may declare — a guard on prompt size, not a feature limit. */
-export const MAX_TOOLS = 24
+/** Most tools a client may declare: a guard on prompt size, not a feature limit (the laptop sends
+ *  its Google tools only once an account is connected, so the common case stays near 24). */
+export const MAX_TOOLS = 36
 
 /**
  * The client's tool list, checked: absent → null (no agent), else each entry must be an
