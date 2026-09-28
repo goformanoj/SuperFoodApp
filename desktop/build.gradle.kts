@@ -159,6 +159,9 @@ dependencies {
     // laptop. The phone uses TFLite, which has no desktop runtime; these are the same
     // models in ONNX form (openWakeWord v0.5.1 release).
     implementation("com.microsoft.onnxruntime:onnxruntime:1.17.3")
+    // The brain (AGENT_PLAN §3): local SQLite with FTS5 full-text search. Bundles its own
+    // native library; no install needed.
+    implementation("org.xerial:sqlite-jdbc:3.53.4.0")
 
     testImplementation("junit:junit:4.13.2")
 }
@@ -201,6 +204,7 @@ compose.desktop {
                 "jdk.crypto.ec",                     // HTTPS to the Worker, Google and Firebase (ECDHE)
                 "java.naming",                       // TLS / URL handlers
                 "jdk.unsupported",                   // sun.misc.Unsafe, used by Compose/Skiko internals
+                "java.sql",                          // the brain: SQLite over JDBC
             )
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "JARVIS"
