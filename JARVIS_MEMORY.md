@@ -1,5 +1,45 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-28 — the roadmap, the JARVIS Night design, and recovering the proxy secret
+
+**Roadmap.** The user asked for the complete phase-by-phase path to the final JARVIS ("voice, tasks,
+scheduled, everything we discussed"). It lives at the top of `EXECUTION_PLAN.md` and now sets the order
+of work; the lettered Parts remain the detailed specs. Key choices: desktop first as the daily driver
+(Phase 1) because the user brought it forward; voice next on BOTH devices so the four held phone bugs
+finally get fixed with live logcat; desktop automation (Tasks) is the headline and carries an in-code
+approval gate (Rule 6); scheduled routines only after tasks exist to schedule; launch left as an open
+decision (could run in parallel after Phase 2 since the phone app is near-ready). Every phase ends in a
+test the user can run — "done" means that passes.
+
+**Design.** Made in Claude Design as a canvas (Chat, Voice mode, Tasks, Scheduled, shared Sidebar) in a
+committed look — the phone's palette, orb as the brand element, assistant-style layout — then built in
+Compose. Rule I held to: **no fake data in the real app.** The canvas uses sample content to show
+intent; the app shows only real state (date, remembered facts, real conversations) and honest "Phase N"
+screens for everything not built yet. Voice/attach are visibly disabled with a hint.
+
+**Proxy secret.** The user had forgotten `PROXY_SECRET`; GitHub and Cloudflare store it write-only. Rather
+than rotate (which would break the installed phone app until a reinstall), recovered it from the latest CI
+APK: `dexdump` of `BuildConfig`, value piped straight into `~/.gradle/gradle.properties`, never printed,
+download deleted. **My first parser was wrong** — it read the line after the field name, which is the
+`type` line — caught because a cross-check against the known Firebase key mismatched; fixed by pairing each
+`name` with its own `value` line and verifying against two known values before saving. Note for later: the
+repo is public, so anyone signed in to GitHub can do the same to any artifact — the secret is a speed bump,
+not a lock; Firebase identity + metering is the real control.
+
+**Then the HUD, and a lesson about porting phone features.** The user found the first redesign
+"horrible" and sent reference images (concentric HUD reactor, cyan/orange instrument panels, a particle
+orb). Built `ReactorOrb` + a HUD panel kit and a cockpit home whose every readout is real (this laptop's
+CPU/RAM via the JVM OS bean, uplink, measured reply latency, allowance, memory, sessions). The phone's
+orb/world/theme code was shared in unchanged (compiled from `app/src/main`). **But the phone's pinch-in
+"universe" was a trap on a laptop** — it is left with a pinch-out or Android Back, neither of which a
+laptop has; the user got stuck and asked for it gone ("a waste… focus on making the platform useful").
+Rule going forward: before sharing any phone UI into the desktop, list its gestures (pinch, swipe,
+long-press, Back) and give each a laptop equivalent — or leave the feature out.
+
+**Smaller things.** Android Studio's JBR has no `jpackage`, so `createDistributable` fails — a full JDK
+(Temurin 21 via Gradle toolchains) is needed for the installer; asked the user before downloading. Window
+default was taller than a 1080p screen at 125% scaling (composer cut off) — now 1280×760 dp, centred.
+
 ## 2026-09-27 — desktop client v0.1 on the laptop, and CI's setup-android break
 
 First laptop session. **Env:** Android Studio's JBR 21 as `JAVA_HOME`, SDK at `%LOCALAPPDATA%\Android\Sdk`,

@@ -1,5 +1,23 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-28 — roadmap set, JARVIS Night UI built, laptop fully wired
+
+Branch `desktop-kmp`, **`main` @ `b24c725`** (CI green, `jarvis-debug-apk` present).
+
+- **Order of work = the 🧭 Roadmap** at the top of `EXECUTION_PLAN.md`. We are in **Phase 1** (desktop daily
+  driver): 1.1 design ✅, 1.2 conversations ✅ (rename not yet), **1.3 installer next** (needs a full JDK with
+  `jpackage` — Temurin 21 via Gradle toolchains; the user must approve the ~190 MB download), then 1.4
+  Google sign-in on desktop.
+- **Design source of truth:** Claude Design canvas https://claude.ai/artifact/NS51vSipMPM78D18tygCWL. The
+  Compose code lives in `desktop/src/main/kotlin/com/jarvis/os/desktop/ui/` (`Theme.kt` = tokens `J`).
+- **Secrets on the laptop are complete** (`~/.gradle/gradle.properties`: PROXY_SECRET 14 chars, Firebase key,
+  Google client id). `./gradlew :desktop:ping` checks the live path any time.
+- **Rule for the UI:** real data only; unbuilt features show their roadmap phase, never sample content.
+- Fonts: the canvas uses IBM Plex Sans / JetBrains Mono / Orbitron; the app still uses system fonts —
+  bundling them is a download the user hasn't approved yet.
+
+---
+
 ## Current position — 2026-09-27 — desktop client v0.1 + laptop env + CI fix
 
 Branch `desktop-kmp`, **`main` @ `465d6bd`** (CI all 7 jobs green, `jarvis-debug-apk` present). **`:desktop` (Compose for Desktop) added beside `app/`** — typed chat with JARVIS on
