@@ -234,8 +234,15 @@ class DesktopAssistant(
     fun search(query: String): List<Brain.SearchHit> = brain.search(query)
     fun activity(): List<Brain.Activity> = brain.activity()
 
+    /** Archived chats — folded away in the sidebar, never deleted. */
+    var archived by mutableStateOf(brain.conversations(includeArchived = true).filter { it.archived })
+        private set
+
+    fun renameProject(id: String, name: String) { brain.renameProject(id, name); projects = brain.projects() }
+
     private fun refreshConversations() {
         conversations = brain.conversations()
+        archived = brain.conversations(includeArchived = true).filter { it.archived }
         messageCount = brain.messageCount()
     }
 

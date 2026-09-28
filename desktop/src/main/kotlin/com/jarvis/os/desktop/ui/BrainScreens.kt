@@ -71,14 +71,14 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun TasksScreen(a: DesktopAssistant, onOpenConversation: (String) -> Unit) {
-    Page("Tasks", "Your to-dos. Add them here, or just tell JARVIS — tasks it creates link back to the chat they came from.") {
+    Page("Tasks", "Your to-dos. Add them here for now — asking JARVIS to add them by voice or chat arrives with its tools (Phase 4), and those will link back to the chat they came from.") {
         AddTaskRow(a)
         Spacer(Modifier.height(18.dp))
         val now = System.currentTimeMillis()
         val groups = a.openTasks.groupBy { TaskDates.bucket(it.dueAt, now) }
         LazyColumn(Modifier.widthIn(max = 820.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (a.openTasks.isEmpty()) item {
-                Text("Nothing on your list. Try: “Add call the bank to my to-dos for tomorrow”.", color = J.TextMuted, fontSize = 14.sp)
+                Text("Nothing on your list. Type a task above and pick when it is due.", color = J.TextMuted, fontSize = 14.sp)
             }
             TaskDates.Bucket.entries.forEach { bucket ->
                 val tasks = groups[bucket].orEmpty()
@@ -361,7 +361,7 @@ fun TodayPanel(a: DesktopAssistant, onOpenTasks: () -> Unit, modifier: Modifier 
     HudPanel("Today", modifier, code = "00") {
         if (due.isEmpty()) {
             Text(
-                if (a.openTasks.isEmpty()) "Nothing due. Tell JARVIS what you need to do."
+                if (a.openTasks.isEmpty()) "Nothing due. Add tasks in Tasks."
                 else "Nothing due today · ${a.openTasks.size} open",
                 color = J.TextDim, fontSize = 12.sp,
             )

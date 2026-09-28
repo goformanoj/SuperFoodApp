@@ -112,21 +112,7 @@ fun Sidebar(a: DesktopAssistant, screen: Screen, onHome: () -> Unit, onSearch: (
             }
         }
 
-        Eyebrow("Recent", Modifier.padding(start = 22.dp, top = 22.dp, bottom = 8.dp))
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-            if (a.conversations.isEmpty()) {
-                item { Text("Your chats will appear here.", color = J.TextFaint, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) }
-            }
-            items(a.conversations, key = { it.id }) { c ->
-                RecentItem(
-                    title = c.title,
-                    selected = screen == Screen.Chat && c.id == a.activeId,
-                    busy = a.thinkingIn == c.id,
-                    onOpen = { a.select(c.id); onScreen(Screen.Chat) },
-                    onDelete = { a.delete(c.id) },
-                )
-            }
-        }
+        ChatList(a, screen, onOpen = { id -> a.select(id); onScreen(Screen.Chat) }, modifier = Modifier.weight(1f).padding(top = 6.dp))
 
         AccountFooter(a, screen, onScreen)
     }
@@ -158,36 +144,6 @@ private fun NavItem(s: Screen, selected: Boolean, badge: String?, onClick: () ->
     }
 }
 
-@Composable
-private fun RecentItem(title: String, selected: Boolean, busy: Boolean, onOpen: () -> Unit, onDelete: () -> Unit) {
-    val hover = remember { MutableInteractionSource() }
-    val hovered by hover.collectIsHoveredAsState()
-    Row(
-        Modifier.fillMaxWidth().height(34.dp).clip(RoundedCornerShape(8.dp))
-            .background(if (selected) Color(0x14FFFFFF) else if (hovered) Color(0x0AFFFFFF) else Color.Transparent)
-            .hoverable(hover)
-            .clicky(onClick = onOpen)
-            .padding(start = 12.dp, end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (busy) {
-            Box(Modifier.size(6.dp).clip(CircleShape).background(J.Accent))
-            Spacer(Modifier.width(8.dp))
-        }
-        Text(
-            title, color = if (selected) J.Text else J.TextMuted, fontSize = 13.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-        )
-        if (hovered && !busy) {
-            Hint("Delete chat") {
-                Icon(
-                    Icons.Outlined.Close, "Delete chat", tint = J.TextDim,
-                    modifier = Modifier.size(26.dp).clip(RoundedCornerShape(6.dp)).clicky(onClick = onDelete).padding(5.dp),
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun AccountFooter(a: DesktopAssistant, screen: Screen, onScreen: (Screen) -> Unit) {
