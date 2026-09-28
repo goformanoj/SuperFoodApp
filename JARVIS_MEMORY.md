@@ -1,5 +1,33 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-28 — from a chat window to an assistant: the plan, the brain, the wake word
+
+**The user's verdict was the brief.** "Right now the app has no practical function." Agreed — it could talk
+and remember strings, but not *do* anything, and its data was a flat JSON list. `AGENT_PLAN.md` answers with
+ten everyday scenarios as the definition of useful (a feature is done when its scenario passes, not when code
+exists) and four foundations. The order matters: organised data first (Phase 3), because every tool in Phase 4
+— tasks, reminders, notes, search — needs somewhere real to read and write.
+
+**The brain.** SQLite + FTS5 rather than more JSON: one file, offline, fast, searchable, and the natural thing
+to sync later. Choices worth keeping: UUID ids (so phone- and laptop-made rows can sync without colliding);
+provenance on every memory/task/note (the conversation it came from — "why do you know that?" has an answer);
+an activity log from day one (the agent's actions must be visible before the agent exists); one FTS index with
+every user word turned into a quoted prefix term (FTS operators in the input can't break or change a query —
+a test types `rent" OR * NEAR(` at it). A test caught my own design flaw first: message rows stored their
+conversation id in a searchable column, so short queries could match random id fragments; moved to an
+UNINDEXED owner column. The import of the old `chat.json` ran on the user's real data and was checked on screen.
+
+**The wake word, on real audio, not on faith.** The phone already had the right pieces (a pure-Kotlin mel stage
+and two test recordings). On the laptop the models run on ONNX Runtime (TFLite has no desktop runtime). The
+detector scores the real "hey jarvis" at 0.998 — the same number the phone's reference check gets — and silence
+at 0.000005. The one surprise: ONNX Runtime ≥ 1.18 needs the 2024 MSVC runtime, and Android Studio's bundled
+Java ships the 2021 one, so the DLL refused to initialise ("DLL initialization routine failed"). Diagnosed by
+comparing DLL versions, not guessed; pinned 1.17.3, which loads on both old and new runtimes.
+
+**Two "it compiled, so it works" traps avoided by running the real thing:** `JARVIS.exe` built fine and then
+died at start-up (jpackage's minimal Java lacked `java.management`), and the new sidebar squeezed the chat
+list to zero height. Both were only visible by launching and looking.
+
 ## 2026-09-28 — voice on the laptop, and the rest of Phase 1 in code
 
 **Why Whisper through the Worker, not on the laptop.** The same reasons as `/chat`: the key stays on the

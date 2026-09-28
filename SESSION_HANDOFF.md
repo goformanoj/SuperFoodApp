@@ -1,5 +1,27 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-28 — the agent plan is the plan; Phase 3 (the brain) built
+
+Branch `desktop-kmp`. `main` gets each green commit automatically (plan/installer `72ec4f4`, wake word `1f93578`,
+brain `08ee23d` queued).
+
+- **The plan to follow is [`AGENT_PLAN.md`](AGENT_PLAN.md)** (roadmap Phases 3–10 in `EXECUTION_PLAN.md` point to
+  it). User approved it: "yes, go ahead with the plan". Ten scenarios = the definition of done.
+- **Where we are:** Phase 1 ✅ (installer: `./gradlew :desktop:createDistributable` → `desktop/build/compose/
+  binaries/main/app/JARVIS/JARVIS.exe`); Phase 2.1 ✅ voice, 2.2 ✅ wake word; **Phase 3 mostly done** — brain
+  (`desktop/.../brain/Brain.kt`, `brain.db` in `%APPDATA%\JarvisOS`), Tasks, typed Memory, Activity, Ctrl+K search,
+  Today. **Left in Phase 3:** projects in the sidebar (create/move/group), pin/archive actions, a notes view.
+  **Then Phase 4, the agent core:** tool calling through the Worker, permission levels in code, first tools
+  (tasks, reminders + Windows notifications, notes, memory, search-my-stuff, open app/URL, clipboard), tray.
+- **Gotcha — jpackage modules:** every JDK module the app uses must be in `nativeDistributions.modules(...)` or
+  JARVIS.exe dies at start-up; after adding a dependency, rebuild the exe AND launch it.
+- **Gotcha — ONNX Runtime:** stay on 1.17.3 unless the dev JDK's bundled MSVC runtime is ≥ 14.40 (JBR ships 14.29).
+- **Gotcha — screenshots:** capture only the JARVIS window with `PrintWindow` (scratch script `grab.ps1`), never
+  screen coordinates, and never send mouse clicks — a coordinate click once landed in the user's Claude app.
+- **Dev flags:** `--home`, `--screen=<name>`, `--theme=<id>` (Main.kt).
+
+---
+
 ## Current position — 2026-09-28 — desktop voice live; Phase 1 done in code
 
 Branch `desktop-kmp`, **`main` @ `2a764c2`** (CI 7/7, `jarvis-debug-apk`), Worker redeployed with `/transcribe`.
