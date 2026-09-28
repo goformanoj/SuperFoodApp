@@ -94,6 +94,7 @@ fun main(args: Array<String>) = application {
                 maximized = max,
             ),
         )
+        assistant.speaker.shutdown()
         exitApplication()
     }
 
@@ -106,6 +107,8 @@ fun main(args: Array<String>) = application {
             when {
                 e.type != KeyEventType.KeyDown -> false
                 e.isCtrlPressed && e.key == Key.N -> { goHome(); true }
+                // Push-to-talk from anywhere in the window.
+                e.isCtrlPressed && e.key == Key.Spacebar -> { screen = Screen.Chat; assistant.toggleMic(); true }
                 else -> false
             }
         },

@@ -136,7 +136,7 @@ fun SessionPanel(a: DesktopAssistant, modifier: Modifier = Modifier) {
         Readout("Conversations", a.conversations.size.toString())
         Readout("Messages", a.messageCount.toString())
         Readout("Device", "This laptop")
-        Readout("Voice", "Phase 2")
+        Readout("Voice", "Ctrl+Space")
     }
 }
 
@@ -144,7 +144,7 @@ fun SessionPanel(a: DesktopAssistant, modifier: Modifier = Modifier) {
 @Composable
 fun ModulesPanel(modifier: Modifier = Modifier) {
     HudPanel("Modules", modifier, code = "06") {
-        listOf("Chat" to true, "Memory" to true, "Voice" to false, "Tasks" to false, "Routines" to false).forEach { (name, on) ->
+        listOf("Chat" to true, "Memory" to true, "Voice" to true, "Tasks" to false, "Routines" to false).forEach { (name, on) ->
             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(6.dp).background(if (on) J.Green else J.TextFaint))
                 Spacer(Modifier.width(10.dp))

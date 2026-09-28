@@ -37,6 +37,8 @@ import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -82,6 +84,9 @@ import java.time.LocalTime
 /** The orb's state is the app's REAL state — never decoration. */
 private fun orbStateOf(a: DesktopAssistant): OrbState = when {
     !a.configured -> OrbState.Offline
+    a.voice == DesktopAssistant.Voice.Listening -> OrbState.Listening
+    a.voice == DesktopAssistant.Voice.Speaking -> OrbState.Speaking
+    a.voice == DesktopAssistant.Voice.Transcribing -> OrbState.Thinking
     a.thinkingHere -> OrbState.Thinking
     a.error != null -> OrbState.Error
     else -> OrbState.Idle
@@ -89,6 +94,9 @@ private fun orbStateOf(a: DesktopAssistant): OrbState = when {
 
 private fun statusOf(a: DesktopAssistant): String = when {
     !a.configured -> "Not connected"
+    a.voice == DesktopAssistant.Voice.Listening -> "Listening"
+    a.voice == DesktopAssistant.Voice.Transcribing -> "Transcribing"
+    a.voice == DesktopAssistant.Voice.Speaking -> "Speaking · click the mic to interrupt"
     a.thinkingHere -> "Thinking"
     a.error != null -> "Something went wrong"
     else -> "Online · ready"
@@ -249,15 +257,18 @@ private fun ChatHeader(a: DesktopAssistant) {
         }
         Pill("Runs on this laptop")
         Spacer(Modifier.width(10.dp))
-        Hint("Voice mode arrives in Phase 2 of the roadmap") {
+        Hint(if (a.speakAllReplies) "JARVIS reads every reply aloud — click to stop" else "Spoken questions get spoken answers — click to read every reply aloud") {
             Row(
-                Modifier.height(36.dp).clip(RoundedCornerShape(10.dp)).border(1.dp, J.Border, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 12.dp).alpha(0.55f),
+                Modifier.height(36.dp).clip(HudShapeSmall)
+                    .background(if (a.speakAllReplies) J.Accent.copy(alpha = 0.16f) else Color.Transparent)
+                    .border(1.dp, if (a.speakAllReplies) J.Accent else J.Border, HudShapeSmall)
+                    .clicky { a.speakAllReplies = !a.speakAllReplies }
+                    .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Outlined.Mic, null, tint = J.Accent, modifier = Modifier.size(16.dp))
+                Icon(Icons.Outlined.VolumeUp, null, tint = J.Accent, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Voice", color = J.Text, fontSize = 13.sp)
+                Text(if (a.speakAllReplies) "Speaking replies" else "Speak replies", color = J.Text, fontSize = 13.sp)
             }
         }
     }
@@ -429,7 +440,14 @@ private fun Composer(a: DesktopAssistant, textState: MutableState<String>, focus
                 .padding(start = 18.dp, end = 12.dp, top = 14.dp, bottom = 10.dp),
         ) {
             Box {
-                if (text.isEmpty()) Text("Ask anything, or tell JARVIS what to remember…", color = J.TextFaint, fontSize = 15.sp)
+                if (text.isEmpty()) Text(
+                    when (a.voice) {
+                        DesktopAssistant.Voice.Listening -> "Listening… speak now — I'll stop when you pause"
+                        DesktopAssistant.Voice.Transcribing -> "Transcribing…"
+                        else -> "Ask anything, or press Ctrl+Space and talk…"
+                    },
+                    color = if (a.voice == DesktopAssistant.Voice.Listening) J.Accent else J.TextFaint, fontSize = 15.sp,
+                )
                 BasicTextField(
                     value = text,
                     onValueChange = { text = it },
@@ -460,18 +478,52 @@ private fun Composer(a: DesktopAssistant, textState: MutableState<String>, focus
                 Spacer(Modifier.weight(1f))
                 Text("Enter to send · Shift+Enter for a new line", color = J.TextFaint, fontSize = 12.sp)
                 Spacer(Modifier.width(10.dp))
-                Hint("Talking to JARVIS arrives in Phase 2") {
-                    Box(
-                        Modifier.size(38.dp).clip(CircleShape).border(1.dp, J.Accent.copy(alpha = 0.3f), CircleShape).alpha(0.5f),
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Outlined.Mic, "Talk to JARVIS", tint = J.Accent, modifier = Modifier.size(18.dp)) }
-                }
+                MicButton(a)
                 Spacer(Modifier.width(8.dp))
                 Box(
                     Modifier.size(38.dp).clip(CircleShape).background(if (canSend) J.Accent else Color(0x22FFFFFF))
                         .then(if (canSend) Modifier.clicky { send() } else Modifier),
                     contentAlignment = Alignment.Center,
                 ) { Icon(Icons.Outlined.ArrowUpward, "Send", tint = if (canSend) J.OnAccent else J.TextFaint, modifier = Modifier.size(18.dp)) }
+            }
+        }
+    }
+}
+
+/**
+ * The talk button. Idle: click to talk (or Ctrl+Space). Listening: a ring that swells
+ * with the real mic level; click to finish early. Speaking: click to cut JARVIS off.
+ */
+@Composable
+private fun MicButton(a: DesktopAssistant) {
+    val listening = a.voice == DesktopAssistant.Voice.Listening
+    val busy = a.voice == DesktopAssistant.Voice.Transcribing
+    val tip = when (a.voice) {
+        DesktopAssistant.Voice.Listening -> "Listening — click to finish"
+        DesktopAssistant.Voice.Transcribing -> "Transcribing…"
+        DesktopAssistant.Voice.Speaking -> "Click to interrupt JARVIS and talk"
+        else -> "Talk to JARVIS (Ctrl+Space)"
+    }
+    Hint(tip) {
+        Box(Modifier.size(38.dp), contentAlignment = Alignment.Center) {
+            if (listening) {
+                val grow = 1f + a.micLevel.coerceIn(0f, 0.3f) * 2.2f
+                Box(
+                    Modifier.size((38 * grow).dp.coerceAtMost(58.dp)).clip(CircleShape)
+                        .background(J.Accent.copy(alpha = 0.22f)),
+                )
+            }
+            Box(
+                Modifier.size(38.dp).clip(CircleShape)
+                    .background(if (listening) J.Accent else Color.Transparent)
+                    .border(1.dp, J.Accent.copy(alpha = if (busy) 0.3f else 0.7f), CircleShape)
+                    .then(if (busy) Modifier.alpha(0.5f) else Modifier.clicky { a.toggleMic() }),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (listening) Icons.Outlined.Stop else Icons.Outlined.Mic, tip,
+                    tint = if (listening) J.OnAccent else J.Accent, modifier = Modifier.size(18.dp),
+                )
             }
         }
     }

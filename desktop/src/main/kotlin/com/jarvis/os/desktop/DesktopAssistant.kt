@@ -11,6 +11,9 @@ import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.formatMemory
 import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.desktop.ChatStore.Conversation
+import com.jarvis.os.desktop.voice.MicRecorder
+import com.jarvis.os.desktop.voice.Speaker
+import com.jarvis.os.desktop.voice.TranscribeClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -61,6 +64,69 @@ class DesktopAssistant(
 
     val configured: Boolean get() = ProxyClient.isConfigured() || GroqClient.hasKey()
     val plan: String get() = if (ProxyClient.isConfigured()) account.plan else "dev"
+
+    // ── Voice (Phase 2) ──────────────────────────────────────────────────────
+    enum class Voice { Idle, Listening, Transcribing, Speaking }
+
+    private val recorder = MicRecorder()
+    val speaker = Speaker()
+    var voice by mutableStateOf(Voice.Idle)
+        private set
+    /** Mic loudness 0..1 while listening — shown so the user can SEE they're being heard. */
+    var micLevel by mutableStateOf(0f)
+        private set
+    /** Speak every reply aloud, not only answers to spoken questions. */
+    var speakAllReplies by mutableStateOf(false)
+
+    /**
+     * The mic button. Idle → listen; listening → finish now; speaking → cut JARVIS off
+     * and listen (the phone's barge-in, as a click). One owner of the mic, always.
+     */
+    fun toggleMic() {
+        when (voice) {
+            Voice.Listening -> { recorder.stop(); return }
+            Voice.Transcribing -> return
+            Voice.Speaking -> speaker.stop()
+            Voice.Idle -> Unit
+        }
+        if (thinking || !ProxyClient.isConfigured()) {
+            if (!ProxyClient.isConfigured()) error = "Voice needs the JARVIS server — see Settings."
+            return
+        }
+        error = null
+        voice = Voice.Listening
+        scope.launch {
+            try {
+                val wav = recorder.record { micLevel = it }
+                if (wav == null) {
+                    error = "I didn't catch anything — click the mic and speak."
+                    return@launch
+                }
+                voice = Voice.Transcribing
+                val text = TranscribeClient.transcribe(wav)
+                if (text.isBlank()) {
+                    error = "I heard sound but no words — try again."
+                    return@launch
+                }
+                voice = Voice.Idle
+                send(text, spoken = true)
+            } catch (e: Exception) {
+                DebugLog.log(DebugLog.Stage.ERROR, "desktop voice failed: ${e.javaClass.simpleName}")
+                error = e.message ?: "Voice failed — try again."
+            } finally {
+                if (voice == Voice.Listening || voice == Voice.Transcribing) voice = Voice.Idle
+                micLevel = 0f
+            }
+        }
+    }
+
+    private fun speakReply(text: String) {
+        if (!speaker.available) return
+        scope.launch {
+            voice = Voice.Speaking
+            try { speaker.speak(text) } finally { if (voice == Voice.Speaking) voice = Voice.Idle }
+        }
+    }
 
     fun newChat() {
         activeId = null
@@ -120,9 +186,11 @@ class DesktopAssistant(
     }
 
     /** Returns true if the message was accepted (so the input can be cleared). */
-    fun send(input: String): Boolean {
+    fun send(input: String, spoken: Boolean = false): Boolean {
         val message = input.trim()
         if (message.isEmpty() || thinking) return false
+        // A new question cuts off whatever JARVIS was still saying.
+        if (voice == Voice.Speaking) speaker.stop()
         if (!configured) {
             error = "Not connected to the JARVIS server — see Settings."
             return false
@@ -158,6 +226,8 @@ class DesktopAssistant(
                 usage = UsageStats.today()
                 // The Worker reports the plan on every reply (the owner's email → pro).
                 account = Identity.account()
+                // Asked out loud → answered out loud (or always, if the user chose that).
+                if (spoken || speakAllReplies) speakReply(result.text)
             } catch (e: Exception) {
                 DebugLog.log(DebugLog.Stage.ERROR, "desktop turn failed: ${e.javaClass.simpleName}")
                 // ProxyException already carries a human, speakable sentence.

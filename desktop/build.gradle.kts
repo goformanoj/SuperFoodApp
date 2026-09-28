@@ -38,6 +38,8 @@ val SHARED_FROM_APP = listOf(
     "com/jarvis/os/ai/RateLimit.kt",
     "com/jarvis/os/ai/SystemPrompt.kt",
     "com/jarvis/os/voice/VoiceState.kt",
+    // What is safe to read aloud (strips markdown, emoji, markers) — the phone's own rules.
+    "com/jarvis/os/voice/SpokenText.kt",
     // The orbs and the worlds behind them — the phone's own drawing code, byte-for-byte.
     // These import androidx.compose.* only, which Compose for Desktop provides under the
     // same names. The one Android-only thing they touch has a desktop stand-in:
