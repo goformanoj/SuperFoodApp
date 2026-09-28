@@ -13,17 +13,17 @@ export function fakeProvider(options = {}) {
 
   return {
     calls,
-    async complete({ models, messages, system, tools }) {
+    async complete({ models, messages, system, tools, extra }) {
       // Takes a LIST, exactly like the real provider: choosing among candidates
       // is provider-specific knowledge (what is retired, what is cooling down),
       // and a fake with a different shape would let the Worker compile against
       // an interface nothing really implements.
-      calls.push({ models, messages, system, tools })
+      calls.push({ models, messages, system, tools, extra })
       if (options.fail) throw new Error(options.fail)
       // A scripted agent: each call takes the next step ({ text, toolCalls }).
       if (options.script) {
         const step = options.script[Math.min(calls.length - 1, options.script.length - 1)]
-        return { text: step.text ?? '', ...(step.toolCalls ? { toolCalls: step.toolCalls } : {}), usage, model: models[0] }
+        return { text: step.text ?? '', ...(step.toolCalls ? { toolCalls: step.toolCalls } : {}), ...(step.executedTools ? { executedTools: step.executedTools } : {}), usage, model: models[0] }
       }
       return { text: reply, usage, model: models[0] }
     },

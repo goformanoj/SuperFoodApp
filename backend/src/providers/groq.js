@@ -45,19 +45,22 @@ export function groqProvider(apiKey, options = {}) {
   const maxAttempts = options.maxAttempts ?? 3
   const sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
 
-  async function once(model, messages, system, tools) {
+  async function once(model, messages, system, tools, extra = {}) {
     const body = {
       model,
-      temperature: 0.7,
-      max_tokens: maxTokens,
+      temperature: extra.temperature ?? 0.7,
+      max_tokens: extra.maxTokens ?? maxTokens,
       messages: system ? [{ role: 'system', content: system }, ...messages] : messages,
     }
     // Native tool calling (the desktop agent). Absent for every other caller, so
-    // their request body is exactly what it was.
+    // their request body is exactly what it was. tool_choice applies only to the
+    // client's OWN function tools; Groq's built-in ones (browser_search) run by
+    // themselves.
     if (tools && tools.length) {
       body.tools = tools
-      body.tool_choice = 'auto'
+      if (tools.some((t) => t?.type === 'function')) body.tool_choice = 'auto'
     }
+    if (extra.reasoningEffort) body.reasoning_effort = extra.reasoningEffort
     const res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -79,9 +82,12 @@ export function groqProvider(apiKey, options = {}) {
       // worth another go on the SAME model. A reply that is ONLY tool calls is not
       // empty — it is the agent asking to act.
       if (!content && toolCalls.length === 0) return { error: EMPTY_REPLY, retryable: true, transient: true }
-      return toolCalls.length
+      const out = toolCalls.length
         ? { text: content, toolCalls, usage: parsed.usage ?? {}, model }
         : { text: content, usage: parsed.usage ?? {}, model }
+      // What a built-in tool did (browser_search's pages): the sources for /search.
+      if (Array.isArray(message.executed_tools)) out.executedTools = message.executed_tools
+      return out
     }
 
     if (res.status === 429) {
@@ -109,7 +115,7 @@ export function groqProvider(apiKey, options = {}) {
   }
 
   return {
-    async complete({ models, messages, system, tools }) {
+    async complete({ models, messages, system, tools, extra }) {
       let lastError = 'no_model_tried'
       let anyTried = false
 
@@ -123,7 +129,7 @@ export function groqProvider(apiKey, options = {}) {
         // A cooldown (429) or a retirement is not transient — those break out to the
         // next model. A fatal error (bad key) stops everything.
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-          const outcome = await once(model, messages, system, tools)
+          const outcome = await once(model, messages, system, tools, extra)
           if (outcome.text || outcome.toolCalls?.length) return outcome
           lastError = outcome.error
           if (!outcome.retryable) throw new ProviderError(outcome.error, 502)

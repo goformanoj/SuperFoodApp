@@ -24,6 +24,10 @@ import { effectivePlan, isActive } from './billing.js'
 import { groqProvider } from './providers/groq.js'
 import { AuthError, firebaseVerifier } from './auth.js'
 import { checkAudio, cleanTranscript, groqTranscriber, tokensForAudio } from './transcribe.js'
+import {
+  WEB_SEARCH_MODELS, VISION_MODELS, WEB_SEARCH_PROMPT, VISION_PROMPT,
+  checkSearch, checkVision, cleanAnswer, sourcesOf, stripThinking,
+} from './knowledge.js'
 
 /**
  * Builds a handler from its dependencies.
@@ -202,6 +206,66 @@ export function createWorker({
           plan,
           usage: { input: cost, output: 0 },
           remaining: remaining(used + cost, cap),
+        })
+      }
+
+      // Knowledge for the desktop agent (AGENT_PLAN §5): the live web and "what's on my
+      // screen". Same auth, same allowance, checked BEFORE the provider is paid; the
+      // provider's own token counts are billed. The laptop calls these as tools.
+      if (request.method === 'POST' && (url.pathname === '/search' || url.pathname === '/vision')) {
+        const auth = await authenticate()
+        if (auth.error) return auth.error
+        let body
+        try {
+          body = await request.json()
+        } catch {
+          return Response.json({ error: 'bad_json' }, { status: 400 })
+        }
+        const isSearch = url.pathname === '/search'
+        const input = isSearch ? checkSearch(body) : checkVision(body)
+        if (input.error) return Response.json({ error: input.error }, { status: input.status })
+
+        const nowMs = now()
+        const day = dayKey(nowMs)
+        const plan = await planFor(auth, nowMs)
+        const cap = capFor(plan)
+        const used = await store.usedToday(auth.uid, day)
+        if (isOverCap(used, cap)) return Response.json(overCapBody(nowMs, plan), { status: 429 })
+
+        const ctx = typeof body.context === 'string' && body.context.trim() ? `\n\n${body.context.trim().slice(0, 2000)}` : ''
+        let result
+        try {
+          result = isSearch
+            ? await provider.complete({
+              models: WEB_SEARCH_MODELS,
+              messages: [{ role: 'user', content: input.query }],
+              system: WEB_SEARCH_PROMPT + ctx,
+              tools: [{ type: 'browser_search' }],
+              extra: { reasoningEffort: 'low', maxTokens: 1500, temperature: 0.3 },
+            })
+            : await provider.complete({
+              models: VISION_MODELS,
+              messages: [{ role: 'user', content: [
+                { type: 'text', text: input.question },
+                { type: 'image_url', image_url: { url: input.image } },
+              ] }],
+              system: VISION_PROMPT + ctx,
+              extra: { maxTokens: 1500, temperature: 0.2 },
+            })
+        } catch (e) {
+          return Response.json({ error: 'provider_failed', detail: String(e?.message ?? e) }, { status: e?.status ?? 502 })
+        }
+        const inTok = result.usage?.prompt_tokens ?? 0
+        const outTok = result.usage?.completion_tokens ?? 0
+        await store.addUsage(auth.uid, day, inTok, outTok)
+        const answer = isSearch ? cleanAnswer(result.text) : stripThinking(result.text)
+        return Response.json({
+          answer,
+          ...(isSearch ? { sources: sourcesOf(result.executedTools, result.text) } : {}),
+          model: result.model,
+          plan,
+          usage: { input: inTok, output: outTok },
+          remaining: remaining(used + inTok + outTok, cap),
         })
       }
 
