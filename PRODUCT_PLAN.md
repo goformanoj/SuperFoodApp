@@ -22,6 +22,12 @@ Order of work: **features first** (Parts B/C/D), then the commercial foundation 
 > headline is the reliable on-device automation the phone's accessibility approach never achieved.
 > Android remains the lead platform and ships first; desktop follows **after the Play launch**. Full
 > plan in [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md) Part I.
+>
+> **UPDATED — 2026-09-28 (user):** the desktop was brought **forward** — it is now built alongside
+> the phone, not after launch. The whole path to the final product (voice, tasks, scheduled
+> routines, cross-device, launch) is the **🧭 Roadmap** at the top of
+> [`EXECUTION_PLAN.md`](EXECUTION_PLAN.md); the desktop look is the "JARVIS Night" Claude Design
+> canvas (https://claude.ai/artifact/NS51vSipMPM78D18tygCWL).
 
 ## Non-negotiable constraints
 - **API keys are injected at build time via a GitHub Actions secret — NEVER committed** to the repo.

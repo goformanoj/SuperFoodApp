@@ -3,7 +3,7 @@
 > **Working rules live in [`CLAUDE.md`](CLAUDE.md)**, which loads automatically every session — including the non-negotiable rule to update these docs after every merge. A `Stop` hook enforces it.
 >
 > This is the ordered queue Claude works through **without needing new per-step instructions**.
-> **Part B is go** (user's call: finish the features, then do the commercial foundation in Part E).
+> **Order of work = the 🧭 Roadmap below (set 2026-09-28).** Earlier: "Part B is go", then Part E as the active track.
 > Companion: [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md) (why) · [`PROGRESS.md`](PROGRESS.md) (status) · [`COMMERCIALIZATION.md`](COMMERCIALIZATION.md) (Play Store + keys) · [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) (how to resume)
 
 ## The working loop (every change)
@@ -25,7 +25,108 @@
 - [ ] `main` fast-forwarded to the green commit and pushed.
 - [ ] Docs updated: [`PROGRESS.md`](PROGRESS.md) + [`JARVIS_MEMORY.md`](JARVIS_MEMORY.md) (and the others if the plan changed).
 
-## Ordered backlog
+## 🧭 Roadmap to the final JARVIS — phase by phase (set 2026-09-28, user)
+
+> **This section now sets the ORDER of work.** The lettered Parts below (A–I) stay as the
+> detailed specs and history; each phase here says which Part it draws on. The user brought the
+> desktop forward (2026-09-27/28): JARVIS is one assistant on the **laptop and the phone**, same
+> account, same brain (the Worker). UI direction: the **"JARVIS Night"** Claude Design canvas —
+> https://claude.ai/artifact/NS51vSipMPM78D18tygCWL (Chat · Voice mode · Tasks · Scheduled ·
+> shared sidebar).
+>
+> Every phase ends with an **exit test the user can do themselves**. A phase is done when that
+> test passes, not when the code exists.
+
+**The final product, in one paragraph.** Say "Jarvis" to your laptop or phone and it answers out
+loud; ask it anything and it reasons like a capable assistant; tell it to *do* something and it
+does it on the device in front of you — opening apps, working a website, sorting files — showing
+each step and **stopping to ask before anything it can't undo**; put anything on a schedule
+("every weekday at 8, brief me") and it runs by itself; it remembers what matters about you, on
+every device, under one Google account; free with a daily allowance, Pro unlimited.
+
+### Phase 0 — Foundations ✅ (done)
+Android app v1 (voice loop, screen control, calendar, files, memory, sign-in code) · Worker backend
+(token quota, Firebase identity, server-side prompt, owner-Pro, two-tier prompt dormant) · laptop
+dev environment · desktop v0.1 (typed chat through the same `ProxyClient`, memory, `:desktop:ping`).
+
+### Phase 1 — Desktop becomes the daily driver (UI + core) ← **NEXT**
+*Draws on Part I.*
+1. **Build the JARVIS Night design** in Compose Desktop: sidebar (Chat · Tasks · Scheduled · Memory ·
+   Files · Automations · Settings), assistant-style conversation (markdown, lists, action cards),
+   composer (attach · device target · mic · send), "Today" rail. Screens whose feature isn't built
+   yet show an honest empty state — never fake data.
+2. **Multiple conversations** (history in the sidebar, new chat, rename, delete) + **Memory screen**
+   (view/forget facts).
+3. **Installable app:** `JARVIS.exe` / MSI (needs a full JDK with `jpackage` — Temurin 21 via Gradle
+   toolchains, user approval pending), app icon, optional start-with-Windows, **global hotkey**
+   (e.g. Ctrl+Space) to summon JARVIS.
+4. **Google sign-in on desktop** (browser loopback OAuth → Firebase `signInWithIdp`) so the desktop
+   is the same account + Pro plan as the phone.
+- **Exit test:** you use the desktop app for a full day of chat, signed in, on Pro.
+
+### Phase 2 — Voice, on both devices
+*Draws on Parts B, D and the held device bugs.*
+1. **Desktop voice:** push-to-talk → speech-to-text through the Worker (new `/transcribe`, server-held
+   key, metered like `/chat`) → reply spoken with Windows' built-in voices (free, offline; premium
+   neural voice later). The **Voice mode** screen.
+2. **Desktop wake word "Jarvis"** — reuse the phone's openWakeWord pipeline (`voice/WakeWord`,
+   `MelSpectrogram`, `scripts/owwtest`) on the JVM; always-on, one mic owner.
+3. **Phone: clear the four held device bugs** with live `adb logcat` on the laptop (#1 media audio,
+   #2 screen execution, #3 barge-in, #5 pause mid-sentence); streaming replies; enable `CONVO_TIER`
+   after the local eval.
+- **Exit test:** "Jarvis, what's on today?" works hands-free on the laptop and the phone, and you
+  can interrupt it mid-sentence.
+
+### Phase 3 — Tasks: JARVIS does things on the laptop (the headline)
+*Draws on Parts A/C (the agent loop + guards), G, I.*
+1. **Client-aware brain:** the app tells the Worker which device it is; the Worker serves the
+   matching action vocabulary (desktop actions vs phone markers). One prompt per device class.
+2. **Desktop actions, in code:** open app / file / URL, find and organise files, clipboard, type
+   text, run vetted scripts. Every action logged as a step in the **Tasks** screen; pause/stop.
+3. **Approval gate in code, not prompt** (Rule 6): send, pay, book, delete, overwrite → an approval
+   card; nothing irreversible runs without a click. Tested like `SendGuard`/`SpendGuard`.
+4. **Web errands:** browser automation (Playwright/CDP) with a live view of the window it works in.
+5. Housekeeping: move the shared pure logic into the `:shared` KMP module (Part I steps 3–5) once
+   the `SHARED_FROM_APP` list becomes unwieldy — build Android after every move.
+- **Exit test:** "rename my screenshots by date" and "find me a table for four on Friday" run end to
+  end on the laptop, stopping for your OK before the booking.
+
+### Phase 4 — Scheduled: reminders and routines
+1. **Reminders** ("remind me at 6 to call mom") — desktop scheduler + phone `AlarmManager`/WorkManager.
+2. **Routines:** any request on a schedule, with delivery (speak / notify / save a PDF to Files);
+   created by voice or the **Scheduled** screen; "Run now" to test one.
+3. **Integrations for briefs:** calendar (phone: device calendar; desktop: Google Calendar via
+   sign-in), weather, and read-only Gmail — each behind explicit consent.
+4. **Schedules live on the server** so a routine runs on whichever device is on, and reaches the
+   phone as a notification (FCM).
+- **Exit test:** "every weekday at 8, brief me" — tomorrow at 8 it speaks the brief on its own.
+
+### Phase 5 — One JARVIS across devices
+*Draws on Part G (evolved from same-Wi-Fi pairing to the Worker relay).*
+1. **Sync** conversations, memory and files per account through the Worker (D1 + R2).
+2. **Cross-device commands:** "on my phone, set an alarm" from the laptop and the reverse — pairing
+   code, commands only from paired devices, a visible "being controlled" indicator.
+3. **Handoff:** start a conversation on the phone, continue it on the laptop.
+- **Exit test:** tell the laptop to set a phone alarm; it rings on the phone.
+
+### Phase 6 — Launch
+*Draws on Part E.* E2 compliance (accessibility disclosure, `<queries>`, Data safety) · E3 owner
+activation (upload key, Play App Signing) · **E4 name + `applicationId` gate** ("JARVIS" is a
+trademark) · E5 billing (Play Billing on the phone; web checkout for desktop Pro) · E6 internal →
+closed test (12 testers × 14 days) → production. Desktop: signed installer (code-signing
+certificate) via a download page and/or the Microsoft Store.
+- **Open decision (user's call):** the phone app is close to launch-ready; the launch can be pulled
+  forward to run **in parallel after Phase 2** instead of waiting for Phases 3–5.
+- **Exit test:** a stranger installs it from the store, signs in, and subscribes.
+
+### Phase 7 — Beyond launch
+Vision (screenshot → model) · image generation (needs a provider decision) · diagrams in Files ·
+call assistant (`JARVIS_AI_PLAN.md` appendix) · Part C2.4 app-learning · **Part H: JARVIS's own
+tuned model** (hard gate: must beat the hosted model on marker accuracy, else ship nothing).
+
+---
+
+## Ordered backlog (detailed specs — order now set by the Roadmap above)
 
 ### Part A — multi-step commands + typing ✅ (done, build #76)
 Ordered `ScreenStep` sequences (Open/Tap/Type/Enter) so one instruction can open→tap→type→search.
