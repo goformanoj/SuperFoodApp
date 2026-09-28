@@ -1,5 +1,31 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-28 — Phase 4: JARVIS acts (tools, permission levels, tray, reminders)
+
+**Native tool calling, not markers.** The Worker's models (gpt-oss on Groq) support function calling, so
+the desktop agent uses the model's real tool mechanism: the laptop declares tools, the model returns
+`tool_calls`, the laptop runs them against the brain and hands results back. The Worker stays the gatekeeper
+(key, metering, owner rules) and simply passes tools through; without tools every path is byte-identical —
+proved by the 155 pre-existing tests passing untouched. The provider had one latent trap for this: a reply
+that is ONLY tool calls has no text, which the old code would have retried as "empty".
+
+**Risk in code, not in the prompt (Rule 6).** Each tool carries a level: read runs; undoable runs and
+returns an Undo; irreversible (delete_task, forget) never executes until the user clicks Approve — the loop
+awaits the click. The AgentLoop tests prove a declined deletion deletes nothing. Also in code: secrets can't be
+remembered, ambiguous task matches ask instead of guessing, dates the model garbles are reported not guessed,
+apps open only through Start-menu shortcuts (never an arbitrary path).
+
+**Two failures that only a live run could show.** (1) The first live S1 run asked "what should I remind you
+about?" — because the turn context I wrote in the pre-agent days still said reminders/alarms were "not
+available here". The model obeyed my stale instruction over the tools. (2) Chasing that, the harness itself
+was wrong: Gradle splits `--args` on spaces, so the agent had only ever received "Remind". A debug switch that
+prints the exchange (no credentials on either side) found it in one run. With both fixed, S1/S3/multi-step/
+approval all passed against the deployed Worker.
+
+**Always there.** A reminder is useless if JARVIS is closed, so closing the window now hides it to the tray
+(explained once), reminders fire as Windows notifications, and ones missed while the laptop was off pop up late,
+labelled — never silently dropped.
+
 ## 2026-09-28 — from a chat window to an assistant: the plan, the brain, the wake word
 
 **The user's verdict was the brief.** "Right now the app has no practical function." Agreed — it could talk

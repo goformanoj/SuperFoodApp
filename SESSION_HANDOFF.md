@@ -1,5 +1,24 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-28 — Phase 4 done: JARVIS acts (agent live)
+
+Branch `desktop-kmp`; `main` gets each green commit automatically (agent `1a5a111`, live fixes `8214da1`).
+
+- **Roadmap:** Phases 1, 2 (desktop), 3, 4 ✅. **Next: Phase 5 knowledge** (AGENT_PLAN §5): documents in
+  (PDF/DOCX/TXT, cited Q&A), Windows file search, screenshot questions, live web search (Groq's built-in first).
+- **Agent code:** `desktop/.../agent/` — `ToolBox` (tools + risk levels + executors), `AgentLoop`, `AgentClient`,
+  `WindowsHost`. Worker: `validTools` + `DESKTOP_AGENT_PROMPT` in `backend/src`. Add a tool = a `Spec` + a branch in
+  `execute` + a ToolBoxTest; irreversible tools MUST be `Risk.IRREVERSIBLE`.
+- **Live agent check (safe):** `./gradlew :desktop:ping "--args=--agent|<request>"` — in-memory brain, opens
+  nothing, auto-declines approvals. `JARVIS_AGENT_DEBUG=1` prints the exchange.
+- **Gotcha — context vs tools:** `DesktopTurn.context` rides on every turn; it must never contradict the tools
+  (a stale "reminders not available" line made the live model refuse to act).
+- **Gotcha — Gradle `--args`:** split on spaces; the harness rejoins them.
+- **JARVIS.exe** is 262 MB (ONNX Runtime + SQLite natives for all OSes) — trim to Windows natives later.
+- **User to try:** real mic + wake word, "remind me…", "add … to my to-dos", tray + notifications.
+
+---
+
 ## Current position — 2026-09-28 — the agent plan is the plan; Phase 3 (the brain) built
 
 Branch `desktop-kmp`. `main` gets each green commit automatically (plan/installer `72ec4f4`, wake word `1f93578`,
