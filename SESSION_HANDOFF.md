@@ -1,5 +1,29 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-28 — Phase 6 built: routines, Quick bar, Calendar & Gmail (dormant)
+
+Branch `desktop-kmp`; `main` @ `eefd397` (Worker `31f1c5d`, laptop `9127358` + `eefd397`).
+
+- **Roadmap:** Phases 1–6 built on the laptop. Phase 6's Google half is **dormant**: needs the owner's Desktop OAuth
+  client + Calendar/Gmail APIs enabled + 3 scopes + test user (desktop/README "Calendar & Gmail"). **Next:** S2/S8/S9
+  live once connected; then Phase 7 (one brain on every device).
+- **Code:** `brain/Schedule.kt` (pure schedule), routines in `Brain` (v3), `DesktopAssistant.runDueRoutines` (called
+  from Main's 15 s loop), `ui/ScheduledScreen.kt`, `GlobalHotkey.kt` (RegisterHotKey + message loop thread),
+  `ui/QuickBar.kt`, `StartWithWindows.kt`, `google/GoogleAccount.kt` (DPAPI vault), `google/GoogleApis.kt`
+  (implements `ToolBox.Google`). Google tools appear in `ToolBox.specs` only while connected; `spec(name)` still
+  knows their risk.
+- **Gotcha — unattended runs:** a routine's AgentLoop auto-DECLINES approvals (nobody to click). Keep it that way.
+- **Gotcha — undo off the UI thread:** Google-side undos (event/draft) go through `ToolBox.undoAsync`.
+- **Gotcha — the allowance:** live pings run as the laptop's own identity (uid `6TAQONYKeWcIhxhYxHfGDkDTqQn1`, free
+  plan). Adding it to `PRO_UIDS` was refused by the safety classifier as a permission grant: the owner must make or
+  explicitly approve that change.
+- **Gotcha — screenshots of our own windows:** `scratchpad/grab2.ps1 -Title <exact title>` (largest visible match,
+  PrintWindow). Dev copies: `APPDATA=<scratch>` so the user's data is never shown or touched.
+- **User to try:** Alt+Space → a question or "rewrite what I copied more politely"; "every weekday at 8, brief me";
+  Settings → Start with Windows; the MSI at `desktop/build/compose/binaries/main/msi/`.
+
+---
+
 ## Current position — 2026-09-28 — Phase 5 done: knowledge (documents, files, web, screen)
 
 Branch `desktop-kmp`; `main` fast-forwarded to each green commit (Worker `b91cb35`, laptop `7864a61`).

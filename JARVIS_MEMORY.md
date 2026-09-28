@@ -1,5 +1,31 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-28 — Phase 6: JARVIS comes to you — routines, the Quick bar, Calendar & Gmail
+
+**Routines are agent turns nobody watches.** "Every weekday at 8, brief me" is stored as a schedule plus an
+instruction; at that time the same agent runs it with the same tools, into its own chat, and the answer arrives
+as a Windows notification (spoken if the routine says so). Because no one is there to click Approve, the loop
+declines every approval-needing step in code and the model is told so up front. A run missed by hours while the
+laptop was off is skipped and logged, not fired at 2 pm as a "morning" brief.
+
+**The Quick bar is the habit-maker.** One key anywhere (Win32 RegisterHotKey: only that combination reaches
+JARVIS, it is not a keyboard hook), a small box, the answer in place with Copy. The user tried it while it was
+being built and said it "isn't adjustable" — an undecorated window has no title bar to drag — so it gained a
+handle, a resize corner, and memory of where it was left. A good reminder that a window the user will use every
+day must behave like one.
+
+**Calendar & Gmail: least privilege, and sending is never the model's decision.** Three scopes (calendar
+events, read mail, compose), the refresh token sealed with Windows DPAPI on the laptop (never on the Worker),
+tools offered to the model only while connected. Drafting is undoable and sends nothing; sending is
+IRREVERSIBLE — the card shows who, what subject and the text. An email body is marked as data, not
+instructions, because mail is the classic prompt-injection channel. Built and tested against a fake Google
+(190 tests); it waits for the owner's Desktop OAuth client to go live.
+
+**The allowance, and a line not crossed.** Phase 5's live testing spent the laptop's free daily tokens, and the
+owner said to lift the limit. The narrow fix — list the laptop's uid as pro, like the owner's email — was
+refused by the safety check as a permission grant, and left for the owner rather than worked around. Phase 6
+was verified with unit tests instead; the live runs of S2/S8/S9 wait for the allowance or the owner's change.
+
 ## 2026-09-28 — Phase 5: knowledge — the user's documents, the laptop's files, the web, the screen
 
 **Nothing new to pay for.** The web comes from Groq's own `browser_search` on the gpt-oss models the Worker

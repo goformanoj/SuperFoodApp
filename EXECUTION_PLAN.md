@@ -103,7 +103,7 @@ search (Groq's built-in search first). *Done: S4–S7 verified live (see PROGRES
 vision = `qwen/qwen3.8-27b`; no second key. Scanned PDFs (OCR) not yet.*
 - **Exit test:** S4 summarise-a-PDF-into-tasks, S5 find-the-invoice, S6 explain-my-screen, S7 latest-news.
 
-### Phase 6 — Everyday integrations + routines (AGENT_PLAN §6)
+### Phase 6 — Everyday integrations + routines (AGENT_PLAN §6) ✅ built 2026-09-28 (Google half dormant)
 Desktop Google sign-in + Calendar and Gmail (read, summarise, draft; send = approval); routines on a
 schedule with notifications/speech; the Alt+Space Quick bar; start-with-Windows option; MSI installer.
 - **Exit test:** S2 with the calendar, S8 draft-a-reply, S9 every-weekday-brief.
