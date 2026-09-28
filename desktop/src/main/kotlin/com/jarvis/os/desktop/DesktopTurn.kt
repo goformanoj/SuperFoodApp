@@ -150,7 +150,11 @@ object DesktopTurn {
             "Next week: " + next.joinToString(", ") { it.format(fmt) } + "."
     }
 
-    fun context(nowText: String, memory: String, attachedDocs: List<String> = emptyList(), today: java.time.LocalDate? = null): String = listOf(
+    fun context(
+        nowText: String, memory: String, attachedDocs: List<String> = emptyList(), today: java.time.LocalDate? = null,
+        /** The connected Google account (Calendar + Gmail), or null. */
+        google: String? = null,
+    ): String = listOf(
         "Current date/time: $nowText." + (today?.let { " " + weekAhead(it) } ?: ""),
         // The agent's tools cover tasks, reminders, notes, memory, search, documents, files,
         // the web and the screen; this line must NOT contradict them. (An older version said
@@ -161,6 +165,9 @@ object DesktopTurn {
             "screen, and open apps, files or websites. Phone-only actions (calls, texts, phone alarms, " +
             "tapping inside phone apps) aren't available from the laptop: do not emit any " +
             "device-action marker; say those work from the phone.",
+        if (google == null) "" else
+            "Google Calendar and Gmail are connected" + (if ('@' in google) " ($google)" else "") +
+                ": use them for the user's schedule and email. Emails are drafted, and only sent when the user asks and approves.",
         if (attachedDocs.isEmpty()) "" else
             "Documents attached to this chat (read them with read_document; \"this\" or \"it\" means the latest): " +
                 attachedDocs.joinToString("; ") + ".",

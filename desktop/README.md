@@ -39,6 +39,23 @@ apps: the browser opens Google's own page, the answer returns to a one-shot serv
 127.0.0.1 (PKCE-protected), and Firebase `signInWithIdp` links the laptop to the same account
 as the phone, so the owner's Pro plan applies here too.
 
+**Calendar & Gmail (Phase 6)** use the same Desktop client, plus three one-time switches in
+the same Google Cloud project:
+
+1. **APIs & Services → Library:** enable **Google Calendar API** and **Gmail API**.
+2. **OAuth consent screen → Data access (Scopes):** add `…/auth/calendar.events`,
+   `…/auth/gmail.readonly` and `…/auth/gmail.compose`. (Gmail's are "restricted": fine for
+   you and listed test users; strangers need Google's verification before launch, see
+   AGENT_PLAN §7 Phase 9.)
+3. **OAuth consent screen → Audience:** while the app is in *Testing*, add your Gmail
+   address as a **test user**.
+
+Then in JARVIS: **Settings → Calendar & Gmail → Connect**. Google's page lists exactly what
+is shared. The refresh token is sealed with Windows DPAPI in `%APPDATA%\JarvisOS\google.bin`
+(only your Windows user on this laptop can open it); it never goes to the Worker. JARVIS
+reads and drafts; **it sends an email only after you click Approve**. Disconnect in Settings
+also revokes the access at Google.
+
 Secrets are **baked in at build time**, so rebuild after changing them. The
 generated `BuildConfig` lives in `desktop/build/` (ignored), and CI builds this
 module with no secrets at all.

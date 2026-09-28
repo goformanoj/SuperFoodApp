@@ -48,7 +48,19 @@ object GoogleSignIn {
         BuildConfig.GOOGLE_DESKTOP_CLIENT_ID.isNotBlank() && BuildConfig.GOOGLE_DESKTOP_CLIENT_SECRET.isNotBlank()
 
     /** Opens the browser and returns a Google ID token once the user has signed in. */
-    suspend fun signIn(): String = withContext(Dispatchers.IO) {
+    suspend fun signIn(): String {
+        val body = authorize(IDENTITY_SCOPE, offline = false)
+        return idTokenFrom(body) ?: throw SignInException("Google didn't return an ID token.")
+    }
+
+    const val IDENTITY_SCOPE = "openid email profile"
+
+    /**
+     * The whole loopback + PKCE flow for [scope]; returns Google's token response (JSON).
+     * [offline] asks for a refresh token too (Calendar/Gmail keep working without asking
+     * again), which Google only issues with a fresh consent screen.
+     */
+    suspend fun authorize(scope: String, offline: Boolean): String = withContext(Dispatchers.IO) {
         if (!isConfigured()) throw SignInException("Google sign-in isn't set up on this build yet.")
         val verifier = newVerifier()
         val state = newVerifier().take(24)
@@ -69,7 +81,7 @@ object GoogleSignIn {
         server.start()
         try {
             val redirect = "http://127.0.0.1:${server.address.port}"
-            val url = authUrl(BuildConfig.GOOGLE_DESKTOP_CLIENT_ID, redirect, challengeFor(verifier), state)
+            val url = authUrl(BuildConfig.GOOGLE_DESKTOP_CLIENT_ID, redirect, challengeFor(verifier), state, scope, offline)
             if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
                 throw SignInException("No browser available to sign in with.")
             }
@@ -110,7 +122,43 @@ object GoogleSignIn {
             val status = conn.responseCode
             val body = (if (status in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
             if (status !in 200..299) throw SignInException("Google token exchange failed (HTTP $status).")
-            return idTokenFrom(body) ?: throw SignInException("Google didn't return an ID token.")
+            return body
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** A fresh access token from a stored refresh token (Google's token response, JSON). */
+    fun refresh(refreshToken: String): String = postForm(
+        TOKEN,
+        listOf(
+            "client_id" to BuildConfig.GOOGLE_DESKTOP_CLIENT_ID,
+            "client_secret" to BuildConfig.GOOGLE_DESKTOP_CLIENT_SECRET,
+            "refresh_token" to refreshToken,
+            "grant_type" to "refresh_token",
+        ),
+    )
+
+    /** Tells Google to forget this app's access (disconnect). Best effort. */
+    fun revoke(token: String) {
+        runCatching { postForm("https://oauth2.googleapis.com/revoke", listOf("token" to token)) }
+    }
+
+    private fun postForm(url: String, fields: List<Pair<String, String>>): String {
+        val form = fields.joinToString("&") { (k, v) -> "$k=" + URLEncoder.encode(v, "UTF-8") }
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.doOutput = true
+        conn.connectTimeout = 15000
+        conn.readTimeout = 15000
+        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+        try {
+            conn.outputStream.use { it.write(form.toByteArray(Charsets.UTF_8)) }
+            val status = conn.responseCode
+            val body = (if (status in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+            // 400 invalid_grant = the user revoked access in their Google account.
+            if (status !in 200..299) throw SignInException(if (body.contains("invalid_grant")) "Google access was removed — connect again in Settings." else "Google refused (HTTP $status).")
+            return body
         } finally {
             conn.disconnect()
         }
@@ -132,17 +180,22 @@ object GoogleSignIn {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
     }
 
-    fun authUrl(clientId: String, redirect: String, challenge: String, state: String): String {
-        val q = listOf(
+    fun authUrl(
+        clientId: String, redirect: String, challenge: String, state: String,
+        scope: String = IDENTITY_SCOPE, offline: Boolean = false,
+    ): String {
+        val q = (listOf(
             "client_id" to clientId,
             "redirect_uri" to redirect,
             "response_type" to "code",
-            "scope" to "openid email profile",
+            "scope" to scope,
             "code_challenge" to challenge,
             "code_challenge_method" to "S256",
             "state" to state,
-            "prompt" to "select_account",
-        ).joinToString("&") { (k, v) -> "$k=" + URLEncoder.encode(v, "UTF-8").replace("+", "%20") }
+            // A refresh token is only issued on a consent screen, so offline access asks for one.
+            "prompt" to if (offline) "consent select_account" else "select_account",
+        ) + if (offline) listOf("access_type" to "offline", "include_granted_scopes" to "true") else emptyList())
+            .joinToString("&") { (k, v) -> "$k=" + URLEncoder.encode(v, "UTF-8").replace("+", "%20") }
         return "$AUTH?$q"
     }
 

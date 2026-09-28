@@ -689,7 +689,8 @@ private fun ApprovalCard(description: String, note: String, onApprove: () -> Uni
     ) {
         Text("NEEDS YOUR OK", color = Color(0xFFFFC266), fontSize = 10.sp, fontFamily = J.Display, letterSpacing = 1.5.sp)
         Spacer(Modifier.height(6.dp))
-        Text("$description?", color = J.Text, fontSize = 14.sp)
+        // A one-line step reads as a question; a multi-line one (an email to send) is shown as is.
+        Text(if ('\n' in description) description else "$description?", color = J.Text, fontSize = 14.sp)
         Text(note, color = J.TextDim, fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

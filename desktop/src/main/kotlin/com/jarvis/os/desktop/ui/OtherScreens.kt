@@ -146,6 +146,7 @@ fun SettingsScreen(a: DesktopAssistant) {
                     modifier = Modifier.clip(HudShapeSmall).clicky { a.signOut() }.padding(8.dp),
                 )
             }
+            GoogleRow(a)
             ToggleRow(
                 "Quick bar",
                 when {
@@ -168,6 +169,45 @@ fun SettingsScreen(a: DesktopAssistant) {
             SettingRow("Build secrets", "%USERPROFILE%\\.gradle\\gradle.properties — PROXY_SECRET, FIREBASE_WEB_API_KEY. Rebuild after changing.")
             SettingRow("Your data", AppDirs.root.absolutePath + " — conversations, memory, identity, appearance")
             SettingRow("Version", "Desktop ${BuildConfig.VERSION_NAME}")
+        }
+    }
+}
+
+/**
+ * Google Calendar + Gmail (Phase 6): connect / disconnect, and exactly what it allows. Honest
+ * when the build has no Desktop OAuth client yet (the owner's one-time console step).
+ */
+@Composable
+private fun GoogleRow(a: DesktopAssistant) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Calendar & Gmail", color = J.TextMuted, fontSize = 14.sp, modifier = Modifier.width(150.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    when {
+                        a.googleEmail != null -> "Connected" + (a.googleEmail!!.takeIf { '@' in it }?.let { " as $it" } ?: "") +
+                            ". JARVIS can read your calendar and email, add events and write drafts. It sends an email only when you approve it."
+                        !GoogleSignIn.isConfigured() -> "Needs the Google “Desktop app” sign-in client in this build (a one-time setup in Google Cloud: see desktop/README.md)."
+                        else -> "Let JARVIS read your calendar and email, add events, and draft replies (sending always asks you first). Opens Google's own page."
+                    },
+                    color = J.Text, fontSize = 14.sp, lineHeight = 20.sp,
+                )
+                a.googleError?.let { Text(it, color = Color(0xFFFF8A8A), fontSize = 12.sp) }
+            }
+            val label = when {
+                a.googleBusy -> "WAITING…"
+                a.googleEmail != null -> "DISCONNECT"
+                else -> "CONNECT"
+            }
+            val enabled = !a.googleBusy && (a.googleEmail != null || GoogleSignIn.isConfigured())
+            Text(
+                label, color = if (a.googleEmail == null && enabled) J.OnAccent else J.Text, fontSize = 10.sp, fontFamily = J.Display, letterSpacing = 1.sp,
+                modifier = Modifier.padding(start = 12.dp).clip(HudShapeSmall)
+                    .background(if (a.googleEmail == null && enabled) J.Accent else Color.Transparent)
+                    .border(1.dp, if (enabled) J.Accent else J.Border, HudShapeSmall)
+                    .then(if (enabled) Modifier.clicky { if (a.googleEmail != null) a.disconnectGoogle() else a.connectGoogle() } else Modifier)
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+            )
         }
     }
 }

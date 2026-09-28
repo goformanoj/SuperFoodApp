@@ -273,7 +273,51 @@ class DesktopAssistant(
         brain.messages(id).filter { it.role == ChatTurn.USER || it.role == ChatTurn.ASSISTANT }.map { ChatTurn(it.role, it.content) }
 
     // ── The agent (Phase 4) ─────────────────────────────────────────────────
-    private val toolBox = ToolBox(brain, WindowsHost(context = { "Current date/time: ${nowLine()}." }, captureScreen = { captureScreenJpeg() }))
+    // ── Google Calendar + Gmail (Phase 6) ───────────────────────────────────
+    private val googleAccount = com.jarvis.os.desktop.google.GoogleAccount()
+    private val googleApis = com.jarvis.os.desktop.google.GoogleApis(googleAccount)
+    /** The connected Google account's email, or null. */
+    var googleEmail by mutableStateOf(runCatching { googleAccount.email ?: if (googleAccount.connected) "connected" else null }.getOrNull())
+        private set
+    var googleBusy by mutableStateOf(false)
+        private set
+    var googleError by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * Settings → Connect: Google's consent page for Calendar + Gmail. The same Google login
+     * also links this laptop's JARVIS account if it's still a guest (one sign-in, not two).
+     */
+    fun connectGoogle() {
+        if (googleBusy) return
+        googleBusy = true
+        googleError = null
+        scope.launch {
+            try {
+                val body = googleAccount.connect()
+                googleEmail = googleAccount.email ?: "connected"
+                brain.log("google", "Connected Google Calendar and Gmail" + (googleAccount.email?.let { " ($it)" } ?: ""))
+                if (!account.isSignedIn) GoogleSignIn.idTokenFrom(body)?.let { runCatching { account = Identity.linkGoogle(it) } }
+            } catch (e: Exception) {
+                googleError = e.message ?: "Connecting Google failed — try again."
+            } finally {
+                googleBusy = false
+            }
+        }
+    }
+
+    fun disconnectGoogle() {
+        scope.launch {
+            runCatching { googleAccount.disconnect() }
+            googleEmail = null
+            brain.log("google", "Disconnected Google Calendar and Gmail")
+        }
+    }
+
+    private val toolBox = ToolBox(
+        brain, WindowsHost(context = { "Current date/time: ${nowLine()}." }, captureScreen = { captureScreenJpeg() }),
+        google = googleApis,
+    )
 
     /** A step waiting for the user's click (Rule 6: never by prompt): what it does, and what approving means. */
     class Approval(val description: String, val note: String, internal val answer: kotlinx.coroutines.CompletableDeferred<Boolean>)
@@ -290,10 +334,13 @@ class DesktopAssistant(
         val msg = turns.firstOrNull { it.id == messageId } ?: return
         val card = ActionCard.decode(msg.content) ?: return
         if (card.undone || card.undo == null) return
-        val line = toolBox.undo(card.undo) ?: return
-        brain.updateMessage(messageId, card.copy(undone = true, summary = card.summary + " — undone ($line)").encode())
-        activeId?.let { turns = loadTurns(it) }
-        refreshTasks(); refreshMemories(); refreshRoutines(); refreshReminders()
+        // Some undos live in Google (an event, a draft), so this can take a network round trip.
+        scope.launch {
+            val line = toolBox.undoAsync(card.undo) ?: return@launch
+            brain.updateMessage(messageId, card.copy(undone = true, summary = card.summary + " — undone ($line)").encode())
+            activeId?.let { turns = loadTurns(it) }
+            refreshTasks(); refreshMemories(); refreshRoutines(); refreshReminders()
+        }
     }
 
     // ── Knowledge (Phase 5) ─────────────────────────────────────────────────
@@ -463,7 +510,7 @@ class DesktopAssistant(
         thinkingIn = conv.id
         refreshConversations()
         val (text, ok) = try {
-            val context = DesktopTurn.context(nowLine(), formatMemory("", facts), today = java.time.LocalDate.now()) + "\n\n" +
+            val context = DesktopTurn.context(nowLine(), formatMemory("", facts), today = java.time.LocalDate.now(), google = googleEmail) + "\n\n" +
                 DesktopTurn.routineNote(r.name, manual)
             val raw = AgentLoop(
                 toolBox,
@@ -604,7 +651,7 @@ class DesktopAssistant(
                 val history = modelHistory(id).takeLast(DesktopTurn.MAX_CONTEXT_TURNS)
                 // Exact local time and zone: the agent turns "tomorrow at 5" into a real time.
                 val attached = brain.attachedDocuments(id).map { "${it.name} (${it.pages} ${it.unit}${if (it.pages == 1) "" else "s"})" }
-                val context = DesktopTurn.context(nowLine(), formatMemory("", facts), attached, java.time.LocalDate.now()) +
+                val context = DesktopTurn.context(nowLine(), formatMemory("", facts), attached, java.time.LocalDate.now(), googleEmail) +
                     (extraContext?.let { "\n\n$it" } ?: "")
                 val started = System.currentTimeMillis()
                 val raw = if (shot != null && ProxyClient.isConfigured()) {
