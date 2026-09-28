@@ -49,7 +49,7 @@ Android app v1 (voice loop, screen control, calendar, files, memory, sign-in cod
 (token quota, Firebase identity, server-side prompt, owner-Pro, two-tier prompt dormant) · laptop
 dev environment · desktop v0.1 (typed chat through the same `ProxyClient`, memory, `:desktop:ping`).
 
-### Phase 1 — Desktop becomes the daily driver (UI + core) ← **NEXT**
+### Phase 1 — Desktop becomes the daily driver (UI + core) ✅ **done 2026-09-28** (1.4 sign-in dormant until the user creates a Desktop OAuth client)
 *Draws on Part I.*
 1. **Build the JARVIS Night design** in Compose Desktop: sidebar (Chat · Tasks · Scheduled · Memory ·
    Files · Automations · Settings), assistant-style conversation (markdown, lists, action cards),
@@ -64,7 +64,7 @@ dev environment · desktop v0.1 (typed chat through the same `ProxyClient`, memo
    is the same account + Pro plan as the phone.
 - **Exit test:** you use the desktop app for a full day of chat, signed in, on Pro.
 
-### Phase 2 — Voice, on both devices
+### Phase 2 — Voice, on both devices 🔨 (2.1 desktop push-to-talk + spoken replies ✅ live; 2.2 wake word in progress)
 *Draws on Parts B, D and the held device bugs.*
 1. **Desktop voice:** push-to-talk → speech-to-text through the Worker (new `/transcribe`, server-held
    key, metered like `/chat`) → reply spoken with Windows' built-in voices (free, offline; premium
@@ -77,52 +77,54 @@ dev environment · desktop v0.1 (typed chat through the same `ProxyClient`, memo
 - **Exit test:** "Jarvis, what's on today?" works hands-free on the laptop and the phone, and you
   can interrupt it mid-sentence.
 
-### Phase 3 — Tasks: JARVIS does things on the laptop (the headline)
-*Draws on Parts A/C (the agent loop + guards), G, I.*
-1. **Client-aware brain:** the app tells the Worker which device it is; the Worker serves the
-   matching action vocabulary (desktop actions vs phone markers). One prompt per device class.
-2. **Desktop actions, in code:** open app / file / URL, find and organise files, clipboard, type
-   text, run vetted scripts. Every action logged as a step in the **Tasks** screen; pause/stop.
-3. **Approval gate in code, not prompt** (Rule 6): send, pay, book, delete, overwrite → an approval
-   card; nothing irreversible runs without a click. Tested like `SendGuard`/`SpendGuard`.
-4. **Web errands:** browser automation (Playwright/CDP) with a live view of the window it works in.
-5. Housekeeping: move the shared pure logic into the `:shared` KMP module (Part I steps 3–5) once
-   the `SHARED_FROM_APP` list becomes unwieldy — build Android after every move.
-- **Exit test:** "rename my screenshots by date" and "find me a table for four on Friday" run end to
-  end on the laptop, stopping for your OK before the booking.
+> **RE-SEQUENCED 2026-09-28 (user: "the app has no practical function… plan to make the app a proper
+> AI assistant… a proper agent for everyday work… organise the data, the chats and everything").**
+> The full plan — ten everyday scenarios that define "useful", the data model, the tool-calling agent
+> with permission levels, knowledge from files and the web, always-there presence — is in
+> **[`AGENT_PLAN.md`](AGENT_PLAN.md)**. Phases 3 onward now follow it; the old Phase 3–5 content is
+> folded in (desktop actions → Phase 4/8, reminders/routines → Phases 4/6, cross-device → Phase 7).
 
-### Phase 4 — Scheduled: reminders and routines
-1. **Reminders** ("remind me at 6 to call mom") — desktop scheduler + phone `AlarmManager`/WorkManager.
-2. **Routines:** any request on a schedule, with delivery (speak / notify / save a PDF to Files);
-   created by voice or the **Scheduled** screen; "Run now" to test one.
-3. **Integrations for briefs:** calendar (phone: device calendar; desktop: Google Calendar via
-   sign-in), weather, and read-only Gmail — each behind explicit consent.
-4. **Schedules live on the server** so a routine runs on whichever device is on, and reaches the
-   phone as a notification (FCM).
-- **Exit test:** "every weekday at 8, brief me" — tomorrow at 8 it speaks the brief on its own.
+### Phase 3 — The brain: organised data (AGENT_PLAN §3) ← **NEXT after the wake word**
+SQLite (FTS5) store + lossless migration from `chat.json`; Projects; typed Memory with sources; Tasks;
+Reminders (data); Notes; Activity log; global search (Ctrl+K); screens for chats-by-project, Tasks,
+Memory cards, Activity; Home becomes **Today**.
+- **Exit test:** conversations grouped and searchable; typed memory shows its source; a task shows in Today.
 
-### Phase 5 — One JARVIS across devices
-*Draws on Part G (evolved from same-Wi-Fi pairing to the Worker relay).*
-1. **Sync** conversations, memory and files per account through the Worker (D1 + R2).
-2. **Cross-device commands:** "on my phone, set an alarm" from the laptop and the reverse — pairing
-   code, commands only from paired devices, a visible "being controlled" indicator.
-3. **Handoff:** start a conversation on the phone, continue it on the laptop.
-- **Exit test:** tell the laptop to set a phone alarm; it rings on the phone.
+### Phase 4 — The agent core (AGENT_PLAN §4)
+Native tool calling through the Worker (tools passed through, every step metered); the laptop runs tools
+locally; permission levels **in code** (read / undoable write / irreversible → approval card); first tools:
+tasks, reminders, notes, memory, search-my-stuff, open app/URL, clipboard, time. Windows notifications,
+system tray, background running.
+- **Exit test:** S1 remind-at-5, S2 what's-on-today, S3 add-a-to-do, S10 what-did-we-decide — by voice and typing.
 
-### Phase 6 — Launch
-*Draws on Part E.* E2 compliance (accessibility disclosure, `<queries>`, Data safety) · E3 owner
-activation (upload key, Play App Signing) · **E4 name + `applicationId` gate** ("JARVIS" is a
-trademark) · E5 billing (Play Billing on the phone; web checkout for desktop Pro) · E6 internal →
-closed test (12 testers × 14 days) → production. Desktop: signed installer (code-signing
-certificate) via a download page and/or the Microsoft Store.
-- **Open decision (user's call):** the phone app is close to launch-ready; the launch can be pulled
-  forward to run **in parallel after Phase 2** instead of waiting for Phases 3–5.
-- **Exit test:** a stranger installs it from the store, signs in, and subscribes.
+### Phase 5 — Knowledge (AGENT_PLAN §5)
+Documents in (PDF/DOCX/TXT) with cited Q&A; Windows file search; screenshot questions (vision); live web
+search (Groq's built-in search first).
+- **Exit test:** S4 summarise-a-PDF-into-tasks, S5 find-the-invoice, S6 explain-my-screen, S7 latest-news.
 
-### Phase 7 — Beyond launch
-Vision (screenshot → model) · image generation (needs a provider decision) · diagrams in Files ·
-call assistant (`JARVIS_AI_PLAN.md` appendix) · Part C2.4 app-learning · **Part H: JARVIS's own
-tuned model** (hard gate: must beat the hosted model on marker accuracy, else ship nothing).
+### Phase 6 — Everyday integrations + routines (AGENT_PLAN §6)
+Desktop Google sign-in + Calendar and Gmail (read, summarise, draft; send = approval); routines on a
+schedule with notifications/speech; the Alt+Space Quick bar; start-with-Windows option; MSI installer.
+- **Exit test:** S2 with the calendar, S8 draft-a-reply, S9 every-weekday-brief.
+
+### Phase 7 — One brain on every device (was Phase 5)
+Account sync through the Worker (D1 rows, R2 files); the phone uses the same tasks/reminders/notes/memory and
+moves to the same tool loop; cross-device commands with pairing and a visible "being controlled" indicator.
+- **Exit test:** a task added on the laptop appears on the phone; "on my phone, set an alarm" rings there.
+
+### Phase 8 — Hands on the computer (was Phase 3's automation)
+Browser automation (Playwright/CDP) and app automation for multi-step errands, live view, approval gate.
+Housekeeping: the `:shared` KMP module when `SHARED_FROM_APP` gets unwieldy.
+
+### Phase 9 — Launch (was Phase 6) — Part E, plus AGENT_PLAN §7's additions
+Gmail restricted-scope verification (only needed for strangers), privacy policy for local files and
+screenshots, **a commercially licensed wake-word model** (openWakeWord's "hey jarvis" is CC BY-NC-SA —
+non-commercial; the phone has the same issue). The open decision stands: the phone launch can run in
+parallel earlier.
+
+### Phase 10 — Beyond launch (was Phase 7)
+Image generation (provider decision) · diagrams in Files · call assistant · Part C2.4 app-learning ·
+**Part H: JARVIS's own tuned model** (hard gate: must beat the hosted model on marker accuracy).
 
 ---
 
