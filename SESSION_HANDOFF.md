@@ -1,5 +1,24 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-28 — desktop voice live; Phase 1 done in code
+
+Branch `desktop-kmp`, **`main` @ `2a764c2`** (CI 7/7, `jarvis-debug-apk`), Worker redeployed with `/transcribe`.
+
+- **Roadmap position:** Phase 1 — 1.1 ✅ 1.2 ✅ (rename, window memory) 1.3 ⏸ installer (user must OK Temurin)
+  1.4 ✅ in code, **dormant** until the user creates a "Desktop app" OAuth client and its id/secret go into
+  `~/.gradle/gradle.properties` as `GOOGLE_DESKTOP_CLIENT_ID` / `GOOGLE_DESKTOP_CLIENT_SECRET` (slots already
+  there, blank; use a hidden-input command, never paste in chat). Phase 2 — **2.1 ✅ desktop voice** (needs a
+  real-mic try by the user); **2.2 next: wake word "Jarvis" on the laptop** — openWakeWord has a hey_jarvis
+  model; the phone's `MelSpectrogram`/`WakeWord` are pure and shareable; the runtime would be ONNX Runtime on the
+  JVM (the phone uses TFLite); 2.3 the four held phone bugs (live `adb logcat`, emulator only when the user asks).
+- **Check voice without speaking:** synthesise a WAV with System.Speech (`SetOutputToWaveFile`, 16 kHz mono),
+  then `./gradlew :desktop:ping --args="<file.wav>"` — prints what the live Worker heard.
+- **Gotcha — PowerShell child processes:** never merge stderr into stdout (CLIXML progress blobs have no newline).
+- **Gotcha — this tool shell:** `NoDefaultCurrentDirectoryInExePath` is set, so a .cmd must call scripts by full
+  path (`"%~dp0..\gradlew.bat"`), not by bare name.
+
+---
+
 ## Current position — 2026-09-28 — roadmap set, JARVIS Night UI built, laptop fully wired
 
 Branch `desktop-kmp`, **`main` @ `b24c725`** (CI green, `jarvis-debug-apk` present).

@@ -1,5 +1,35 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-28 — voice on the laptop, and the rest of Phase 1 in code
+
+**Why Whisper through the Worker, not on the laptop.** The same reasons as `/chat`: the key stays on the
+server, the cost comes out of the same daily allowance (so voice can't be used to get around the cap), and
+the phone can use the same endpoint later. The allowance is in tokens and Whisper bills by time, so the
+exchange rate (20 tokens/second) is set near Whisper's real price in chat-model tokens — a 5-second command
+costs 100 tokens against ~2,000 for a chat turn. Everything that can refuse (bad upload, over the cap) runs
+BEFORE the provider is paid, and a provider failure charges nothing — the same shape as `/chat`.
+
+**The refactor I was careful with.** `/transcribe` needed the exact plan logic `/chat` uses (stored plan,
+subscription, owner email). Rather than copy it, it became one `planFor()` both routes call — so they can
+never disagree about who is Pro. The proof it changed nothing: all 139 pre-existing tests pass untouched.
+
+**A bug the silent test caught.** The speaker drives Windows' built-in voice through one long-lived
+PowerShell process (instant replies after a ~3 s warm-up; killing it is the only instant interrupt). Testing
+the protocol at volume 0 showed PowerShell writing a CLIXML progress blob to stderr with no trailing newline;
+my code merged stderr into stdout, where that blob would glue itself onto the first `DONE` and the speaker
+would wait forever. Fixed three ways (discard stderr, silence progress, match `DONE` at line end) BEFORE it
+shipped — the kind of thing that would have shown up as "voice freezes sometimes".
+
+**Verified, not assumed.** A clip synthesised to a WAV (no one speaking, nothing played aloud) went through
+the real `TranscribeClient` to the live Worker after the deploy: "Open my calendar and remind me to call Asha
+at 6." The live route answers 403 to a caller without credentials — deployed and locked.
+
+**Google sign-in on the desktop** is built but dormant: Google requires a separate "Desktop app" OAuth client
+per app type, which only the user can create in the console. The flow is Google's own installed-app pattern
+(system browser, one-shot loopback server on 127.0.0.1, PKCE S256 checked against the RFC 7636 vector,
+state), then Firebase `signInWithIdp` linked onto the anonymous uid with a fallback to signing in as the
+existing account — the phone's exact logic, so the Worker's owner-email rule makes the laptop Pro.
+
 ## 2026-09-28 — the roadmap, the JARVIS Night design, and recovering the proxy secret
 
 **Roadmap.** The user asked for the complete phase-by-phase path to the final JARVIS ("voice, tasks,
