@@ -165,10 +165,33 @@ tasks.register<JavaExec>("ping") {
     mainClass.set("com.jarvis.os.desktop.PingKt")
 }
 
+// The installer needs `jpackage`, which Android Studio's JDK lacks. Resolve a full JDK
+// (Temurin 21 via the foojay toolchain resolver — downloaded once into ~/.gradle/jdks)
+// ONLY when a packaging task was asked for, so `run`, `test` and every CI/Android build
+// never trigger the download.
+val packaging = gradle.startParameter.taskNames.any {
+    it.contains("package", ignoreCase = true) || it.contains("Distributable", ignoreCase = true)
+}
+val packagingJdk: String? = if (!packaging) null else javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(21))
+    vendor.set(JvmVendorSpec.ADOPTIUM)
+}.get().metadata.installationPath.asFile.absolutePath
+
 compose.desktop {
     application {
         mainClass = "com.jarvis.os.desktop.MainKt"
+        if (packagingJdk != null) javaHome = packagingJdk
         nativeDistributions {
+            // jpackage bundles a MINIMAL Java runtime. Anything the app uses beyond the
+            // defaults must be listed, or JARVIS.exe dies at start-up (found by launching
+            // it: NoClassDefFoundError for ManagementFactory). What each one is for:
+            modules(
+                "java.management", "jdk.management", // Telemetry: CPU + RAM (com.sun.management)
+                "jdk.httpserver",                    // Google sign-in's one-shot loopback server
+                "jdk.crypto.ec",                     // HTTPS to the Worker, Google and Firebase (ECDHE)
+                "java.naming",                       // TLS / URL handlers
+                "jdk.unsupported",                   // sun.misc.Unsafe, used by Compose/Skiko internals
+            )
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "JARVIS"
             packageVersion = "1.0.0"
