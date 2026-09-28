@@ -48,6 +48,11 @@ class DesktopAssistant(
         private set
     var usage by mutableStateOf<UsageStats.Daily?>(null)
         private set
+    /** How long the last reply took, end to end (Worker round trip + model). Real, for the HUD. */
+    var lastLatencyMs by mutableStateOf<Long?>(null)
+        private set
+
+    val messageCount: Int get() = conversations.sumOf { it.turns.size }
 
     val active: Conversation? get() = conversations.firstOrNull { it.id == activeId }
     val turns: List<ChatTurn> get() = active?.turns.orEmpty()
@@ -97,10 +102,12 @@ class DesktopAssistant(
                 val history = conversations.first { it.id == id }.turns.takeLast(DesktopTurn.MAX_CONTEXT_TURNS)
                 val now = SimpleDateFormat("EEEE d MMMM yyyy, h:mm a", Locale.getDefault()).format(Date())
                 val context = DesktopTurn.context(now, formatMemory("", facts))
+                val started = System.currentTimeMillis()
                 val raw = withContext(Dispatchers.IO) {
                     if (ProxyClient.isConfigured()) ProxyClient.generate(history, context)
                     else GroqClient.generate(history, context)
                 }
+                lastLatencyMs = System.currentTimeMillis() - started
                 val result = DesktopTurn.process(raw)
                 facts = DesktopTurn.applyMemory(facts, result.memory)
                 upsert(id) { c ->

@@ -1,11 +1,9 @@
 package com.jarvis.os.desktop.ui
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -21,96 +19,104 @@ import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jarvis.os.ui.components.HudOrb
+import com.jarvis.os.ui.components.OrbPreview
+import com.jarvis.os.ui.theme.DesktopTypography
+import com.jarvis.os.ui.theme.JarvisPalette
+import com.jarvis.os.ui.theme.LocalPalette
+import com.jarvis.os.ui.theme.Michroma
+import com.jarvis.os.voice.OrbState
 
 /**
- * "JARVIS Night" — the desktop design direction (Claude Design canvas
- * https://claude.ai/artifact/NS51vSipMPM78D18tygCWL). Colours are the phone's
- * palette (app/.../ui/theme/Color.kt) extended with the canvas's surface steps.
+ * The desktop's design tokens. Neutrals are fixed; everything that carries the
+ * theme's colour reads the active [JarvisPalette] — so choosing Forge turns the
+ * whole app gold, exactly as it does on the phone.
  */
 object J {
-    val Ground = Color(0xFF050B18)
-    val Sidebar = Color(0xFF070F1F)
-    val Rail = Color(0xFF060D1C)
-    val Surface = Color(0xFF0A1426)
-    val Raised = Color(0xFF0E1A30)
-    val Hairline = Color(0x12FFFFFF)
-    val Border = Color(0x1AFFFFFF)
-
-    val Cyan = Color(0xFF00D4FF)
-    val CyanSoft = Color(0xFF7FE8FF)
-    val Blue = Color(0xFF0066FF)
-    val OnCyan = Color(0xFF03101F)
+    val Hairline = Color(0x14FFFFFF)
+    val Border = Color(0x1FFFFFFF)
 
     val Text = Color(0xFFE6F1FF)
     val TextBody = Color(0xFFDCE7F5)
-    val TextMuted = Color(0xFFA9B6C8)
+    val TextMuted = Color(0xFFB4C0D0)
     val TextDim = Color(0xFF8A97AB)
     val TextFaint = Color(0xFF6E7C92)
 
     val Green = Color(0xFF2EE6A6)
-    val Amber = Color(0xFFFF9F1C)
-    val AmberSoft = Color(0xFFFFC266)
     val Red = Color(0xFFFF4D4D)
 
     val Mono = FontFamily.Monospace
+    val Display = Michroma
 
-    val colors = darkColorScheme(
-        primary = Cyan,
-        onPrimary = OnCyan,
-        secondary = Blue,
-        background = Ground,
-        surface = Surface,
-        surfaceVariant = Raised,
-        onBackground = Text,
-        onSurface = Text,
-        onSurfaceVariant = TextMuted,
-        outline = Border,
-        error = Red,
-    )
+    /** The theme's primary — cyan for Arc, gold for Forge, and so on. */
+    val Accent: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.accent
+    val Secondary: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.secondary
+    val OnAccent: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background
+
+    /** Glass over the live world: the backdrop shows through, text still reads. */
+    val Glass: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = 0.72f)
+    val Card: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.surface.copy(alpha = 0.88f)
+    val CardBorder: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.accent.copy(alpha = 0.20f)
+    val Veil: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = 0.80f)
 }
 
 @Composable
-fun JarvisTheme(content: @Composable () -> Unit) = MaterialTheme(colorScheme = J.colors, content = content)
-
-/** The brand orb: a radial cyan→blue sphere with a glow; [active] quickens its pulse. */
-@Composable
-fun Orb(size: Dp, active: Boolean = false, modifier: Modifier = Modifier) {
-    val t = rememberInfiniteTransition()
-    val glow by t.animateFloat(
-        initialValue = 0.75f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(if (active) 520 else 2200), RepeatMode.Reverse),
-    )
-    Box(
-        modifier
-            .size(size)
-            .shadow(elevation = size * 0.45f * glow, shape = CircleShape, ambientColor = J.Cyan, spotColor = J.Cyan)
-            .clip(CircleShape)
-            .background(
-                Brush.radialGradient(
-                    0f to Color(0xFFBFF4FF),
-                    0.30f to J.Cyan.copy(alpha = glow),
-                    0.72f to J.Blue,
-                    1f to Color(0xFF002878),
-                ),
-            ),
-    )
+fun DesktopTheme(palette: JarvisPalette, content: @Composable () -> Unit) {
+    val scheme = remember(palette) {
+        darkColorScheme(
+            primary = palette.accent,
+            onPrimary = palette.background,
+            secondary = palette.secondary,
+            tertiary = palette.highlight,
+            background = palette.background,
+            surface = palette.surface,
+            surfaceVariant = palette.surface,
+            onBackground = J.Text,
+            onSurface = J.Text,
+            onSurfaceVariant = J.TextMuted,
+            outline = J.Border,
+            error = J.Red,
+        )
+    }
+    CompositionLocalProvider(LocalPalette provides palette) {
+        MaterialTheme(colorScheme = scheme, typography = DesktopTypography, content = content)
+    }
 }
+
+/** The live orb — the phone's own 3D [HudOrb]. Keep at most one or two on screen. */
+@Composable
+fun LiveOrb(size: Dp, state: OrbState, modifier: Modifier = Modifier) {
+    HudOrb(modifier = modifier, orb = state, size = size, showLabel = false)
+}
+
+/**
+ * A still orb for small places (message avatars): the same geometry, drawn once.
+ * A live orb per message would be a 60fps Canvas each — the phone's theme picker
+ * made that mistake once.
+ */
+@Composable
+fun StillOrb(size: Dp, modifier: Modifier = Modifier) {
+    OrbPreview(palette = LocalPalette.current, size = size, modifier = modifier, animated = false)
+}
+
+/** A click target that shows the hand cursor, as a desktop control should. */
+fun Modifier.clicky(onClick: () -> Unit): Modifier =
+    pointerHoverIcon(PointerIcon.Hand).clickable(onClick = onClick)
 
 /** A small rounded label: status chips, badges. */
 @Composable
-fun Pill(text: String, fg: Color = J.TextMuted, bg: Color = Color(0x0DFFFFFF), dot: Color? = null, mono: Boolean = false) {
+fun Pill(text: String, fg: Color = J.TextMuted, bg: Color = Color(0x14FFFFFF), dot: Color? = null, mono: Boolean = false) {
     Row(
         Modifier.clip(RoundedCornerShape(999.dp)).background(bg).padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -135,8 +141,8 @@ fun Hint(text: String, content: @Composable () -> Unit) {
     )
 }
 
-/** Section label in the canvas's mono caps style ("TODAY", "RECENT"). */
+/** Section label in the HUD style: the display face, tracked wide. */
 @Composable
-fun Eyebrow(text: String, modifier: Modifier = Modifier) {
-    Text(text.uppercase(), modifier = modifier, color = J.TextFaint, fontSize = 11.sp, fontFamily = J.Mono, letterSpacing = 1.sp)
+fun Eyebrow(text: String, modifier: Modifier = Modifier, color: Color = J.TextFaint) {
+    Text(text.uppercase(), modifier = modifier, color = color, fontSize = 10.sp, fontFamily = J.Display, letterSpacing = 1.8.sp)
 }

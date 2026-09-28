@@ -37,7 +37,37 @@ val SHARED_FROM_APP = listOf(
     "com/jarvis/os/ai/ModelRouter.kt",
     "com/jarvis/os/ai/RateLimit.kt",
     "com/jarvis/os/ai/SystemPrompt.kt",
+    "com/jarvis/os/voice/VoiceState.kt",
+    // The orbs and the worlds behind them — the phone's own drawing code, byte-for-byte.
+    // These import androidx.compose.* only, which Compose for Desktop provides under the
+    // same names. The one Android-only thing they touch has a desktop stand-in:
+    // `Michroma`/`Inter` (DesktopType.kt, since the phone's Type.kt reads R.font).
+    // The phone's pinch-in "universe" (OrbUniverse/Cosmos/UniverseMath) is deliberately
+    // NOT shared: on a laptop the user found it a waste (2026-09-28).
+    "com/jarvis/os/ui/theme/OrbStyle.kt",
+    "com/jarvis/os/ui/theme/BackdropStyle.kt",
+    "com/jarvis/os/ui/theme/JarvisPalette.kt",
+    "com/jarvis/os/ui/theme/JarvisTheme.kt",
+    "com/jarvis/os/ui/theme/Color.kt",
+    "com/jarvis/os/ui/components/OrbMath.kt",
+    "com/jarvis/os/ui/components/OrbDetail.kt",
+    "com/jarvis/os/ui/components/OrbPrimitives.kt",
+    "com/jarvis/os/ui/components/Orb3D.kt",
+    "com/jarvis/os/ui/components/Orb3DSpecs.kt",
+    "com/jarvis/os/ui/components/Orb3DRenderer.kt",
+    "com/jarvis/os/ui/components/ThemeArt.kt",
+    "com/jarvis/os/ui/components/HudOrb.kt",
+    "com/jarvis/os/ui/components/JarvisWordmark.kt",
+    "com/jarvis/os/ui/components/ThemeBackdrop.kt",
 )
+
+// The phone's fonts, shared the same way: copied from app/src/main/res/font onto the
+// desktop classpath at build time (see DesktopType.kt), never duplicated in git.
+val sharedResDir = layout.buildDirectory.dir("generated/sharedRes")
+val syncSharedRes by tasks.registering(Sync::class) {
+    from(rootProject.file("app/src/main/res/font")) { into("font") }
+    into(sharedResDir)
+}
 
 val sharedSrcDir = layout.buildDirectory.dir("generated/sharedFromApp")
 val syncSharedFromApp by tasks.registering(Sync::class) {
@@ -88,6 +118,7 @@ sourceSets {
     main {
         kotlin.srcDir(syncSharedFromApp)
         kotlin.srcDir(generateBuildConfig)
+        resources.srcDir(syncSharedRes)
     }
 }
 

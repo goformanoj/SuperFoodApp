@@ -7,14 +7,22 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -24,57 +32,95 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.jarvis.os.desktop.ui.AppearanceScreen
 import com.jarvis.os.desktop.ui.ChatScreen
 import com.jarvis.os.desktop.ui.ComingSoon
+import com.jarvis.os.desktop.ui.DesktopTheme
+import com.jarvis.os.desktop.ui.HudGrid
 import com.jarvis.os.desktop.ui.J
-import com.jarvis.os.desktop.ui.JarvisTheme
 import com.jarvis.os.desktop.ui.MemoryScreen
 import com.jarvis.os.desktop.ui.Screen
 import com.jarvis.os.desktop.ui.SettingsScreen
 import com.jarvis.os.desktop.ui.Sidebar
 import com.jarvis.os.desktop.ui.TodayRail
+import com.jarvis.os.desktop.ui.hasConversation
+import com.jarvis.os.ui.components.ThemeBackdrop
+import com.jarvis.os.ui.theme.JarvisPalette
 import java.awt.Dimension
 
-fun main() = application {
+/**
+ * Flags (for development and screenshots — no effect on normal use):
+ *   --home            open on a fresh chat (the cockpit) instead of the last conversation
+ *   --screen=<name>   open on a section, e.g. --screen=appearance
+ *   --theme=<id>      preview a theme for this run without saving it (arc, forge, nebula, orbit)
+ */
+fun main(args: Array<String>) = application {
     val scope = rememberCoroutineScope()
-    val assistant = remember { DesktopAssistant(scope) }
-    var screen by remember { mutableStateOf(Screen.Chat) }
+    val assistant = remember { DesktopAssistant(scope).also { if ("--home" in args) it.newChat() } }
+    val telemetry = remember { Telemetry(scope).also { it.start() } }
+    val prefs = remember { DesktopPrefs() }
+    var appearance by remember {
+        val saved = prefs.load()
+        val preview = args.firstOrNull { it.startsWith("--theme=") }?.substringAfter("=")
+        mutableStateOf(if (preview != null) saved.copy(palette = JarvisPalette.fromId(preview), backdropId = "") else saved)
+    }
+    var screen by remember {
+        val name = args.firstOrNull { it.startsWith("--screen=") }?.substringAfter("=")
+        mutableStateOf(Screen.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: Screen.Chat)
+    }
+    val composerText = remember { mutableStateOf("") }
     val composerFocus = remember { FocusRequester() }
+    fun goHome() { assistant.newChat(); screen = Screen.Chat }
 
     Window(
         onCloseRequest = ::exitApplication,
         title = "JARVIS",
+        icon = remember(appearance.palette) { ReactorIcon(appearance.palette) },
         state = rememberWindowState(size = DpSize(1280.dp, 760.dp), position = WindowPosition(Alignment.Center)),
         onPreviewKeyEvent = { e ->
-            if (e.type == KeyEventType.KeyDown && e.isCtrlPressed && e.key == Key.N) {
-                assistant.newChat(); screen = Screen.Chat; true
-            } else false
+            when {
+                e.type != KeyEventType.KeyDown -> false
+                e.isCtrlPressed && e.key == Key.N -> { goHome(); true }
+                else -> false
+            }
         },
     ) {
         LaunchedEffect(Unit) { window.minimumSize = Dimension(980, 640) }
-        JarvisTheme {
-            BoxWithConstraints(Modifier.fillMaxSize().background(J.Ground)) {
+        DesktopTheme(appearance.palette) {
+            val home = screen == Screen.Chat && !hasConversation(assistant)
+
+            BoxWithConstraints(Modifier.fillMaxSize().background(appearance.palette.background)) {
                 val wide = maxWidth >= 1200.dp
+
+                // The theme's world, behind EVERY screen — as on the phone. Live only on
+                // Home, where nothing scrolls: behind a list its redraws would compete
+                // with the scroll for the same frame budget.
+                ThemeBackdrop(palette = appearance.palette, backdrop = appearance.backdrop, live = home)
+                // The veil: Home IS the backdrop; screens with text need a surface to read on.
+                if (!home) Box(Modifier.fillMaxSize().background(J.Veil))
+                // The instrument grid and vignette over everything: the HUD's glass.
+                HudGrid(Modifier.fillMaxSize())
+
                 Row(Modifier.fillMaxSize()) {
-                    Sidebar(assistant, screen) { screen = it }
+                    Sidebar(assistant, screen, onHome = ::goHome) { screen = it }
                     Divider()
                     Box(Modifier.weight(1f).fillMaxHeight()) {
                         when (screen) {
-                            Screen.Chat -> ChatScreen(assistant, composerFocus)
+                            Screen.Chat -> ChatScreen(assistant, telemetry, composerText, composerFocus, onMemory = { screen = Screen.Memory })
                             Screen.Memory -> MemoryScreen(assistant)
-                            Screen.Settings -> SettingsScreen(assistant)
+                            Screen.Appearance -> AppearanceScreen(appearance) { appearance = it; prefs.save(it) }
+                            Screen.Settings -> SettingsScreen()
                             Screen.Tasks -> ComingSoon(screen, "PHASE 3", "Tell JARVIS to do something on this laptop — open apps, sort files, work a website — and watch each step here. It stops for your OK before anything it can't undo.")
                             Screen.Scheduled -> ComingSoon(screen, "PHASE 4", "Reminders and routines that run by themselves: “every weekday at 8, brief me”, “remind me at 6 to call mom”.")
-                            Screen.Files -> ComingSoon(screen, "PHASE 3", "Documents JARVIS makes for you — PDFs, notes, summaries. (Already on the phone; coming to the laptop with Tasks.)")
+                            Screen.Files -> ComingSoon(screen, "PHASE 3", "Documents JARVIS makes for you — PDFs, notes, summaries. Already on the phone; coming to the laptop with Tasks.")
                             Screen.Automations -> ComingSoon(screen, "PHASE 5", "Your devices working together: “on my phone, set an alarm” from the laptop, and the other way round.")
                         }
                     }
-                    if (wide && screen == Screen.Chat) {
+                    if (wide && screen == Screen.Chat && hasConversation(assistant)) {
                         Divider()
-                        TodayRail(assistant) { screen = Screen.Memory }
+                        TodayRail(assistant, telemetry) { screen = Screen.Memory }
                     }
                 }
             }
@@ -82,7 +128,20 @@ fun main() = application {
     }
 }
 
-@androidx.compose.runtime.Composable
+@Composable
 private fun Divider() {
     Box(Modifier.width(1.dp).fillMaxHeight().background(J.Hairline))
+}
+
+/** The taskbar/title-bar icon: a small reactor in the theme's colours, not Java's default cup. */
+private class ReactorIcon(private val p: JarvisPalette) : Painter() {
+    override val intrinsicSize = Size(64f, 64f)
+    override fun DrawScope.onDraw() {
+        val r = size.minDimension / 2f
+        drawCircle(p.background, r)
+        drawCircle(Brush.radialGradient(listOf(Color.White, p.accent, Color.Transparent), center, r * 0.55f), r * 0.55f)
+        drawCircle(p.accent, r * 0.78f, style = Stroke(r * 0.09f))
+        drawArc(p.highlight, -60f, 120f, false, topLeft = center.copy(x = center.x - r * 0.93f, y = center.y - r * 0.93f), size = Size(r * 1.86f, r * 1.86f), style = Stroke(r * 0.1f))
+        drawArc(p.highlight, 120f, 120f, false, topLeft = center.copy(x = center.x - r * 0.93f, y = center.y - r * 0.93f), size = Size(r * 1.86f, r * 1.86f), style = Stroke(r * 0.1f))
+    }
 }
