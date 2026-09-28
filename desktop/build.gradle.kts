@@ -120,6 +120,14 @@ tasks.test {
     useJUnit()
 }
 
+// `./gradlew :desktop:ping` — health check of the server path (see Ping.kt).
+tasks.register<JavaExec>("ping") {
+    group = "verification"
+    description = "Sends the tiny OK probe to the Worker through the real client."
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("com.jarvis.os.desktop.PingKt")
+}
+
 compose.desktop {
     application {
         mainClass = "com.jarvis.os.desktop.MainKt"
