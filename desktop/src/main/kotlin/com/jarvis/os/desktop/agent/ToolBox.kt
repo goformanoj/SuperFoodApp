@@ -2,6 +2,11 @@ package com.jarvis.os.desktop.agent
 
 import com.jarvis.os.desktop.brain.Brain
 import com.jarvis.os.desktop.brain.TaskDates
+import com.jarvis.os.desktop.knowledge.DocText
+import com.jarvis.os.desktop.knowledge.FileSearch
+import com.jarvis.os.desktop.knowledge.KnowledgeClient
+import com.jarvis.os.desktop.knowledge.Library
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -18,6 +23,8 @@ import java.time.format.DateTimeParseException
  *  - [Risk.READ]: runs immediately.
  *  - [Risk.UNDOABLE]: runs immediately; the result carries an [Undo] the user can click.
  *  - [Risk.IRREVERSIBLE]: never runs until the user approves it on an approval card.
+ *  - [Risk.SHARES]: sends something private off the laptop (a screenshot). It also never
+ *    runs without the user's OK, and the card says it shares rather than destroys.
  *
  * Side effects outside the brain (opening a URL or an app, reading the clipboard) go
  * through [Host] so tests can run every tool without touching the machine.
@@ -28,7 +35,11 @@ class ToolBox(
     private val clock: () -> Long = System::currentTimeMillis,
     private val zone: ZoneId = ZoneId.systemDefault(),
 ) {
-    enum class Risk { READ, UNDOABLE, IRREVERSIBLE }
+    enum class Risk {
+        READ, UNDOABLE, IRREVERSIBLE, SHARES;
+        /** True when the user must click Approve before the tool runs (Rule 6, in code). */
+        val needsApproval: Boolean get() = this == IRREVERSIBLE || this == SHARES
+    }
 
     /** What undoing a step means: delete what was created, or restore a task's state. */
     data class Undo(val kind: String, val id: String)
@@ -42,11 +53,20 @@ class ToolBox(
         val undo: Undo? = null,
     )
 
-    /** The machine, as far as tools may touch it. */
+    /**
+     * The machine and the outside world, as far as tools may touch them. The knowledge
+     * members default to "not available", so a test host only fakes what it exercises.
+     */
     interface Host {
         fun openUrl(url: String): Boolean
         fun openApp(name: String): String?     // the app actually opened, or null
         fun clipboardText(): String?
+        /** Opens a document with its default app (never a program; the tool checks). */
+        fun openFile(path: String): Boolean = false
+        suspend fun webSearch(query: String): KnowledgeClient.WebAnswer = throw UnsupportedOperationException("Web search isn't available here.")
+        suspend fun searchFiles(q: FileSearch.Query): List<FileSearch.Found> = throw UnsupportedOperationException("File search isn't available here.")
+        /** One screenshot (JARVIS's own window out of the way) → the vision model's answer. */
+        suspend fun askAboutScreen(question: String): String = throw UnsupportedOperationException("Looking at the screen isn't available here.")
     }
 
     class Spec(val name: String, val description: String, val params: JSONObject, val risk: Risk)
@@ -59,6 +79,21 @@ class ToolBox(
                 "due" to str("Optional local date-time, ISO format YYYY-MM-DDTHH:MM (or YYYY-MM-DD)"),
                 "notes" to str("Optional extra detail"),
                 required = listOf("title"),
+            ),
+            Risk.UNDOABLE,
+        ),
+        Spec(
+            "add_tasks", "Add several to-dos at once, e.g. the action points from a document or a list the user gives. Use this instead of calling add_task repeatedly.",
+            obj(
+                "tasks" to JSONObject().put("type", "array").put("description", "The tasks to add").put(
+                    "items", obj(
+                        "title" to str("What to do, short and specific"),
+                        "due" to str("Optional local date-time, ISO format YYYY-MM-DDTHH:MM (or YYYY-MM-DD)"),
+                        "notes" to str("Optional extra detail"),
+                        required = listOf("title"),
+                    ),
+                ),
+                required = listOf("tasks"),
             ),
             Risk.UNDOABLE,
         ),
@@ -122,6 +157,51 @@ class ToolBox(
             Risk.READ,
         ),
         Spec("read_clipboard", "Read the text the user has copied, to act on it.", obj(), Risk.READ),
+        // ── Knowledge (Phase 5, AGENT_PLAN §5) ──
+        Spec(
+            "web_search", "Search the live web. Use for news, prices, weather, scores, schedules or anything that may have changed since your training.",
+            obj("query" to str("What to look up, as a search query"), required = listOf("query")),
+            Risk.READ,
+        ),
+        Spec(
+            "read_document", "Read a document: one attached to this chat or added before (by name), or a file path from search_files. Returns its text with page numbers. Long documents come as an even sample of every page; use search_documents for specific details.",
+            obj(
+                "document" to str("The document's name (or part of it), or a full file path"),
+                "pages" to str("Optional page range to read in full, e.g. \"4\" or \"3-5\""),
+                required = listOf("document"),
+            ),
+            Risk.READ,
+        ),
+        Spec(
+            "search_documents", "Find the passages in the user's documents that answer a question. Every result carries its page, so cite it.",
+            obj(
+                "query" to str("The question or key words"),
+                "document" to str("Optional: only this document (name or part of it)"),
+                required = listOf("query"),
+            ),
+            Risk.READ,
+        ),
+        Spec(
+            "search_files", "Find files on this laptop by name and content (Windows Search). For \"the invoice from March\" use query \"invoice\" with modified_after/modified_before for March.",
+            obj(
+                "query" to str("Words in the file's name or content"),
+                "kind" to enumStr("Optional file category", *FileSearch.KINDS.toTypedArray()),
+                "modified_after" to str("Optional date YYYY-MM-DD"),
+                "modified_before" to str("Optional date YYYY-MM-DD"),
+                required = listOf("query"),
+            ),
+            Risk.READ,
+        ),
+        Spec(
+            "open_file", "Open a file (from search_files) in its default app, e.g. a PDF in the reader. Documents only, never programs.",
+            obj("path" to str("The full file path"), required = listOf("path")),
+            Risk.READ,
+        ),
+        Spec(
+            "look_at_screen", "Look at the user's screen (one screenshot) to answer a question about what is on it: an error, a page, a form. The user approves each look.",
+            obj("question" to str("What to find out from the screen"), required = listOf("question")),
+            Risk.SHARES,
+        ),
     )
 
     fun spec(name: String): Spec? = specs.firstOrNull { it.name == name }
@@ -137,7 +217,14 @@ class ToolBox(
     fun describe(name: String, args: JSONObject): String = when (name) {
         "delete_task" -> "Delete the task matching “${args.optString("task")}”"
         "forget" -> "Forget everything remembered about “${args.optString("about")}”"
+        "look_at_screen" -> "Look at your screen to answer: “${args.optString("question").take(120)}”"
         else -> name.replace('_', ' ')
+    }
+
+    /** The line under an approval card: what approving actually means. */
+    fun approvalNote(name: String): String = when (spec(name)?.risk) {
+        Risk.SHARES -> "JARVIS takes one screenshot of the screen you're on and sends it to its vision model for this question. It isn't saved."
+        else -> "This can't be undone."
     }
 
     /**
@@ -145,7 +232,7 @@ class ToolBox(
      * here only after the user approved it. Never throws — every failure becomes a result
      * the model is told about honestly.
      */
-    fun execute(name: String, rawArgs: String, sourceConversation: String?): Result { return try {
+    suspend fun execute(name: String, rawArgs: String, sourceConversation: String?): Result { return try {
         val args = runCatching { JSONObject(rawArgs.ifBlank { "{}" }) }.getOrElse { return fail("The arguments were not valid JSON.") }
         when (name) {
             "add_task" -> {
@@ -156,6 +243,26 @@ class ToolBox(
                 brain.log("task", "Added task: ${t.title}")
                 ok(JSONObject().put("added", t.title).put("due", due?.let { TaskDates.label(it, clock(), zone) }),
                     "Added task “${t.title}”" + (due?.let { " · ${TaskDates.label(it, clock(), zone)}" } ?: ""), Undo("task", t.id))
+            }
+            "add_tasks" -> {
+                val items = args.optJSONArray("tasks") ?: return fail("add_tasks needs a list of tasks.")
+                if (items.length() == 0) return fail("The task list was empty.")
+                if (items.length() > MAX_BATCH) return fail("That's more than $MAX_BATCH tasks at once. Add the most important ones first.")
+                // Check every item before adding any, so a bad date never leaves half a list behind.
+                val parsed = (0 until items.length()).map { i ->
+                    val o = items.optJSONObject(i) ?: return fail("Task ${i + 1} isn't an object.")
+                    val title = o.optString("title").trim()
+                    if (title.isEmpty()) return fail("Task ${i + 1} has no title.")
+                    val due = o.optString("due").takeIf { it.isNotBlank() }?.let { parseLocal(it) ?: return fail("I couldn't read the due date “${o.optString("due")}” for “$title”.") }
+                    Triple(title, due, o.optString("notes").ifBlank { null })
+                }
+                val added = parsed.map { (title, due, notes) -> brain.addTask(title, dueAt = due, notes = notes, sourceConversation = sourceConversation) }
+                brain.log("task", "Added ${added.size} tasks: " + added.joinToString("; ") { it.title })
+                val arr = JSONArray()
+                added.forEach { t -> arr.put(JSONObject().put("title", t.title).put("due", t.dueAt?.let { TaskDates.label(it, clock(), zone) })) }
+                ok(JSONObject().put("added", arr).put("count", added.size),
+                    "Added ${added.size} tasks: " + added.joinToString(", ") { "“${it.title}”" },
+                    Undo("tasks", added.joinToString(",") { it.id }))
             }
             "list_tasks" -> {
                 val now = clock()
@@ -248,6 +355,65 @@ class ToolBox(
                 if (text.isNullOrBlank()) fail("The clipboard has no text.")
                 else ok(JSONObject().put("clipboard", text), "Read the clipboard (${text.length} characters)")
             }
+            "web_search" -> {
+                val q = args.optString("query").trim()
+                if (q.isEmpty()) return fail("A web search needs something to look up.")
+                val web = host.webSearch(q)
+                if (web.answer.isBlank()) return fail("The web search came back empty.")
+                brain.log("web", "Searched the web: $q")
+                val src = JSONArray().apply { web.sources.forEach { put(JSONObject().put("title", it.title).put("url", it.url)) } }
+                ok(JSONObject().put("answer", web.answer).put("sources", src),
+                    "Searched the web for “$q”" + if (web.sources.isNotEmpty()) " · " + web.sources.take(3).joinToString(", ") { hostOf(it.url) } else "")
+            }
+            "read_document" -> {
+                val d = resolveDocument(args.optString("document"), sourceConversation) ?: return fail(
+                    "No document matches “${args.optString("document")}”. Ask the user to attach it (the paperclip, or drag it onto JARVIS), or find it with search_files.",
+                )
+                val range = pageRange(args.optString("pages"), d.pages)
+                val pages = brain.documentPages(d.id, range?.first ?: 1, range?.last ?: Int.MAX_VALUE).map { DocText.Page(it.first, it.second) }
+                val (text, complete) = DocText.overview(pages, d.unit, budget = READ_BUDGET)
+                ok(
+                    JSONObject().put("document", d.name).put("unit", d.unit).put("total", d.pages).put("complete", complete).put("text", text)
+                        .apply { if (!complete) put("note", "Long document: this is a sample of every ${d.unit}. Use search_documents for specific details.") },
+                    "Read “${d.name}”" + (range?.let { " · ${d.unit}s ${it.first}–${it.last}" } ?: " (${d.pages} ${d.unit}${if (d.pages == 1) "" else "s"})"),
+                )
+            }
+            "search_documents" -> {
+                val q = args.optString("query").trim()
+                val only = args.optString("document").trim().takeIf { it.isNotEmpty() }?.let {
+                    resolveDocument(it, sourceConversation) ?: return fail("No document matches “$it”.")
+                }
+                val hits = brain.searchDocuments(q, only?.id, limit = 6)
+                val arr = JSONArray()
+                hits.forEach { h -> arr.put(JSONObject().put("document", h.docName).put("where", "${h.unit} ${h.page}").put("text", h.snippet.take(900))) }
+                ok(JSONObject().put("passages", arr).apply { if (hits.isEmpty()) put("note", "Nothing matched. Try other words, or read_document for an overview.") },
+                    "Looked through ${only?.let { "“${it.name}”" } ?: "your documents"} for “$q” (${hits.size} passage${if (hits.size == 1) "" else "s"})")
+            }
+            "search_files" -> {
+                val q = FileSearch.query(args.optString("query"), args.optString("kind").ifBlank { null },
+                    args.optString("modified_after").ifBlank { null }, args.optString("modified_before").ifBlank { null })
+                    ?: return fail("Tell me what the file is called or what's in it.")
+                val found = host.searchFiles(q).take(15)
+                brain.log("files", "Searched the laptop: ${args.optString("query")}")
+                val arr = JSONArray()
+                found.forEach { f -> arr.put(JSONObject().put("name", f.name).put("path", f.path).put("modified", f.modified)) }
+                ok(JSONObject().put("files", arr).apply { if (found.isEmpty()) put("note", "No files matched. Try fewer or different words, or no dates.") },
+                    "Searched the laptop for “${args.optString("query")}” (${found.size} file${if (found.size == 1) "" else "s"})")
+            }
+            "open_file" -> {
+                val f = File(args.optString("path").trim())
+                if (!f.isFile) return fail("There's no file at that path.")
+                if (f.extension.lowercase() in NEVER_OPEN) return fail("I only open documents, not programs or scripts. To start an app, use open_app.")
+                if (!host.openFile(f.path)) return fail("Windows couldn't open “${f.name}”.")
+                brain.log("open", "Opened ${f.name}", detail = f.path)
+                ok(JSONObject().put("opened", f.name), "Opened “${f.name}”")
+            }
+            "look_at_screen" -> {
+                val answer = host.askAboutScreen(args.optString("question").ifBlank { "What is on this screen?" })
+                if (answer.isBlank()) return fail("I couldn't make out anything on the screen.")
+                brain.log("screen", "Looked at the screen")
+                ok(JSONObject().put("screen", answer), "Looked at your screen")
+            }
             else -> fail("Unknown tool “$name”.")
         }
     } catch (e: Exception) {
@@ -257,6 +423,8 @@ class ToolBox(
     /** Reverses an undoable step. Returns a line for the card, or null if nothing was left to undo. */
     fun undo(u: Undo): String? = when (u.kind) {
         "task" -> brain.task(u.id)?.let { brain.deleteTask(u.id); brain.log("undo", "Removed task: ${it.title}"); "Removed task “${it.title}”" }
+        "tasks" -> u.id.split(',').mapNotNull { id -> brain.task(id)?.also { brain.deleteTask(id) } }
+            .takeIf { it.isNotEmpty() }?.let { gone -> brain.log("undo", "Removed ${gone.size} tasks"); "Removed ${gone.size} tasks" }
         "reopen" -> brain.task(u.id)?.let { brain.setTaskDone(u.id, false); brain.log("undo", "Reopened: ${it.title}"); "Reopened “${it.title}”" }
         "reminder" -> { brain.deleteReminder(u.id); brain.log("undo", "Cancelled a reminder"); "Cancelled the reminder" }
         "note" -> { brain.deleteNote(u.id); brain.log("undo", "Deleted a note"); "Deleted the note" }
@@ -265,6 +433,35 @@ class ToolBox(
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * "this PDF", "the lease", or a path. A path is read (and kept) if it's a readable
+     * file; a name matches this chat's attachments first, then everything added before.
+     */
+    private suspend fun resolveDocument(ref: String, sourceConversation: String?): Brain.Document? {
+        val r = ref.trim().trim('"', '“', '”')
+        val attached = sourceConversation?.let { brain.attachedDocuments(it) }.orEmpty()
+        if (r.isEmpty()) return attached.lastOrNull()
+        if (r.contains(":\\") || r.contains(":/") || r.startsWith("\\\\")) {
+            val f = File(r)
+            if (f.isFile) return Library.import(brain, f, sourceConversation)
+        }
+        return attached.lastOrNull { it.name.contains(r, ignoreCase = true) || r.contains(it.name.substringBeforeLast('.'), ignoreCase = true) }
+            ?: brain.findDocuments(r).firstOrNull()
+            ?: brain.findDocuments(r.substringBeforeLast('.')).firstOrNull()
+            // "this document" / "the pdf": the only thing attached here.
+            ?: attached.singleOrNull()?.takeIf { isGenericRef(r) }
+    }
+
+    /** "4" → 4..4, "3-5" / "3–5" / "3 to 5" → 3..5, clamped to the document; blank or nonsense → null. */
+    fun pageRange(s: String, total: Int): IntRange? {
+        val m = Regex("""^\s*(\d+)\s*(?:(?:-|–|to)\s*(\d+))?\s*$""").find(s) ?: return null
+        val a = m.groupValues[1].toInt().coerceIn(1, maxOf(1, total))
+        val b = (m.groupValues[2].toIntOrNull() ?: a).coerceIn(a, maxOf(a, total))
+        return a..b
+    }
+
+    private fun hostOf(url: String) = runCatching { java.net.URI(url).host.removePrefix("www.") }.getOrNull() ?: url
 
     private fun findTasks(q: String, includeDone: Boolean): List<Brain.Task> {
         if (q.isBlank()) return emptyList()
@@ -287,6 +484,19 @@ class ToolBox(
     private fun fail(why: String) = Result(false, JSONObject().put("ok", false).put("error", why).toString(), why)
 
     companion object {
+        /** Most tasks one add_tasks call may create. */
+        const val MAX_BATCH = 25
+        /** Characters of document text handed to the model in one read (~3k tokens). */
+        const val READ_BUDGET = 12_000
+        /** Never opened by open_file, whatever the model asks: things that run code. */
+        val NEVER_OPEN = setOf(
+            "exe", "com", "bat", "cmd", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "msi", "msp", "scr",
+            "pif", "lnk", "jar", "reg", "hta", "cpl", "dll", "sys", "inf", "application", "appref-ms", "url", "gadget",
+        )
+        private val GENERIC_WORDS = setOf("this", "that", "the", "it", "attached", "my", "one", "document", "doc", "pdf", "file", "word", "docx", "text", "report")
+        /** "this document", "the attached pdf": words that point at the attachment rather than name one. */
+        fun isGenericRef(ref: String): Boolean =
+            ref.lowercase().split(Regex("""[^\p{L}\p{N}]+""")).filter { it.isNotBlank() }.let { w -> w.isNotEmpty() && w.all { it in GENERIC_WORDS } }
         private val SECRET = Regex("""(?i)\b(pin|otp|password|passcode|cvv)\b|\b\d{6}\b|\b(?:\d[ -]?){13,19}\b""")
         fun looksSecret(text: String) = SECRET.containsMatchIn(text)
 

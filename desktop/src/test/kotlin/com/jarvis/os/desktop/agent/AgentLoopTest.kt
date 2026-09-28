@@ -63,7 +63,7 @@ class AgentLoopTest {
             AgentClient.Reply("Okay, I left it.", emptyList()),
         )
         val asked = mutableListOf<String>()
-        val loop = AgentLoop(tools, script::step, approve = { asked += it; false }, onStep = { _, _ -> })
+        val loop = AgentLoop(tools, script::step, approve = { asked += it.description; false }, onStep = { _, _ -> })
         loop.run(listOf(ChatTurn(ChatTurn.USER, "delete old task")), "", null)
         assertEquals(listOf("Delete the task matching “Old task”"), asked)
         assertEquals(1, brain.openTasks().size)     // NOT deleted

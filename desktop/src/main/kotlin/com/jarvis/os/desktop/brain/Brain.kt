@@ -108,6 +108,7 @@ class Brain private constructor(private val db: Connection, private val clock: (
     fun deleteConversation(id: String) = tx {
         exec("DELETE FROM search_fts WHERE owner=?", id)
         exec("DELETE FROM messages WHERE conversation_id=?", id)
+        exec("DELETE FROM conversation_docs WHERE conversation_id=?", id)
         exec("DELETE FROM conversations WHERE id=?", id)
         unindex(id)
     }
@@ -252,6 +253,81 @@ class Brain private constructor(private val db: Connection, private val clock: (
         unindex(id)
     }
 
+    // ── Documents (AGENT_PLAN §5, S4) ────────────────────────────────────────
+
+    /**
+     * A file the user gave JARVIS: its text extracted locally, kept per page ([unit] is
+     * "page" for PDFs, "part" for page-less files) and chunked into [doc_fts] so a question
+     * pulls only the passages it needs. [path] + [modified] let a re-added file be
+     * recognised instead of stored twice.
+     */
+    data class Document(
+        val id: String, val name: String, val path: String?, val kind: String, val unit: String,
+        val pages: Int, val chars: Int, val modified: Long?, val sourceConversation: String?, val created: Long,
+    )
+    data class DocHit(val docId: String, val docName: String, val unit: String, val page: Int, val snippet: String)
+
+    fun addDocument(
+        name: String, kind: String, unit: String, pages: List<Pair<Int, String>>, chunks: List<Pair<Int, String>>,
+        path: String? = null, modified: Long? = null, sourceConversation: String? = null,
+    ): Document {
+        val d = Document(newId(), name, path, kind, unit, pages.size, pages.sumOf { it.second.length }, modified, sourceConversation, clock())
+        tx {
+            exec(
+                "INSERT INTO documents(id,name,path,kind,unit,pages,chars,modified,source_conversation,created) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                d.id, d.name, d.path, d.kind, d.unit, d.pages, d.chars, d.modified, d.sourceConversation, d.created,
+            )
+            pages.forEach { (n, text) -> exec("INSERT INTO doc_pages(doc_id,page,text) VALUES(?,?,?)", d.id, n, text) }
+            chunks.forEach { (n, text) -> exec("INSERT INTO doc_fts(doc_id,page,text) VALUES(?,?,?)", d.id, n, text) }
+            // The name is findable from the one search box too.
+            index("document", d.id, d.name, "")
+        }
+        return d
+    }
+
+    fun document(id: String): Document? = query("SELECT * FROM documents WHERE id=?", id) { doc(it) }.firstOrNull()
+    fun documents(): List<Document> = query("SELECT * FROM documents ORDER BY created DESC") { doc(it) }
+
+    /** The stored copy of the file at [path], if it hasn't changed since ([modified]). */
+    fun documentFor(path: String, modified: Long): Document? =
+        query("SELECT * FROM documents WHERE path=? AND modified=? ORDER BY created DESC LIMIT 1", path, modified) { doc(it) }.firstOrNull()
+
+    /** Documents whose name contains [q] (case-insensitive), newest first. */
+    fun findDocuments(q: String): List<Document> {
+        val needle = q.trim()
+        if (needle.isEmpty()) return emptyList()
+        return query("SELECT * FROM documents WHERE instr(lower(name), lower(?)) > 0 ORDER BY created DESC", needle) { doc(it) }
+    }
+
+    /** Pages [from]..[to] of a document, in order. */
+    fun documentPages(id: String, from: Int = 1, to: Int = Int.MAX_VALUE): List<Pair<Int, String>> =
+        query("SELECT page, text FROM doc_pages WHERE doc_id=? AND page BETWEEN ? AND ? ORDER BY page", id, from, to) { it.getInt(1) to it.getString(2) }
+
+    /** The best passages for [text], optionally within one document. Every hit carries its page. */
+    fun searchDocuments(text: String, docId: String? = null, limit: Int = 6): List<DocHit> {
+        val q = ftsQuery(text, all = false) ?: return emptyList()
+        val sql = "SELECT f.doc_id, d.name, d.unit, f.page, f.text FROM doc_fts f JOIN documents d ON d.id = f.doc_id " +
+            "WHERE doc_fts MATCH ?" + (if (docId != null) " AND f.doc_id = ?" else "") + " ORDER BY rank LIMIT ?"
+        val args = if (docId != null) arrayOf<Any?>(q, docId, limit) else arrayOf<Any?>(q, limit)
+        return query(sql, *args) { DocHit(it.getString(1), it.getString(2), it.getString(3), it.getInt(4), it.getString(5)) }
+    }
+
+    fun deleteDocument(id: String) = tx {
+        exec("DELETE FROM doc_fts WHERE doc_id=?", id)
+        exec("DELETE FROM doc_pages WHERE doc_id=?", id)
+        exec("DELETE FROM conversation_docs WHERE doc_id=?", id)
+        exec("DELETE FROM documents WHERE id=?", id)
+        unindex(id)
+    }
+
+    /** Links a document to a chat ("attached here"), so the agent knows what "this PDF" is. */
+    fun attachDocument(conversationId: String, docId: String) =
+        exec("INSERT OR IGNORE INTO conversation_docs(conversation_id,doc_id,created) VALUES(?,?,?)", conversationId, docId, clock())
+
+    fun attachedDocuments(conversationId: String): List<Document> = query(
+        "SELECT d.* FROM documents d JOIN conversation_docs c ON c.doc_id = d.id WHERE c.conversation_id=? ORDER BY c.created", conversationId,
+    ) { doc(it) }
+
     // ── Activity ─────────────────────────────────────────────────────────────
 
     /** Every action JARVIS takes is logged here (AGENT_PLAN §4) — the user can see what it did. */
@@ -323,6 +399,11 @@ class Brain private constructor(private val db: Connection, private val clock: (
         r.getString("project_id"), r.getString("source_conversation"), r.getLong("created"), r.getLongOrNull("completed_at"),
     )
 
+    private fun doc(r: ResultSet) = Document(
+        r.getString("id"), r.getString("name"), r.getString("path"), r.getString("kind"), r.getString("unit"),
+        r.getInt("pages"), r.getInt("chars"), r.getLongOrNull("modified"), r.getString("source_conversation"), r.getLong("created"),
+    )
+
     private fun rem(r: ResultSet) = Reminder(
         r.getString("id"), r.getString("text"), r.getLong("at"), r.getString("recurrence"), r.getInt("delivered") == 1, r.getString("task_id"),
     )
@@ -364,6 +445,10 @@ class Brain private constructor(private val db: Connection, private val clock: (
             SCHEMA_V1.forEach { exec(it) }
             exec("INSERT OR REPLACE INTO meta(key,value) VALUES('schema','1')")
         }
+        if (version < 2) tx {
+            SCHEMA_V2.forEach { exec(it) }
+            exec("INSERT OR REPLACE INTO meta(key,value) VALUES('schema','2')")
+        }
     }
 
     companion object {
@@ -390,11 +475,33 @@ class Brain private constructor(private val db: Connection, private val clock: (
          * term (`"budg"*`), so punctuation or FTS operators in the input can never break the
          * query or change its meaning. Null when there are no words.
          */
-        fun ftsQuery(text: String): String? {
-            val words = Regex("[\\p{L}\\p{N}]+").findAll(text.lowercase()).map { it.value }.filter { it.isNotBlank() }.take(8).toList()
+        fun ftsQuery(text: String, all: Boolean = true): String? {
+            val words = Regex("[\\p{L}\\p{N}]+").findAll(text.lowercase()).map { it.value }.filter { it.isNotBlank() }
+                .let { w -> if (all) w else w.filter { it.length > 1 && it !in STOP_WORDS } }
+                .distinct().take(if (all) 8 else 12).toList()
             if (words.isEmpty()) return null
-            return words.joinToString(" ") { "\"$it\"*" }
+            // all = every word must appear (the search box). Otherwise any word may, ranked by
+            // relevance: a question about a document ("what is the late fee") rarely repeats
+            // its wording exactly.
+            return words.joinToString(if (all) " " else " OR ") { "\"$it\"*" }
         }
+
+        private val STOP_WORDS = setOf(
+            "the", "an", "and", "or", "of", "to", "in", "on", "for", "is", "are", "was", "were", "be",
+            "what", "which", "who", "when", "where", "how", "does", "do", "did", "it", "this", "that", "with",
+            "about", "from", "by", "as", "at", "me", "my", "tell", "say", "says", "document", "pdf", "file",
+        )
+
+        /** v2 (Phase 5): documents, their pages, a passage index, and which chat each is attached to. */
+        private val SCHEMA_V2 = listOf(
+            """CREATE TABLE documents(id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT, kind TEXT NOT NULL, unit TEXT NOT NULL,
+               pages INTEGER NOT NULL, chars INTEGER NOT NULL, modified INTEGER, source_conversation TEXT, created INTEGER NOT NULL)""",
+            "CREATE INDEX documents_by_path ON documents(path, modified)",
+            "CREATE TABLE doc_pages(doc_id TEXT NOT NULL, page INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY(doc_id, page))",
+            """CREATE VIRTUAL TABLE doc_fts USING fts5(doc_id UNINDEXED, page UNINDEXED, text,
+               tokenize='unicode61 remove_diacritics 2')""",
+            "CREATE TABLE conversation_docs(conversation_id TEXT NOT NULL, doc_id TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(conversation_id, doc_id))",
+        )
 
         private val SCHEMA_V1 = listOf(
             """CREATE TABLE projects(id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT,

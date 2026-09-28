@@ -16,8 +16,8 @@ class AgentLoop(
     private val tools: ToolBox,
     /** One model step (production: [AgentClient.step]). */
     private val step: suspend (messages: JSONArray, context: String, tools: JSONArray) -> AgentClient.Reply,
-    /** Asks the user about an irreversible step; true = approved. */
-    private val approve: suspend (description: String) -> Boolean,
+    /** Asks the user about a step that needs their OK (irreversible, or shares something); true = approved. */
+    private val approve: suspend (Ask) -> Boolean,
     /** Reports each executed (or refused) step, for the chat's step cards. */
     private val onStep: (AgentClient.ToolCall, ToolBox.Result) -> Unit,
     private val maxSteps: Int = MAX_STEPS,
@@ -42,10 +42,10 @@ class AgentLoop(
     private suspend fun runOne(call: AgentClient.ToolCall, sourceConversation: String?): ToolBox.Result {
         val spec = tools.spec(call.name)
             ?: return ToolBox.Result(false, JSONObject().put("ok", false).put("error", "No such tool.").toString(), "Tried an unknown action “${call.name}”")
-        if (spec.risk == ToolBox.Risk.IRREVERSIBLE) {
+        if (spec.risk.needsApproval) {
             val args = runCatching { JSONObject(call.arguments) }.getOrDefault(JSONObject())
             val description = tools.describe(call.name, args)
-            if (!approve(description)) {
+            if (!approve(Ask(description, tools.approvalNote(call.name)))) {
                 return ToolBox.Result(
                     false,
                     JSONObject().put("ok", false).put("error", "The user declined this. Do not retry it; acknowledge briefly.").toString(),
@@ -55,6 +55,9 @@ class AgentLoop(
         }
         return tools.execute(call.name, call.arguments, sourceConversation)
     }
+
+    /** What the approval card shows: the step, and what approving it means. */
+    data class Ask(val description: String, val note: String)
 
     companion object {
         const val MAX_STEPS = 6

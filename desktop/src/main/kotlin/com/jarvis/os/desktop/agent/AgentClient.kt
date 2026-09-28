@@ -23,22 +23,31 @@ object AgentClient {
     data class ToolCall(val id: String, val name: String, val arguments: String)
     data class Reply(val text: String, val toolCalls: List<ToolCall>)
 
-    suspend fun step(messages: JSONArray, context: String, tools: JSONArray): Reply = withContext(Dispatchers.IO) {
+    suspend fun step(messages: JSONArray, context: String, tools: JSONArray): Reply {
         val payload = JSONObject().put("messages", messages).put("tools", tools).apply {
             if (context.isNotBlank()) put("context", context)
         }.toString()
-        var res = post(Identity.token(), payload)
-        if (res.first == 401) res = post(Identity.forceRefresh(), payload)
+        return parse(postJson("/chat", payload))
+    }
+
+    /**
+     * POSTs JSON to a metered Worker route (/chat, /search, /vision) with this laptop's
+     * credentials; refreshes the token once on a 401; records the plan and allowance the
+     * Worker reports. Returns the body, or throws [ProxyException] with a speakable sentence.
+     */
+    suspend fun postJson(path: String, payload: String, readTimeoutMs: Int = 45_000): String = withContext(Dispatchers.IO) {
+        var res = post(path, Identity.token(), payload, readTimeoutMs)
+        if (res.first == 401) res = post(path, Identity.forceRefresh(), payload, readTimeoutMs)
         val (code, body) = res
         // JARVIS_AGENT_DEBUG=1: print the exchange (no credentials are in either side).
         if (System.getenv("JARVIS_AGENT_DEBUG") == "1") {
-            System.err.println(">>> ${payload.take(4000)}")
+            System.err.println(">>> $path ${payload.take(4000)}")
             System.err.println("<<< $code ${body.take(2000)}")
         }
         if (code !in 200..299) throw ProxyException(if (code == 0) "I couldn't reach my server — check the internet connection." else ProxyClient.errorMessage(code, body))
         ProxyClient.parsePlan(body)?.let { Identity.cachePlan(it) }
         ProxyClient.parseRemaining(body)?.let { UsageStats.record(ProxyClient.parsePlan(body), it) }
-        parse(body)
+        body
     }
 
     /** Pure; tested. */
@@ -65,12 +74,12 @@ object AgentClient {
     fun toolResultMessage(callId: String, content: String): JSONObject =
         JSONObject().put("role", "tool").put("tool_call_id", callId).put("content", content)
 
-    private fun post(token: String, payload: String): Pair<Int, String> {
-        val conn = URL(BuildConfig.WORKER_URL.trimEnd('/') + "/chat").openConnection() as HttpURLConnection
+    private fun post(path: String, token: String, payload: String, readTimeoutMs: Int): Pair<Int, String> {
+        val conn = URL(BuildConfig.WORKER_URL.trimEnd('/') + path).openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.doOutput = true
         conn.connectTimeout = 15000
-        conn.readTimeout = 45000
+        conn.readTimeout = readTimeoutMs
         conn.setRequestProperty("Content-Type", "application/json")
         conn.setRequestProperty("X-Proxy-Secret", BuildConfig.PROXY_SECRET)
         conn.setRequestProperty("Authorization", "Bearer $token")

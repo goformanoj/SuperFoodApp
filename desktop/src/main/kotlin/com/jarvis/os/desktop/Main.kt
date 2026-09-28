@@ -1,6 +1,10 @@
 package com.jarvis.os.desktop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.material3.Text
+import androidx.compose.ui.draganddrop.awtTransferable
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -40,6 +44,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.jarvis.os.desktop.ui.ActivityScreen
+import com.jarvis.os.desktop.ui.FilesScreen
 import com.jarvis.os.desktop.ui.AppearanceScreen
 import com.jarvis.os.desktop.ui.SearchOverlay
 import com.jarvis.os.desktop.ui.TasksScreen
@@ -63,7 +68,9 @@ import java.awt.Dimension
  *   --home            open on a fresh chat (the cockpit) instead of the last conversation
  *   --screen=<name>   open on a section, e.g. --screen=appearance
  *   --theme=<id>      preview a theme for this run without saving it (arc, forge, nebula, orbit)
+ *   --attach=<path>   start with that file in the composer, as if it had been dropped in
  */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun main(args: Array<String>) = application {
     val scope = rememberCoroutineScope()
     val assistant = remember { DesktopAssistant(scope).also { if ("--home" in args) it.newChat() } }
@@ -125,6 +132,15 @@ fun main(args: Array<String>) = application {
             Item("Quit JARVIS", onClick = ::saveAndExit)
         },
     )
+    // A screenshot steps JARVIS out of the way for a moment, then brings it back.
+    LaunchedEffect(Unit) {
+        args.firstOrNull { it.startsWith("--attach=") }?.substringAfter("=")?.let { assistant.attach(listOf(java.io.File(it))) }
+        assistant.windowControl = object : DesktopAssistant.WindowControl {
+            override val visible: Boolean get() = windowVisible
+            override fun hide() { windowVisible = false }
+            override fun show() { windowVisible = true }
+        }
+    }
     fun hideToTray() {
         windowVisible = false
         if (!toldAboutTray) {
@@ -183,7 +199,29 @@ fun main(args: Array<String>) = application {
         DesktopTheme(appearance.palette) {
             val home = screen == Screen.Chat && !hasConversation(assistant)
 
-            BoxWithConstraints(Modifier.fillMaxSize().background(appearance.palette.background)) {
+            // Drop files anywhere on the window: JARVIS reads them in and puts them in the composer.
+            var dropHover by remember { mutableStateOf(false) }
+            val dropTarget = remember {
+                object : androidx.compose.ui.draganddrop.DragAndDropTarget {
+                    override fun onEntered(event: androidx.compose.ui.draganddrop.DragAndDropEvent) { dropHover = true }
+                    override fun onExited(event: androidx.compose.ui.draganddrop.DragAndDropEvent) { dropHover = false }
+                    override fun onEnded(event: androidx.compose.ui.draganddrop.DragAndDropEvent) { dropHover = false }
+                    override fun onDrop(event: androidx.compose.ui.draganddrop.DragAndDropEvent): Boolean {
+                        dropHover = false
+                        val t = event.awtTransferable
+                        if (!t.isDataFlavorSupported(java.awt.datatransfer.DataFlavor.javaFileListFlavor)) return false
+                        val files = (t.getTransferData(java.awt.datatransfer.DataFlavor.javaFileListFlavor) as? List<*>).orEmpty().filterIsInstance<java.io.File>()
+                        if (files.isEmpty()) return false
+                        assistant.attach(files)
+                        screen = Screen.Chat
+                        return true
+                    }
+                }
+            }
+            BoxWithConstraints(
+                Modifier.fillMaxSize().background(appearance.palette.background)
+                    .dragAndDropTarget(shouldStartDragAndDrop = { true }, target = dropTarget),
+            ) {
                 val wide = maxWidth >= 1200.dp
 
                 // The theme's world, behind EVERY screen — as on the phone. Live only on
@@ -207,13 +245,18 @@ fun main(args: Array<String>) = application {
                             Screen.Settings -> SettingsScreen(assistant)
                             Screen.Tasks -> TasksScreen(assistant, ::openConversation)
                             Screen.Scheduled -> ComingSoon(screen, "PHASE 4", "Reminders that pop up as Windows notifications, and routines that run by themselves: “every weekday at 8, brief me”, “remind me at 6 to call mom”.")
-                            Screen.Files -> ComingSoon(screen, "PHASE 5", "Your documents and the notes JARVIS writes — drop a PDF in, ask about it, turn it into tasks.")
+                            Screen.Files -> FilesScreen(assistant, onAsk = { screen = Screen.Chat }, onOpenConversation = ::openConversation)
                             Screen.Automations -> ComingSoon(screen, "PHASE 7", "Your devices working together: “on my phone, set an alarm” from the laptop, and the other way round.")
                         }
                     }
                     if (wide && screen == Screen.Chat && hasConversation(assistant)) {
                         Divider()
                         TodayRail(assistant, telemetry) { screen = Screen.Memory }
+                    }
+                }
+                if (dropHover) {
+                    Box(Modifier.fillMaxSize().background(Color(0xCC05080D)), contentAlignment = Alignment.Center) {
+                        Text("DROP TO GIVE JARVIS THIS FILE", color = J.Accent, fontFamily = J.Display, fontSize = 18.sp, letterSpacing = 3.sp)
                     }
                 }
                 if (searchOpen) {

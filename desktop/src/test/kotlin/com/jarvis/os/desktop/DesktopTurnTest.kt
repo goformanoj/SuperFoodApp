@@ -118,4 +118,40 @@ class DesktopTurnTest {
     fun contextOmitsEmptyMemory() {
         assertFalse(DesktopTurn.context("Sunday", "").endsWith("\n\n"))
     }
+
+    // ── Phase 5: attachments ride on the message ──
+
+    @Test
+    fun attachmentLinesAreSplitFromTheWords() {
+        val (marks, text) = DesktopTurn.splitAttachments("📎 lease.pdf\n🖥 Screenshot of my screen\nWhat's the notice period?")
+        assertEquals(listOf("📎 lease.pdf", "🖥 Screenshot of my screen"), marks)
+        assertEquals("What's the notice period?", text)
+        // A message with no attachments is all words, even one that mentions a clip later.
+        assertEquals(emptyList<String>() to "hi\n📎 not a mark here", DesktopTurn.splitAttachments("hi\n📎 not a mark here"))
+    }
+
+    @Test
+    fun theTitleComesFromTheQuestionNotTheAttachment() {
+        assertEquals("Summarise lease.pdf.", DesktopTurn.titleFor(listOf(ChatTurn(ChatTurn.USER, "📎 lease.pdf\nSummarise lease.pdf."))))
+    }
+
+    @Test
+    fun theCalendarNamesRealWeekdaysForThisWeekAndNext() {
+        // Monday 28 September 2026 (the live bug: "by Friday" became Thursday 1 Oct).
+        val w = DesktopTurn.weekAhead(java.time.LocalDate.of(2026, 9, 28))
+        assertTrue(w, w.startsWith("Rest of this week: Tue 29 Sep, Wed 30 Sep, Thu 1 Oct, Fri 2 Oct, Sat 3 Oct, Sun 4 Oct."))
+        assertTrue(w.endsWith("Next week: Mon 5 Oct, Tue 6 Oct, Wed 7 Oct, Thu 8 Oct, Fri 9 Oct, Sat 10 Oct, Sun 11 Oct."))
+        // On a Sunday there is no rest of the week.
+        assertTrue(DesktopTurn.weekAhead(java.time.LocalDate.of(2026, 10, 4)).startsWith("Next week: Mon 5 Oct"))
+        assertTrue(DesktopTurn.context("Monday", "", today = java.time.LocalDate.of(2026, 9, 28)).contains("Fri 2 Oct"))
+    }
+
+    @Test
+    fun contextNamesTheAttachedDocumentsAndTheKnowledgeTools() {
+        val c = DesktopTurn.context("Sunday", "", listOf("lease.pdf (12 pages)"))
+        assertTrue(c.contains("Documents attached to this chat"))
+        assertTrue(c.contains("lease.pdf (12 pages)"))
+        assertTrue(c.contains("search the web"))
+        assertFalse(DesktopTurn.context("Sunday", "").contains("Documents attached"))
+    }
 }

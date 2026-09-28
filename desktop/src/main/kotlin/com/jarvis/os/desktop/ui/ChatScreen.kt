@@ -6,7 +6,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,7 +36,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Computer
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Monitor
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Stop
@@ -306,7 +311,7 @@ private fun Conversation(a: DesktopAssistant) {
             a.pendingApproval?.let { ap ->
                 item {
                     Box(Modifier.widthIn(max = 780.dp).fillMaxWidth().padding(horizontal = 40.dp)) {
-                        ApprovalCard(ap.description, onApprove = { a.resolveApproval(true) }, onCancel = { a.resolveApproval(false) })
+                        ApprovalCard(ap.description, ap.note, onApprove = { a.resolveApproval(true) }, onCancel = { a.resolveApproval(false) })
                     }
                 }
             }
@@ -319,16 +324,45 @@ private fun Conversation(a: DesktopAssistant) {
 }
 
 @Composable
-private fun UserMessage(text: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        val shape = HudShapeSmall
-        Text(
-            text,
-            color = J.Text, fontSize = 15.sp, lineHeight = 23.sp,
-            modifier = Modifier.widthIn(max = 560.dp).clip(shape)
-                .background(J.Accent.copy(alpha = 0.16f)).border(1.dp, J.Accent.copy(alpha = 0.38f), shape)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        )
+private fun UserMessage(content: String) {
+    // What came with the message (files, a screenshot) shows as chips above the words.
+    val (marks, text) = DesktopTurn.splitAttachments(content)
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        marks.forEach { m ->
+            val shot = m.startsWith(DesktopTurn.SHOT_MARK)
+            FileChip(if (shot) Icons.Outlined.Monitor else Icons.Outlined.Description, m.drop(if (shot) DesktopTurn.SHOT_MARK.length else DesktopTurn.DOC_MARK.length).trim(), null)
+        }
+        if (text.isNotEmpty()) {
+            val shape = HudShapeSmall
+            Text(
+                text,
+                color = J.Text, fontSize = 15.sp, lineHeight = 23.sp,
+                modifier = Modifier.widthIn(max = 560.dp).clip(shape)
+                    .background(J.Accent.copy(alpha = 0.16f)).border(1.dp, J.Accent.copy(alpha = 0.38f), shape)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+        }
+    }
+}
+
+/** A file (or screenshot) riding with a message; [onRemove] adds the ✕ while it's still in the composer. */
+@Composable
+private fun FileChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, detail: String?, onRemove: (() -> Unit)? = null) {
+    Row(
+        Modifier.height(34.dp).clip(HudShapeSmall).background(J.Card).border(1.dp, J.CardBorder, HudShapeSmall).padding(start = 10.dp, end = if (onRemove != null) 4.dp else 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = J.Accent, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = J.Text, fontSize = 13.sp, maxLines = 1, modifier = Modifier.widthIn(max = 260.dp))
+        if (detail != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(detail, color = J.TextDim, fontSize = 12.sp, maxLines = 1)
+        }
+        if (onRemove != null) {
+            Spacer(Modifier.width(4.dp))
+            Icon(Icons.Outlined.Close, "Remove", tint = J.TextDim, modifier = Modifier.size(26.dp).clip(CircleShape).clicky(onRemove).padding(5.dp))
+        }
     }
 }
 
@@ -446,7 +480,8 @@ private fun Composer(a: DesktopAssistant, textState: MutableState<String>, focus
     var text by textState
     LaunchedEffect(a.activeId) { focus.requestFocus() }
     fun send() { if (a.send(text)) text = "" }
-    val canSend = text.isNotBlank() && !a.thinking
+    val hasAttachments = a.pendingDocs.isNotEmpty() || a.pendingShot != null
+    val canSend = (text.isNotBlank() || hasAttachments) && !a.thinking && a.importing == 0
 
     Box(Modifier.fillMaxWidth().padding(start = 40.dp, end = 40.dp, top = 12.dp, bottom = 22.dp), contentAlignment = Alignment.Center) {
         Column(
@@ -455,11 +490,36 @@ private fun Composer(a: DesktopAssistant, textState: MutableState<String>, focus
                 .hudBrackets(J.Accent, inset = 3.dp)
                 .padding(start = 18.dp, end = 12.dp, top = 14.dp, bottom = 10.dp),
         ) {
+            // What will go with the next message: files (read locally already) and a screenshot.
+            if (hasAttachments || a.importing > 0) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    a.pendingShotPreview?.let { img ->
+                        Box(Modifier.height(54.dp).clip(HudShapeSmall).border(1.dp, J.Accent.copy(alpha = 0.6f), HudShapeSmall)) {
+                            Image(img, "Screenshot to send", modifier = Modifier.height(54.dp))
+                            Icon(
+                                Icons.Outlined.Close, "Discard screenshot", tint = J.Text,
+                                modifier = Modifier.align(Alignment.TopEnd).padding(3.dp).size(20.dp).clip(CircleShape)
+                                    .background(Color(0xAA000000)).clicky { a.discardShot() }.padding(3.dp),
+                            )
+                        }
+                    }
+                    a.pendingDocs.forEach { d ->
+                        // Real pages mean something (PDF); "parts" are an internal cut, not worth showing.
+                        FileChip(Icons.Outlined.Description, d.name, if (d.unit == "page") "${d.pages} page${if (d.pages == 1) "" else "s"}" else null) { a.removePending(d.id) }
+                    }
+                    if (a.importing > 0) Text("Reading ${if (a.importing == 1) "file" else "${a.importing} files"}…", color = J.Accent, fontSize = 12.sp)
+                }
+            }
             Box {
                 if (text.isEmpty()) Text(
-                    when (a.voice) {
-                        DesktopAssistant.Voice.Listening -> "Listening… speak now — I'll stop when you pause"
-                        DesktopAssistant.Voice.Transcribing -> "Transcribing…"
+                    when {
+                        a.voice == DesktopAssistant.Voice.Listening -> "Listening… speak now — I'll stop when you pause"
+                        a.voice == DesktopAssistant.Voice.Transcribing -> "Transcribing…"
+                        a.pendingShot != null -> "Ask about your screen… (Enter sends it with the screenshot)"
+                        a.pendingDocs.isNotEmpty() -> "Ask about ${if (a.pendingDocs.size == 1) a.pendingDocs[0].name else "these files"}, or press Enter for a summary"
                         else -> "Ask anything, or tell JARVIS what to do… (Ctrl+Space to talk)"
                     },
                     color = if (a.voice == DesktopAssistant.Voice.Listening) J.Accent else J.TextFaint, fontSize = 15.sp,
@@ -479,8 +539,17 @@ private fun Composer(a: DesktopAssistant, textState: MutableState<String>, focus
             }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Hint("Attaching files arrives with Tasks (Phase 3)") {
-                    Icon(Icons.Outlined.AttachFile, "Attach a file", tint = J.TextFaint, modifier = Modifier.size(36.dp).padding(8.dp))
+                Hint("Give JARVIS a file: PDF, Word or text (or drag it onto the window)") {
+                    Icon(
+                        Icons.Outlined.AttachFile, "Attach a file", tint = J.Accent,
+                        modifier = Modifier.size(36.dp).clip(CircleShape).clicky { pickFiles()?.let { a.attach(it) } }.padding(8.dp),
+                    )
+                }
+                Hint(if (a.capturing) "Taking a screenshot…" else "Ask about your screen: JARVIS steps aside, takes one screenshot, and shows it here before anything is sent") {
+                    Icon(
+                        Icons.Outlined.Monitor, "Ask about my screen", tint = if (a.capturing) J.TextFaint else J.Accent,
+                        modifier = Modifier.size(36.dp).clip(CircleShape).clicky { a.captureForQuestion() }.padding(8.dp),
+                    )
                 }
                 Spacer(Modifier.width(4.dp))
                 Row(
@@ -608,7 +677,7 @@ private fun StepCard(card: ActionCard, onUndo: () -> Unit) {
 
 /** An irreversible step waiting for the user — nothing happens until they click (Rule 6). */
 @Composable
-private fun ApprovalCard(description: String, onApprove: () -> Unit, onCancel: () -> Unit) {
+private fun ApprovalCard(description: String, note: String, onApprove: () -> Unit, onCancel: () -> Unit) {
     Column(
         Modifier.padding(start = 46.dp).fillMaxWidth().clip(HudShape).background(Color(0x14FF9F1C))
             .border(1.dp, Color(0x88FF9F1C), HudShape).padding(14.dp),
@@ -616,7 +685,7 @@ private fun ApprovalCard(description: String, onApprove: () -> Unit, onCancel: (
         Text("NEEDS YOUR OK", color = Color(0xFFFFC266), fontSize = 10.sp, fontFamily = J.Display, letterSpacing = 1.5.sp)
         Spacer(Modifier.height(6.dp))
         Text("$description?", color = J.Text, fontSize = 14.sp)
-        Text("This can't be undone.", color = J.TextDim, fontSize = 12.sp)
+        Text(note, color = J.TextDim, fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -629,4 +698,14 @@ private fun ApprovalCard(description: String, onApprove: () -> Unit, onCancel: (
             )
         }
     }
+}
+
+/** The Windows file picker, showing the kinds JARVIS can read. Null when cancelled. */
+fun pickFiles(): List<java.io.File>? {
+    val d = java.awt.FileDialog(null as java.awt.Frame?, "Give JARVIS a file", java.awt.FileDialog.LOAD)
+    d.isMultipleMode = true
+    // Windows reads a ';'-separated pattern list here (FilenameFilter is ignored on Windows).
+    d.file = com.jarvis.os.desktop.knowledge.DocText.KINDS.joinToString(";") { "*.$it" }
+    d.isVisible = true
+    return d.files?.toList()?.takeIf { it.isNotEmpty() }
 }

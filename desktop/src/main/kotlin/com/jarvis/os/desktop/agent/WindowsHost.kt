@@ -1,5 +1,7 @@
 package com.jarvis.os.desktop.agent
 
+import com.jarvis.os.desktop.knowledge.FileSearch
+import com.jarvis.os.desktop.knowledge.KnowledgeClient
 import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
@@ -13,8 +15,17 @@ import java.net.URI
  *    or a handful of built-in Windows tools — never an arbitrary executable path or a
  *    shell command, so a model can't be talked into running something unexpected.
  *  - The clipboard is read, never written.
+ *  - Files open with their default app, and only documents (ToolBox refuses programs and
+ *    scripts before this is ever called).
+ *  - The screen is captured only through [captureScreen], which the app wires to hide its
+ *    own window for the moment of the shot.
  */
-class WindowsHost : ToolBox.Host {
+class WindowsHost(
+    /** The grounding line for web searches (the current date/time), so "latest" means now. */
+    private val context: () -> String = { "" },
+    /** One JPEG of the screen the user is on. */
+    private val captureScreen: (suspend () -> ByteArray)? = null,
+) : ToolBox.Host {
 
     private val builtIns = mapOf(
         "notepad" to "notepad.exe", "calculator" to "calc.exe", "calc" to "calc.exe",
@@ -32,6 +43,19 @@ class WindowsHost : ToolBox.Host {
         }
         val shortcut = findShortcut(key) ?: return null
         return runCatching { Desktop.getDesktop().open(shortcut); shortcut.nameWithoutExtension }.getOrNull()
+    }
+
+    override fun openFile(path: String): Boolean = runCatching {
+        Desktop.getDesktop().open(File(path)); true
+    }.getOrDefault(false)
+
+    override suspend fun webSearch(query: String) = KnowledgeClient.webSearch(query, context())
+
+    override suspend fun searchFiles(q: FileSearch.Query) = FileSearch.run(q)
+
+    override suspend fun askAboutScreen(question: String): String {
+        val shot = captureScreen ?: throw UnsupportedOperationException("Looking at the screen isn't available here.")
+        return KnowledgeClient.askAboutImage(shot(), question, context())
     }
 
     override fun clipboardText(): String? = runCatching {

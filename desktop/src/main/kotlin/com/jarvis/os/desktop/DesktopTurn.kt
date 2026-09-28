@@ -22,6 +22,17 @@ object DesktopTurn {
     /** Remembered facts are capped because they ride on every request (phone: MAX_FACTS). */
     const val MAX_FACTS = 40
 
+    /** Leading lines of a user message that record what came with it (a file, a screenshot). */
+    const val DOC_MARK = "📎"
+    const val SHOT_MARK = "🖥"
+
+    /** Splits a user message into its attachment lines and the words the user typed. Pure; tested. */
+    fun splitAttachments(content: String): Pair<List<String>, String> {
+        val lines = content.lines()
+        val marks = lines.takeWhile { it.startsWith(DOC_MARK) || it.startsWith(SHOT_MARK) }
+        return marks to lines.drop(marks.size).joinToString("\n").trim()
+    }
+
     const val PHONE_ONLY_NOTE =
         "That's something I can only do on your phone for now — desktop control is coming."
 
@@ -77,6 +88,7 @@ object DesktopTurn {
     /** Sidebar title for a conversation: its first user line, trimmed to fit. */
     fun titleFor(turns: List<ChatTurn>): String {
         val first = turns.firstOrNull { it.role == ChatTurn.USER }?.content
+            ?.let { splitAttachments(it).second }
             ?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
             ?: return "New chat"
         val clean = Markers.strip(first).replace(Regex("\\s+"), " ").trim().ifEmpty { return "New chat" }
@@ -96,16 +108,35 @@ object DesktopTurn {
      * The grounding context for a desktop turn. Tells the model where it is running
      * and what it cannot do here, so it answers in words instead of phone markers.
      */
-    fun context(nowText: String, memory: String): String = listOf(
-        "Current date/time: $nowText.",
-        // The agent's tools cover tasks, reminders, notes, memory, search and opening apps or
-        // sites; this line must NOT contradict them. (An older version said reminders were
-        // unavailable, and the live model obeyed it — asking questions instead of acting.)
+    /**
+     * The calendar the model should read dates from, rather than work them out:
+     * "Rest of this week: Tue 29 Sep, … Sun 4 Oct. Next week: Mon 5 Oct, … Sun 11 Oct."
+     * Models do weekday arithmetic badly (live: "by Friday" became Thursday 1 Oct, and
+     * "next Tuesday" a Monday); a lookup they can't miss. Weeks run Monday to Sunday.
+     */
+    fun weekAhead(today: java.time.LocalDate): String {
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.ENGLISH)
+        val nextMonday = today.with(java.time.temporal.TemporalAdjusters.next(java.time.DayOfWeek.MONDAY))
+        val rest = generateSequence(today.plusDays(1)) { it.plusDays(1) }.takeWhile { it < nextMonday }.toList()
+        val next = (0L..6L).map { nextMonday.plusDays(it) }
+        return (if (rest.isEmpty()) "" else "Rest of this week: " + rest.joinToString(", ") { it.format(fmt) } + ". ") +
+            "Next week: " + next.joinToString(", ") { it.format(fmt) } + "."
+    }
+
+    fun context(nowText: String, memory: String, attachedDocs: List<String> = emptyList(), today: java.time.LocalDate? = null): String = listOf(
+        "Current date/time: $nowText." + (today?.let { " " + weekAhead(it) } ?: ""),
+        // The agent's tools cover tasks, reminders, notes, memory, search, documents, files,
+        // the web and the screen; this line must NOT contradict them. (An older version said
+        // reminders were unavailable, and the live model obeyed it, asking instead of acting.)
         "The user is talking to you in the JARVIS desktop app on their Windows laptop. Use your " +
             "tools to add tasks, set reminders, save notes, remember things, search their past " +
-            "chats and open apps or websites. Phone-only actions (calls, texts, phone alarms, " +
+            "chats, read their documents, find files on the laptop, search the web, look at the " +
+            "screen, and open apps, files or websites. Phone-only actions (calls, texts, phone alarms, " +
             "tapping inside phone apps) aren't available from the laptop: do not emit any " +
             "device-action marker; say those work from the phone.",
+        if (attachedDocs.isEmpty()) "" else
+            "Documents attached to this chat (read them with read_document; \"this\" or \"it\" means the latest): " +
+                attachedDocs.joinToString("; ") + ".",
         memory,
     ).filter { it.isNotBlank() }.joinToString("\n\n")
 }

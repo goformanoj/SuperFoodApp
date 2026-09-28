@@ -3,6 +3,7 @@ package com.jarvis.os.desktop
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import com.jarvis.os.ai.GroqClient
 import com.jarvis.os.ai.Identity
 import com.jarvis.os.ai.ProxyClient
@@ -17,6 +18,9 @@ import com.jarvis.os.desktop.agent.AgentClient
 import com.jarvis.os.desktop.agent.AgentLoop
 import com.jarvis.os.desktop.agent.ToolBox
 import com.jarvis.os.desktop.agent.WindowsHost
+import com.jarvis.os.desktop.knowledge.KnowledgeClient
+import com.jarvis.os.desktop.knowledge.Library
+import com.jarvis.os.desktop.knowledge.ScreenGrab
 import com.jarvis.os.desktop.voice.MicRecorder
 import com.jarvis.os.desktop.voice.Speaker
 import com.jarvis.os.desktop.voice.TranscribeClient
@@ -269,10 +273,10 @@ class DesktopAssistant(
         brain.messages(id).filter { it.role == ChatTurn.USER || it.role == ChatTurn.ASSISTANT }.map { ChatTurn(it.role, it.content) }
 
     // ── The agent (Phase 4) ─────────────────────────────────────────────────
-    private val toolBox = ToolBox(brain, WindowsHost())
+    private val toolBox = ToolBox(brain, WindowsHost(context = { "Current date/time: ${nowLine()}." }, captureScreen = { captureScreenJpeg() }))
 
-    /** An irreversible step waiting for the user's click (Rule 6 — never by prompt). */
-    class Approval(val description: String, internal val answer: kotlinx.coroutines.CompletableDeferred<Boolean>)
+    /** A step waiting for the user's click (Rule 6: never by prompt): what it does, and what approving means. */
+    class Approval(val description: String, val note: String, internal val answer: kotlinx.coroutines.CompletableDeferred<Boolean>)
     var pendingApproval by mutableStateOf<Approval?>(null)
         private set
 
@@ -290,6 +294,101 @@ class DesktopAssistant(
         brain.updateMessage(messageId, card.copy(undone = true, summary = card.summary + " — undone ($line)").encode())
         activeId?.let { turns = loadTurns(it) }
         refreshTasks(); refreshMemories()
+    }
+
+    // ── Knowledge (Phase 5) ─────────────────────────────────────────────────
+
+    /** The app window, as far as a screenshot needs it: out of the way for the moment of the shot. */
+    interface WindowControl {
+        val visible: Boolean
+        fun hide()
+        fun show()
+    }
+    var windowControl: WindowControl? = null
+
+    /** Every document JARVIS has been given (the Files screen). */
+    var documents by mutableStateOf(brain.documents())
+        private set
+    /** Files waiting in the composer, sent with the next message. */
+    var pendingDocs by mutableStateOf<List<Brain.Document>>(emptyList())
+        private set
+    /** How many files are still being read in. */
+    var importing by mutableStateOf(0)
+        private set
+    /** A screenshot waiting in the composer (JPEG, memory only), and its preview. */
+    var pendingShot by mutableStateOf<ByteArray?>(null)
+        private set
+    var pendingShotPreview by mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+        private set
+    var capturing by mutableStateOf(false)
+        private set
+
+    /** Reads files in (locally) and puts them in the composer. Unreadable ones say why. */
+    fun attach(files: List<java.io.File>) {
+        files.filter { it.isFile }.forEach { file ->
+            importing++
+            scope.launch {
+                try {
+                    val d = Library.import(brain, file, conversationId = null)
+                    if (pendingDocs.none { it.id == d.id }) pendingDocs = pendingDocs + d
+                    documents = brain.documents()
+                } catch (e: IllegalArgumentException) {
+                    error = e.message
+                } catch (e: Exception) {
+                    DebugLog.log(DebugLog.Stage.ERROR, "attach failed: ${e.javaClass.simpleName}")
+                    error = "I couldn't read “${file.name}”."
+                } finally {
+                    importing--
+                }
+            }
+        }
+    }
+
+    fun removePending(id: String) { pendingDocs = pendingDocs.filterNot { it.id == id } }
+
+    fun deleteDocument(id: String) {
+        brain.document(id)?.let { brain.log("document", "Removed document: ${it.name}") }
+        brain.deleteDocument(id)
+        pendingDocs = pendingDocs.filterNot { it.id == id }
+        documents = brain.documents()
+    }
+
+    /** Opens a chat about one document, ready for a question. */
+    fun askAbout(d: Brain.Document) {
+        newChat()
+        pendingDocs = listOf(d)
+    }
+
+    /** The composer's screen button: one shot of the screen the user is on, shown before it's sent. */
+    fun captureForQuestion() {
+        if (capturing) return
+        capturing = true
+        scope.launch {
+            try {
+                val jpeg = captureScreenJpeg()
+                pendingShot = jpeg
+                pendingShotPreview = withContext(Dispatchers.IO) { org.jetbrains.skia.Image.makeFromEncoded(jpeg).toComposeImageBitmap() }
+            } catch (e: Exception) {
+                DebugLog.log(DebugLog.Stage.ERROR, "screenshot failed: ${e.javaClass.simpleName}")
+                error = "I couldn't take a screenshot."
+            } finally {
+                capturing = false
+            }
+        }
+    }
+
+    fun discardShot() { pendingShot = null; pendingShotPreview = null }
+
+    /** Hides JARVIS for a moment so the shot shows what's behind it, then brings it back. */
+    private suspend fun captureScreenJpeg(): ByteArray {
+        val w = windowControl
+        val wasVisible = w?.visible == true
+        if (wasVisible) { w!!.hide(); kotlinx.coroutines.delay(450) }
+        try {
+            return withContext(Dispatchers.IO) { ScreenGrab.jpeg(ScreenGrab.capture()) }
+        } finally {
+            if (wasVisible) w!!.show()
+        }
     }
 
     fun dueReminders(): List<Brain.Reminder> = brain.dueReminders()
@@ -342,8 +441,21 @@ class DesktopAssistant(
 
     /** Returns true if the message was accepted (so the input can be cleared). */
     fun send(input: String, spoken: Boolean = false): Boolean {
-        val message = input.trim()
-        if (message.isEmpty() || thinking) return false
+        val docs = pendingDocs
+        val shot = pendingShot
+        // A file or a screenshot with no words is still a question.
+        val typed = input.trim().ifEmpty {
+            when {
+                shot != null -> "What's on my screen?"
+                docs.size == 1 -> "Summarise ${docs[0].name}."
+                docs.isNotEmpty() -> "Summarise these documents."
+                else -> ""
+            }
+        }
+        if (typed.isEmpty() || thinking || importing > 0) return false
+        // What's attached rides on the message itself, so the chat (and the model) can see it.
+        val message = (docs.map { "${DesktopTurn.DOC_MARK} ${it.name}" } + listOfNotNull(if (shot != null) DesktopTurn.SHOT_MARK + " Screenshot of my screen" else null) + typed)
+            .joinToString("\n")
         // A new question cuts off whatever JARVIS was still saying.
         if (voice == Voice.Speaking) speaker.stop()
         if (!configured) {
@@ -355,6 +467,9 @@ class DesktopAssistant(
         // A fresh chat becomes a conversation on its first message, titled from it.
         val id = activeId ?: brain.createConversation(DesktopTurn.titleFor(listOf(userTurn))).id
         brain.addMessage(id, ChatTurn.USER, message)
+        docs.forEach { brain.attachDocument(id, it.id) }
+        pendingDocs = emptyList()
+        discardShot()
         activeId = id
         turns = loadTurns(id)
         refreshConversations()
@@ -363,25 +478,31 @@ class DesktopAssistant(
             try {
                 val history = modelHistory(id).takeLast(DesktopTurn.MAX_CONTEXT_TURNS)
                 // Exact local time and zone: the agent turns "tomorrow at 5" into a real time.
-                val zone = java.time.ZoneId.systemDefault()
-                val now = SimpleDateFormat("EEEE d MMMM yyyy, HH:mm", Locale.getDefault()).format(Date()) +
-                    " (" + zone.id + ", UTC" + java.time.ZonedDateTime.now(zone).offset.id.replace("Z", "+00:00") + ")"
-                val context = DesktopTurn.context(now, formatMemory("", facts))
+                val attached = brain.attachedDocuments(id).map { "${it.name} (${it.pages} ${it.unit}${if (it.pages == 1) "" else "s"})" }
+                val context = DesktopTurn.context(nowLine(), formatMemory("", facts), attached, java.time.LocalDate.now())
                 val started = System.currentTimeMillis()
-                val raw = if (ProxyClient.isConfigured()) {
+                val raw = if (shot != null && ProxyClient.isConfigured()) {
+                    // The user took this screenshot and pressed send: that IS the approval.
+                    // It goes to the vision model once, with the question, and isn't kept.
+                    val answer = KnowledgeClient.askAboutImage(shot, typed, "Current date/time: ${nowLine()}.")
+                    brain.log("screen", "Looked at the screen")
+                    brain.addMessage(id, ActionCard.ROLE, ActionCard("Looked at your screen (the screenshot wasn't kept)", true, null).encode())
+                    answer.ifBlank { "I couldn't make out anything on that screenshot." }
+                } else if (ProxyClient.isConfigured()) {
                     // The agent: the model may call tools; each step lands in the chat as a card.
                     AgentLoop(
                         toolBox,
                         step = { m, c, t -> AgentClient.step(m, c, t) },
-                        approve = { description ->
+                        approve = { ask ->
                             val answer = kotlinx.coroutines.CompletableDeferred<Boolean>()
-                            pendingApproval = Approval(description, answer)
+                            pendingApproval = Approval(ask.description, ask.note, answer)
                             answer.await()
                         },
                         onStep = { _, result ->
                             brain.addMessage(id, ActionCard.ROLE, ActionCard(result.summary, result.ok, result.undo).encode())
                             if (activeId == id) turns = loadTurns(id)
                             refreshTasks(); refreshMemories(); upcomingReminders = brain.upcomingReminders()
+                            documents = brain.documents()
                         },
                     ).run(history, context, sourceConversation = id)
                 } else {
@@ -440,6 +561,13 @@ class DesktopAssistant(
     }
 
     companion object {
+        /** "Monday 28 September 2026, 17:05 (Asia/Kolkata, UTC+05:30)": exact, so "tomorrow at 5" becomes a real time. */
+        fun nowLine(): String {
+            val zone = java.time.ZoneId.systemDefault()
+            return SimpleDateFormat("EEEE d MMMM yyyy, HH:mm", Locale.getDefault()).format(Date()) +
+                " (" + zone.id + ", UTC" + java.time.ZonedDateTime.now(zone).offset.id.replace("Z", "+00:00") + ")"
+        }
+
         /** Opens the brain and, the first time, moves the old chat.json into it. */
         fun openBrain(): Brain {
             val b = Brain.open(AppDirs.file("brain.db"))

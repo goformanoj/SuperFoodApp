@@ -162,6 +162,9 @@ dependencies {
     // The brain (AGENT_PLAN §3): local SQLite with FTS5 full-text search. Bundles its own
     // native library; no install needed.
     implementation("org.xerial:sqlite-jdbc:3.53.4.0")
+    // Documents (AGENT_PLAN §5): PDF text, page by page, extracted on the laptop. Word
+    // (.docx) needs no library: it's a zip of XML, read with the JDK's StAX.
+    implementation("org.apache.pdfbox:pdfbox:3.0.7")
 
     testImplementation("junit:junit:4.13.2")
 }
@@ -205,6 +208,8 @@ compose.desktop {
                 "java.naming",                       // TLS / URL handlers
                 "jdk.unsupported",                   // sun.misc.Unsafe, used by Compose/Skiko internals
                 "java.sql",                          // the brain: SQLite over JDBC
+                "java.xml",                          // Word documents (.docx body XML, via StAX)
+                "java.logging",                      // PDFBox's logging (commons-logging → JUL)
             )
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "JARVIS"

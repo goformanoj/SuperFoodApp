@@ -30,7 +30,7 @@ class ToolBoxTest {
     private val tools = ToolBox(brain, host, clock = { now }, zone = zone)
     @After fun close() = brain.close()
 
-    private fun run(name: String, args: String) = tools.execute(name, args, sourceConversation = "conv-1")
+    private fun run(name: String, args: String) = kotlinx.coroutines.runBlocking { tools.execute(name, args, sourceConversation = "conv-1") }
     private fun json(r: ToolBox.Result) = JSONObject(r.forModel)
 
     // ── the permission model is in code ──
