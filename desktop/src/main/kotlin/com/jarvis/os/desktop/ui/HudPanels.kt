@@ -144,7 +144,7 @@ fun SessionPanel(a: DesktopAssistant, modifier: Modifier = Modifier) {
 @Composable
 fun ModulesPanel(modifier: Modifier = Modifier) {
     HudPanel("Modules", modifier, code = "06") {
-        listOf("Chat" to true, "Memory" to true, "Voice" to true, "Wake word" to true, "Tasks" to true, "Search" to true, "Agent tools" to false, "Reminders" to false).forEach { (name, on) ->
+        listOf("Chat" to true, "Memory" to true, "Voice" to true, "Wake word" to true, "Tasks" to true, "Search" to true, "Agent tools" to true, "Reminders" to true).forEach { (name, on) ->
             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(6.dp).background(if (on) J.Green else J.TextFaint))
                 Spacer(Modifier.width(10.dp))

@@ -31,7 +31,10 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Notification
+import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
@@ -104,6 +107,49 @@ fun main(args: Array<String>) = application {
         exitApplication()
     }
 
+    // ── Always there (AGENT_PLAN §6): the tray + reminders ─────────────────────
+    // Closing the window HIDES it: JARVIS keeps running in the tray so reminders can
+    // pop up. Quit from the tray menu. The first hide explains this once.
+    val trayState = rememberTrayState()
+    var windowVisible by remember { mutableStateOf(true) }
+    var toldAboutTray by remember { mutableStateOf(prefs.flag(PREF_TOLD_TRAY)) }
+    Tray(
+        icon = remember(appearance.palette) { ReactorIcon(appearance.palette) },
+        state = trayState,
+        tooltip = "JARVIS",
+        onAction = { windowVisible = true },
+        menu = {
+            Item("Open JARVIS", onClick = { windowVisible = true })
+            Item("New chat", onClick = { goHome(); windowVisible = true })
+            Separator()
+            Item("Quit JARVIS", onClick = ::saveAndExit)
+        },
+    )
+    fun hideToTray() {
+        windowVisible = false
+        if (!toldAboutTray) {
+            trayState.sendNotification(Notification("JARVIS is still running", "It stays in the tray so your reminders can pop up. Right-click the icon to quit."))
+            toldAboutTray = true
+            prefs.setFlag(PREF_TOLD_TRAY, true)
+        }
+    }
+    // Reminders: checked every 15 s. A reminder that came due while the laptop was off
+    // pops up on the next start, marked late — never silently dropped.
+    LaunchedEffect(Unit) {
+        while (true) {
+            assistant.dueReminders().forEach { r ->
+                val late = System.currentTimeMillis() - r.at > 5 * 60_000
+                trayState.sendNotification(
+                    Notification(if (late) "Reminder (missed while JARVIS was off)" else "Reminder", r.text, Notification.Type.Info),
+                )
+                if (assistant.speakAllReplies) assistant.speakText("Reminder: " + r.text)
+                assistant.markReminderDelivered(r)
+            }
+            assistant.refreshReminders()
+            kotlinx.coroutines.delay(15_000)
+        }
+    }
+
     // Voice choices persist; the wake listener follows state (see DesktopAssistant.syncWake).
     LaunchedEffect(Unit) {
         assistant.wakeWordOn = prefs.flag(PREF_WAKE)
@@ -117,7 +163,8 @@ fun main(args: Array<String>) = application {
     }
 
     Window(
-        onCloseRequest = ::saveAndExit,
+        onCloseRequest = ::hideToTray,
+        visible = windowVisible,
         title = "JARVIS",
         icon = remember(appearance.palette) { ReactorIcon(appearance.palette) },
         state = windowState,
@@ -190,6 +237,7 @@ fun main(args: Array<String>) = application {
 }
 
 private const val PREF_WAKE = "voice.wakeword"
+private const val PREF_TOLD_TRAY = "ui.toldAboutTray"
 private const val PREF_SPEAK_ALL = "voice.speakAll"
 
 @Composable

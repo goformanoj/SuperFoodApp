@@ -78,6 +78,7 @@ import com.jarvis.os.desktop.DesktopAssistant
 import com.jarvis.os.desktop.DesktopTurn
 import com.jarvis.os.desktop.Markdown
 import com.jarvis.os.desktop.Telemetry
+import com.jarvis.os.desktop.agent.ActionCard
 import com.jarvis.os.voice.OrbState
 import java.time.LocalTime
 
@@ -295,10 +296,21 @@ private fun Conversation(a: DesktopAssistant) {
             item { Spacer(Modifier.height(6.dp)) }
             itemsIndexed(a.turns) { _, turn ->
                 Box(Modifier.widthIn(max = 780.dp).fillMaxWidth().padding(horizontal = 40.dp)) {
-                    if (turn.role == ChatTurn.USER) UserMessage(turn.content) else AssistantMessage(turn.content, accent)
+                    when (turn.role) {
+                        ChatTurn.USER -> UserMessage(turn.content)
+                        ActionCard.ROLE -> ActionCard.decode(turn.content)?.let { StepCard(it) { a.undoAction(turn.id) } }
+                        else -> AssistantMessage(turn.content, accent)
+                    }
                 }
             }
-            if (a.thinkingHere) item {
+            a.pendingApproval?.let { ap ->
+                item {
+                    Box(Modifier.widthIn(max = 780.dp).fillMaxWidth().padding(horizontal = 40.dp)) {
+                        ApprovalCard(ap.description, onApprove = { a.resolveApproval(true) }, onCancel = { a.resolveApproval(false) })
+                    }
+                }
+            }
+            if (a.thinkingHere && a.pendingApproval == null) item {
                 Box(Modifier.widthIn(max = 780.dp).fillMaxWidth().padding(horizontal = 40.dp)) { Thinking() }
             }
             item { Spacer(Modifier.height(8.dp)) }
@@ -448,7 +460,7 @@ private fun Composer(a: DesktopAssistant, textState: MutableState<String>, focus
                     when (a.voice) {
                         DesktopAssistant.Voice.Listening -> "Listening… speak now — I'll stop when you pause"
                         DesktopAssistant.Voice.Transcribing -> "Transcribing…"
-                        else -> "Ask anything, or press Ctrl+Space and talk…"
+                        else -> "Ask anything, or tell JARVIS what to do… (Ctrl+Space to talk)"
                     },
                     color = if (a.voice == DesktopAssistant.Voice.Listening) J.Accent else J.TextFaint, fontSize = 15.sp,
                 )
@@ -561,6 +573,60 @@ fun WakeChip(a: DesktopAssistant) {
             )
             Spacer(Modifier.width(8.dp))
             Text(if (on) "Say “Jarvis”" else "Wake word off", color = J.Text, fontSize = 13.sp)
+        }
+    }
+}
+
+/**
+ * One agent step, as the user sees it: what JARVIS did (✓) or couldn't do (✕), with Undo
+ * for anything undoable (AGENT_PLAN §4). Every card is also in the Activity log.
+ */
+@Composable
+private fun StepCard(card: ActionCard, onUndo: () -> Unit) {
+    Row(
+        Modifier.padding(start = 46.dp).fillMaxWidth().clip(HudShapeSmall).background(J.Card)
+            .border(1.dp, if (card.ok) J.CardBorder else Color(0x55FF4D4D), HudShapeSmall)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(18.dp).clip(CircleShape).background(if (card.ok && !card.undone) J.Green.copy(alpha = 0.2f) else Color(0x33FF4D4D)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(if (card.ok && !card.undone) "✓" else if (card.undone) "↺" else "✕", color = if (card.ok && !card.undone) J.Green else Color(0xFFFF8A8A), fontSize = 11.sp)
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(card.summary, color = if (card.undone) J.TextDim else J.TextBody, fontSize = 13.sp, modifier = Modifier.weight(1f))
+        if (card.undo != null && !card.undone && card.ok) {
+            Text(
+                "UNDO", color = J.Accent, fontSize = 10.sp, fontFamily = J.Display, letterSpacing = 1.2.sp,
+                modifier = Modifier.clip(HudShapeSmall).clicky(onUndo).padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+/** An irreversible step waiting for the user — nothing happens until they click (Rule 6). */
+@Composable
+private fun ApprovalCard(description: String, onApprove: () -> Unit, onCancel: () -> Unit) {
+    Column(
+        Modifier.padding(start = 46.dp).fillMaxWidth().clip(HudShape).background(Color(0x14FF9F1C))
+            .border(1.dp, Color(0x88FF9F1C), HudShape).padding(14.dp),
+    ) {
+        Text("NEEDS YOUR OK", color = Color(0xFFFFC266), fontSize = 10.sp, fontFamily = J.Display, letterSpacing = 1.5.sp)
+        Spacer(Modifier.height(6.dp))
+        Text("$description?", color = J.Text, fontSize = 14.sp)
+        Text("This can't be undone.", color = J.TextDim, fontSize = 12.sp)
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "APPROVE", color = J.OnAccent, fontSize = 11.sp, fontFamily = J.Display, letterSpacing = 1.2.sp,
+                modifier = Modifier.clip(HudShapeSmall).background(J.Accent).clicky(onApprove).padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+            Text(
+                "CANCEL", color = J.Text, fontSize = 11.sp, fontFamily = J.Display, letterSpacing = 1.2.sp,
+                modifier = Modifier.clip(HudShapeSmall).border(1.dp, J.Border, HudShapeSmall).clicky(onCancel).padding(horizontal = 14.dp, vertical = 8.dp),
+            )
         }
     }
 }

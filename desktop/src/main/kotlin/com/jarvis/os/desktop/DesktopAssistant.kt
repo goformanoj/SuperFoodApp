@@ -12,6 +12,11 @@ import com.jarvis.os.data.formatMemory
 import com.jarvis.os.debug.DebugLog
 import com.jarvis.os.desktop.brain.Brain
 import com.jarvis.os.desktop.brain.LegacyImport
+import com.jarvis.os.desktop.agent.ActionCard
+import com.jarvis.os.desktop.agent.AgentClient
+import com.jarvis.os.desktop.agent.AgentLoop
+import com.jarvis.os.desktop.agent.ToolBox
+import com.jarvis.os.desktop.agent.WindowsHost
 import com.jarvis.os.desktop.voice.MicRecorder
 import com.jarvis.os.desktop.voice.Speaker
 import com.jarvis.os.desktop.voice.TranscribeClient
@@ -43,7 +48,7 @@ class DesktopAssistant(
         private set
     var activeId by mutableStateOf(conversations.firstOrNull()?.id)
         private set
-    /** The open conversation's messages, as the chat shows them. */
+    /** The open conversation's messages, as the chat shows them (incl. agent step cards). */
     var turns by mutableStateOf(loadTurns(activeId))
         private set
     /** Everything remembered, typed and sourced. */
@@ -167,6 +172,9 @@ class DesktopAssistant(
         }
     }
 
+    /** Speaks a line that isn't a reply (a reminder). */
+    fun speakText(text: String) = speakReply(text)
+
     private fun speakReply(text: String) {
         if (!speaker.available) return
         scope.launch {
@@ -252,9 +260,45 @@ class DesktopAssistant(
     }
 
     private fun refreshMemories() { memories = brain.memories() }
+    fun refreshReminders() { upcomingReminders = brain.upcomingReminders() }
 
-    private fun loadTurns(id: String?): List<ChatTurn> =
-        if (id == null) emptyList() else brain.messages(id).map { ChatTurn(it.role, it.content) }
+    private fun loadTurns(id: String?): List<Brain.Message> = if (id == null) emptyList() else brain.messages(id)
+
+    /** What the MODEL sees: only the words — step cards are for the user, the tools report to the model in-turn. */
+    private fun modelHistory(id: String): List<ChatTurn> =
+        brain.messages(id).filter { it.role == ChatTurn.USER || it.role == ChatTurn.ASSISTANT }.map { ChatTurn(it.role, it.content) }
+
+    // ── The agent (Phase 4) ─────────────────────────────────────────────────
+    private val toolBox = ToolBox(brain, WindowsHost())
+
+    /** An irreversible step waiting for the user's click (Rule 6 — never by prompt). */
+    class Approval(val description: String, internal val answer: kotlinx.coroutines.CompletableDeferred<Boolean>)
+    var pendingApproval by mutableStateOf<Approval?>(null)
+        private set
+
+    fun resolveApproval(approved: Boolean) {
+        pendingApproval?.answer?.complete(approved)
+        pendingApproval = null
+    }
+
+    /** Undo button on a step card. */
+    fun undoAction(messageId: String) {
+        val msg = turns.firstOrNull { it.id == messageId } ?: return
+        val card = ActionCard.decode(msg.content) ?: return
+        if (card.undone || card.undo == null) return
+        val line = toolBox.undo(card.undo) ?: return
+        brain.updateMessage(messageId, card.copy(undone = true, summary = card.summary + " — undone ($line)").encode())
+        activeId?.let { turns = loadTurns(it) }
+        refreshTasks(); refreshMemories()
+    }
+
+    fun dueReminders(): List<Brain.Reminder> = brain.dueReminders()
+    fun markReminderDelivered(r: Brain.Reminder) {
+        brain.markDelivered(r.id)
+        brain.log("reminder", "Reminded: ${r.text}")
+    }
+    var upcomingReminders by mutableStateOf(brain.upcomingReminders())
+        private set
 
     // ── Account ──────────────────────────────────────────────────────────────
     var account by mutableStateOf(Identity.account())
@@ -317,13 +361,31 @@ class DesktopAssistant(
         thinkingIn = id
         scope.launch {
             try {
-                val history = loadTurns(id).takeLast(DesktopTurn.MAX_CONTEXT_TURNS)
-                val now = SimpleDateFormat("EEEE d MMMM yyyy, h:mm a", Locale.getDefault()).format(Date())
+                val history = modelHistory(id).takeLast(DesktopTurn.MAX_CONTEXT_TURNS)
+                // Exact local time and zone: the agent turns "tomorrow at 5" into a real time.
+                val zone = java.time.ZoneId.systemDefault()
+                val now = SimpleDateFormat("EEEE d MMMM yyyy, HH:mm", Locale.getDefault()).format(Date()) +
+                    " (" + zone.id + ", UTC" + java.time.ZonedDateTime.now(zone).offset.id.replace("Z", "+00:00") + ")"
                 val context = DesktopTurn.context(now, formatMemory("", facts))
                 val started = System.currentTimeMillis()
-                val raw = withContext(Dispatchers.IO) {
-                    if (ProxyClient.isConfigured()) ProxyClient.generate(history, context)
-                    else GroqClient.generate(history, context)
+                val raw = if (ProxyClient.isConfigured()) {
+                    // The agent: the model may call tools; each step lands in the chat as a card.
+                    AgentLoop(
+                        toolBox,
+                        step = { m, c, t -> AgentClient.step(m, c, t) },
+                        approve = { description ->
+                            val answer = kotlinx.coroutines.CompletableDeferred<Boolean>()
+                            pendingApproval = Approval(description, answer)
+                            answer.await()
+                        },
+                        onStep = { _, result ->
+                            brain.addMessage(id, ActionCard.ROLE, ActionCard(result.summary, result.ok, result.undo).encode())
+                            if (activeId == id) turns = loadTurns(id)
+                            refreshTasks(); refreshMemories(); upcomingReminders = brain.upcomingReminders()
+                        },
+                    ).run(history, context, sourceConversation = id)
+                } else {
+                    withContext(Dispatchers.IO) { GroqClient.generate(history, context) }
                 }
                 lastLatencyMs = System.currentTimeMillis() - started
                 val result = DesktopTurn.process(raw)
@@ -343,6 +405,7 @@ class DesktopAssistant(
                 error = e.message ?: "Something went wrong — try again."
             } finally {
                 thinkingIn = null
+                pendingApproval?.let { it.answer.complete(false); pendingApproval = null }
             }
         }
         return true

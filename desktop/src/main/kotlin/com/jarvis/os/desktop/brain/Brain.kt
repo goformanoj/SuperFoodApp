@@ -122,6 +122,9 @@ class Brain private constructor(private val db: Connection, private val clock: (
         return m
     }
 
+    /** Rewrites a message's content (an action card marked undone). */
+    fun updateMessage(id: String, content: String) = exec("UPDATE messages SET content=? WHERE id=?", content, id)
+
     fun messages(conversationId: String): List<Message> =
         query("SELECT * FROM messages WHERE conversation_id=? ORDER BY created, rowid", conversationId) {
             Message(it.getString("id"), it.getString("conversation_id"), it.getString("role"), it.getString("content"), it.getLong("created"))
