@@ -287,6 +287,8 @@ class Brain private constructor(private val db: Connection, private val clock: (
             .distinctBy { it.kind to it.refId }
     }
 
+    fun messageCount(): Int = query("SELECT count(*) FROM messages") { it.getInt(1) }.first()
+
     /** True when there is nothing in the brain yet (drives the one-time import). */
     fun isEmpty(): Boolean =
         query("SELECT (SELECT count(*) FROM conversations) + (SELECT count(*) FROM memories)") { it.getLong(1) }.first() == 0L

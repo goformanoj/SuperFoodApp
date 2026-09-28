@@ -112,13 +112,14 @@ fun ChatScreen(
     text: MutableState<String>,
     focus: FocusRequester,
     onMemory: () -> Unit,
+    onTasks: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         if (hasConversation(a)) {
             ChatHeader(a)
             Box(Modifier.weight(1f).fillMaxWidth()) { Conversation(a) }
         } else {
-            Cockpit(a, telemetry, text, Modifier.weight(1f), onMemory)
+            Cockpit(a, telemetry, text, Modifier.weight(1f), onMemory, onTasks)
         }
         a.error?.let { ErrorBanner(it) }
         Composer(a, text, focus)
@@ -137,6 +138,7 @@ private fun Cockpit(
     text: MutableState<String>,
     modifier: Modifier,
     onMemory: () -> Unit,
+    onTasks: () -> Unit,
 ) {
     val hour = LocalTime.now().hour
     val greeting = when (hour) {
@@ -171,8 +173,8 @@ private fun Cockpit(
                 }
             }
             if (wide) Column(Modifier.width(236.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                TodayPanel(a, onTasks, Modifier.fillMaxWidth())
                 MemoryPanel(a, onMemory, Modifier.fillMaxWidth())
-                SessionPanel(a, Modifier.fillMaxWidth())
                 ModulesPanel(Modifier.fillMaxWidth())
             }
         }
@@ -257,8 +259,6 @@ private fun ChatHeader(a: DesktopAssistant) {
             Spacer(Modifier.height(3.dp))
             StatusLine(a)
         }
-        Pill("Runs on this laptop")
-        Spacer(Modifier.width(10.dp))
         WakeChip(a)
         Spacer(Modifier.width(10.dp))
         Hint(if (a.speakAllReplies) "JARVIS reads every reply aloud — click to stop" else "Spoken questions get spoken answers — click to read every reply aloud") {

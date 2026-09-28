@@ -36,7 +36,10 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.jarvis.os.desktop.ui.ActivityScreen
 import com.jarvis.os.desktop.ui.AppearanceScreen
+import com.jarvis.os.desktop.ui.SearchOverlay
+import com.jarvis.os.desktop.ui.TasksScreen
 import com.jarvis.os.desktop.ui.ChatScreen
 import com.jarvis.os.desktop.ui.ComingSoon
 import com.jarvis.os.desktop.ui.DesktopTheme
@@ -75,6 +78,8 @@ fun main(args: Array<String>) = application {
     val composerText = remember { mutableStateOf("") }
     val composerFocus = remember { FocusRequester() }
     fun goHome() { assistant.newChat(); screen = Screen.Chat }
+    var searchOpen by remember { mutableStateOf(false) }
+    fun openConversation(id: String) { assistant.select(id); screen = Screen.Chat }
 
     // Reopen where the user left it: same size, same place, maximised or not.
     val geometry = remember { prefs.loadGeometry() }
@@ -120,6 +125,7 @@ fun main(args: Array<String>) = application {
             when {
                 e.type != KeyEventType.KeyDown -> false
                 e.isCtrlPressed && e.key == Key.N -> { goHome(); true }
+                e.isCtrlPressed && e.key == Key.K -> { searchOpen = true; true }
                 // Push-to-talk from anywhere in the window.
                 e.isCtrlPressed && e.key == Key.Spacebar -> { screen = Screen.Chat; assistant.toggleMic(); true }
                 else -> false
@@ -143,24 +149,40 @@ fun main(args: Array<String>) = application {
                 HudGrid(Modifier.fillMaxSize())
 
                 Row(Modifier.fillMaxSize()) {
-                    Sidebar(assistant, screen, onHome = ::goHome) { screen = it }
+                    Sidebar(assistant, screen, onHome = ::goHome, onSearch = { searchOpen = true }) { screen = it }
                     Divider()
                     Box(Modifier.weight(1f).fillMaxHeight()) {
                         when (screen) {
-                            Screen.Chat -> ChatScreen(assistant, telemetry, composerText, composerFocus, onMemory = { screen = Screen.Memory })
-                            Screen.Memory -> MemoryScreen(assistant)
+                            Screen.Chat -> ChatScreen(assistant, telemetry, composerText, composerFocus, onMemory = { screen = Screen.Memory }, onTasks = { screen = Screen.Tasks })
+                            Screen.Memory -> MemoryScreen(assistant, ::openConversation)
+                            Screen.Activity -> ActivityScreen(assistant)
                             Screen.Appearance -> AppearanceScreen(appearance) { appearance = it; prefs.save(it) }
                             Screen.Settings -> SettingsScreen(assistant)
-                            Screen.Tasks -> ComingSoon(screen, "PHASE 3", "Tell JARVIS to do something on this laptop — open apps, sort files, work a website — and watch each step here. It stops for your OK before anything it can't undo.")
-                            Screen.Scheduled -> ComingSoon(screen, "PHASE 4", "Reminders and routines that run by themselves: “every weekday at 8, brief me”, “remind me at 6 to call mom”.")
-                            Screen.Files -> ComingSoon(screen, "PHASE 3", "Documents JARVIS makes for you — PDFs, notes, summaries. Already on the phone; coming to the laptop with Tasks.")
-                            Screen.Automations -> ComingSoon(screen, "PHASE 5", "Your devices working together: “on my phone, set an alarm” from the laptop, and the other way round.")
+                            Screen.Tasks -> TasksScreen(assistant, ::openConversation)
+                            Screen.Scheduled -> ComingSoon(screen, "PHASE 4", "Reminders that pop up as Windows notifications, and routines that run by themselves: “every weekday at 8, brief me”, “remind me at 6 to call mom”.")
+                            Screen.Files -> ComingSoon(screen, "PHASE 5", "Your documents and the notes JARVIS writes — drop a PDF in, ask about it, turn it into tasks.")
+                            Screen.Automations -> ComingSoon(screen, "PHASE 7", "Your devices working together: “on my phone, set an alarm” from the laptop, and the other way round.")
                         }
                     }
                     if (wide && screen == Screen.Chat && hasConversation(assistant)) {
                         Divider()
                         TodayRail(assistant, telemetry) { screen = Screen.Memory }
                     }
+                }
+                if (searchOpen) {
+                    SearchOverlay(
+                        assistant,
+                        onOpen = { hit ->
+                            searchOpen = false
+                            when (hit.kind) {
+                                "conversation" -> openConversation(hit.refId)
+                                "task" -> screen = Screen.Tasks
+                                "memory" -> screen = Screen.Memory
+                                else -> screen = Screen.Files
+                            }
+                        },
+                        onClose = { searchOpen = false },
+                    )
                 }
             }
         }

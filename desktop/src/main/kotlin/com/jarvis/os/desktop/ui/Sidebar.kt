@@ -28,7 +28,9 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Tune
@@ -51,19 +53,21 @@ import com.jarvis.os.desktop.DesktopAssistant
 import com.jarvis.os.desktop.GoogleSignIn
 import com.jarvis.os.ui.components.JarvisWordmark
 
-enum class Screen(val label: String, val icon: ImageVector) {
+enum class Screen(val label: String, val icon: ImageVector, val primary: Boolean = true) {
     Chat("Chat", Icons.Outlined.ChatBubbleOutline),
     Tasks("Tasks", Icons.Outlined.TaskAlt),
     Scheduled("Scheduled", Icons.Outlined.Schedule),
     Memory("Memory", Icons.Outlined.AutoAwesome),
     Files("Files", Icons.Outlined.Description),
     Automations("Automations", Icons.Outlined.Bolt),
-    Appearance("Themes", Icons.Outlined.Palette),
-    Settings("Settings", Icons.Outlined.Tune),
+    // Secondary: a compact icon row at the foot of the sidebar, so the chat list keeps its room.
+    Activity("Activity", Icons.Outlined.History, primary = false),
+    Appearance("Themes", Icons.Outlined.Palette, primary = false),
+    Settings("Settings", Icons.Outlined.Tune, primary = false),
 }
 
 @Composable
-fun Sidebar(a: DesktopAssistant, screen: Screen, onHome: () -> Unit, onScreen: (Screen) -> Unit) {
+fun Sidebar(a: DesktopAssistant, screen: Screen, onHome: () -> Unit, onSearch: () -> Unit, onScreen: (Screen) -> Unit) {
     Column(Modifier.width(264.dp).fillMaxHeight().background(J.Glass)) {
         // The wordmark is the way home, as a logo is on any desktop app.
         Box(Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 16.dp), contentAlignment = Alignment.Center) {
@@ -84,11 +88,27 @@ fun Sidebar(a: DesktopAssistant, screen: Screen, onHome: () -> Unit, onScreen: (
             Text("New chat", color = J.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Text("Ctrl N", color = J.TextDim, fontSize = 11.sp, fontFamily = J.Mono)
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.padding(horizontal = 14.dp).fillMaxWidth().height(36.dp).clip(HudShapeSmall)
+                .border(1.dp, J.Border, HudShapeSmall).clicky(onSearch).padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.Search, null, tint = J.TextMuted, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(10.dp))
+            Text("Search everything", color = J.TextMuted, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Text("Ctrl K", color = J.TextDim, fontSize = 11.sp, fontFamily = J.Mono)
+        }
+        Spacer(Modifier.height(12.dp))
 
         Column(Modifier.padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Screen.entries.forEach { s ->
-                NavItem(s, selected = s == screen, badge = if (s == Screen.Memory) a.facts.size.takeIf { it > 0 }?.toString() else null) { onScreen(s) }
+            Screen.entries.filter { it.primary }.forEach { s ->
+                val badge = when (s) {
+                    Screen.Memory -> a.memories.size.takeIf { it > 0 }?.toString()
+                    Screen.Tasks -> a.openTasks.size.takeIf { it > 0 }?.toString()
+                    else -> null
+                }
+                NavItem(s, selected = s == screen, badge = badge) { onScreen(s) }
             }
         }
 
@@ -108,7 +128,7 @@ fun Sidebar(a: DesktopAssistant, screen: Screen, onHome: () -> Unit, onScreen: (
             }
         }
 
-        AccountFooter(a)
+        AccountFooter(a, screen, onScreen)
     }
 }
 
@@ -117,7 +137,7 @@ private fun NavItem(s: Screen, selected: Boolean, badge: String?, onClick: () ->
     val hover = remember { MutableInteractionSource() }
     val hovered by hover.collectIsHoveredAsState()
     Row(
-        Modifier.fillMaxWidth().height(40.dp).clip(HudShapeSmall)
+        Modifier.fillMaxWidth().height(36.dp).clip(HudShapeSmall)
             .background(
                 when {
                     selected -> J.Accent.copy(alpha = 0.14f)
@@ -170,14 +190,26 @@ private fun RecentItem(title: String, selected: Boolean, busy: Boolean, onOpen: 
 }
 
 @Composable
-private fun AccountFooter(a: DesktopAssistant) {
+private fun AccountFooter(a: DesktopAssistant, screen: Screen, onScreen: (Screen) -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Screen.entries.filter { !it.primary }.forEach { s ->
+                val on = s == screen
+                Hint(s.label) {
+                    Box(
+                        Modifier.size(34.dp).clip(HudShapeSmall)
+                            .background(if (on) J.Accent.copy(alpha = 0.14f) else Color.Transparent)
+                            .border(1.dp, if (on) J.Accent.copy(alpha = 0.5f) else J.Border, HudShapeSmall)
+                            .clicky { onScreen(s) },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(s.icon, s.label, tint = if (on) J.Accent else J.TextMuted, modifier = Modifier.size(17.dp)) }
+                }
+            }
+            Spacer(Modifier.weight(1f))
             Pill("This laptop", fg = Color(0xFF7FF0C8), bg = J.Green.copy(alpha = 0.12f), dot = J.Green)
-            Hint("Linking your phone arrives in Phase 5") { Pill("Phone", dot = J.TextFaint) }
         }
         Row(
             Modifier.fillMaxWidth().clip(HudShape).background(J.Card)

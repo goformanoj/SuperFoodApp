@@ -10,7 +10,8 @@ import com.jarvis.os.ai.UsageStats
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.formatMemory
 import com.jarvis.os.debug.DebugLog
-import com.jarvis.os.desktop.ChatStore.Conversation
+import com.jarvis.os.desktop.brain.Brain
+import com.jarvis.os.desktop.brain.LegacyImport
 import com.jarvis.os.desktop.voice.MicRecorder
 import com.jarvis.os.desktop.voice.Speaker
 import com.jarvis.os.desktop.voice.TranscribeClient
@@ -35,16 +36,25 @@ import java.util.UUID
  */
 class DesktopAssistant(
     private val scope: CoroutineScope,
-    private val store: ChatStore = ChatStore(),
+    /** The brain (AGENT_PLAN §3). Tests pass an in-memory one. */
+    val brain: Brain = openBrain(),
 ) {
-    private val initial = store.load()
+    var conversations by mutableStateOf(brain.conversations())
+        private set
+    var activeId by mutableStateOf(conversations.firstOrNull()?.id)
+        private set
+    /** The open conversation's messages, as the chat shows them. */
+    var turns by mutableStateOf(loadTurns(activeId))
+        private set
+    /** Everything remembered, typed and sourced. */
+    var memories by mutableStateOf(brain.memories())
+        private set
+    /** Open tasks (the Tasks screen and Today read these). */
+    var openTasks by mutableStateOf(brain.openTasks())
+        private set
 
-    var conversations by mutableStateOf(initial.conversations)
-        private set
-    var activeId by mutableStateOf(initial.conversations.firstOrNull()?.id)
-        private set
-    var facts by mutableStateOf(initial.facts)
-        private set
+    /** The remembered facts as plain text — what rides on each request as context. */
+    val facts: List<String> get() = memories.map { it.text }
     /** The conversation a reply is being written for, or null when idle. */
     var thinkingIn by mutableStateOf<String?>(null)
         private set
@@ -56,10 +66,10 @@ class DesktopAssistant(
     var lastLatencyMs by mutableStateOf<Long?>(null)
         private set
 
-    val messageCount: Int get() = conversations.sumOf { it.turns.size }
+    var messageCount by mutableStateOf(brain.messageCount())
+        private set
 
-    val active: Conversation? get() = conversations.firstOrNull { it.id == activeId }
-    val turns: List<ChatTurn> get() = active?.turns.orEmpty()
+    val active: Brain.Conversation? get() = conversations.firstOrNull { it.id == activeId }
     val thinking: Boolean get() = thinkingIn != null
     val thinkingHere: Boolean get() = thinkingIn != null && thinkingIn == activeId
 
@@ -167,20 +177,77 @@ class DesktopAssistant(
 
     fun newChat() {
         activeId = null
+        turns = emptyList()
         error = null
     }
 
     fun select(id: String) {
         activeId = id
+        turns = loadTurns(id)
         error = null
     }
 
     fun delete(id: String) {
         if (thinkingIn == id) return
-        conversations = conversations.filterNot { it.id == id }
-        if (activeId == id) activeId = null
-        persist()
+        brain.deleteConversation(id)
+        if (activeId == id) newChat()
+        refreshConversations()
     }
+
+    fun setPinned(id: String, pinned: Boolean) { brain.setPinned(id, pinned); refreshConversations() }
+    fun setArchived(id: String, archived: Boolean) {
+        brain.setArchived(id, archived)
+        if (archived && activeId == id) newChat()
+        refreshConversations()
+    }
+
+    // ── Projects ─────────────────────────────────────────────────────────────
+    var projects by mutableStateOf(brain.projects())
+        private set
+
+    fun createProject(name: String): Brain.Project? =
+        runCatching { brain.createProject(name) }.getOrNull()?.also { projects = brain.projects() }
+
+    fun moveToProject(conversationId: String, projectId: String?) { brain.moveToProject(conversationId, projectId); refreshConversations() }
+    fun deleteProject(id: String) { brain.deleteProject(id); projects = brain.projects(); refreshConversations() }
+
+    // ── Tasks ────────────────────────────────────────────────────────────────
+    var doneTasks by mutableStateOf(brain.doneTasks(20))
+        private set
+
+    fun addTask(title: String, dueAt: Long? = null, sourceConversation: String? = null): Brain.Task? =
+        runCatching { brain.addTask(title, dueAt = dueAt, sourceConversation = sourceConversation) }.getOrNull()
+            ?.also { brain.log("task", "Added task: ${it.title}"); refreshTasks() }
+
+    fun setTaskDone(id: String, done: Boolean) {
+        brain.setTaskDone(id, done)
+        brain.task(id)?.let { brain.log("task", (if (done) "Completed: " else "Reopened: ") + it.title) }
+        refreshTasks()
+    }
+
+    fun deleteTask(id: String) { brain.deleteTask(id); refreshTasks() }
+
+    /** Open tasks due before the end of today (including overdue). */
+    fun tasksDueToday(): List<Brain.Task> = brain.tasksDueBy(endOfToday())
+
+    // ── Search + activity ────────────────────────────────────────────────────
+    fun search(query: String): List<Brain.SearchHit> = brain.search(query)
+    fun activity(): List<Brain.Activity> = brain.activity()
+
+    private fun refreshConversations() {
+        conversations = brain.conversations()
+        messageCount = brain.messageCount()
+    }
+
+    private fun refreshTasks() {
+        openTasks = brain.openTasks()
+        doneTasks = brain.doneTasks(20)
+    }
+
+    private fun refreshMemories() { memories = brain.memories() }
+
+    private fun loadTurns(id: String?): List<ChatTurn> =
+        if (id == null) emptyList() else brain.messages(id).map { ChatTurn(it.role, it.content) }
 
     // ── Account ──────────────────────────────────────────────────────────────
     var account by mutableStateOf(Identity.account())
@@ -218,8 +285,8 @@ class DesktopAssistant(
     /** Renames a conversation. A blank name is ignored (the old title stays). */
     fun rename(id: String, title: String) {
         val clean = DesktopTurn.cleanTitle(title) ?: return
-        conversations = conversations.map { if (it.id == id) it.copy(title = clean) else it }
-        persist()
+        brain.renameConversation(id, clean)
+        refreshConversations()
     }
 
     /** Returns true if the message was accepted (so the input can be cleared). */
@@ -233,18 +300,17 @@ class DesktopAssistant(
             return false
         }
         error = null
-        val id = activeId ?: UUID.randomUUID().toString()
         val userTurn = ChatTurn(ChatTurn.USER, message)
-        upsert(id) { c ->
-            val turns = c?.turns.orEmpty() + userTurn
-            Conversation(id, c?.title ?: DesktopTurn.titleFor(turns), turns, System.currentTimeMillis())
-        }
+        // A fresh chat becomes a conversation on its first message, titled from it.
+        val id = activeId ?: brain.createConversation(DesktopTurn.titleFor(listOf(userTurn))).id
+        brain.addMessage(id, ChatTurn.USER, message)
         activeId = id
-        persist()
+        turns = loadTurns(id)
+        refreshConversations()
         thinkingIn = id
         scope.launch {
             try {
-                val history = conversations.first { it.id == id }.turns.takeLast(DesktopTurn.MAX_CONTEXT_TURNS)
+                val history = loadTurns(id).takeLast(DesktopTurn.MAX_CONTEXT_TURNS)
                 val now = SimpleDateFormat("EEEE d MMMM yyyy, h:mm a", Locale.getDefault()).format(Date())
                 val context = DesktopTurn.context(now, formatMemory("", facts))
                 val started = System.currentTimeMillis()
@@ -254,12 +320,11 @@ class DesktopAssistant(
                 }
                 lastLatencyMs = System.currentTimeMillis() - started
                 val result = DesktopTurn.process(raw)
-                facts = DesktopTurn.applyMemory(facts, result.memory)
-                upsert(id) { c ->
-                    val base = c ?: Conversation(id, "New chat", emptyList(), 0)
-                    base.copy(turns = base.turns + ChatTurn(ChatTurn.ASSISTANT, result.text.ifBlank { "…" }), updatedMs = System.currentTimeMillis())
-                }
-                persist()
+                applyMemory(result.memory, sourceConversation = id)
+                brain.addMessage(id, ChatTurn.ASSISTANT, result.text.ifBlank { "…" })
+                // Only redraw the chat if the user is still looking at it.
+                if (activeId == id) turns = loadTurns(id)
+                refreshConversations()
                 usage = UsageStats.today()
                 // The Worker reports the plan on every reply (the owner's email → pro).
                 account = Identity.account()
@@ -276,24 +341,44 @@ class DesktopAssistant(
         return true
     }
 
-    fun forget(fact: String) {
-        facts = facts.filterNot { it == fact }
-        persist()
+    /** Forgets one memory (the Memory screen's ✕). */
+    fun forgetMemory(id: String) {
+        memories.firstOrNull { it.id == id }?.let { brain.log("memory", "Forgot: ${it.text}") }
+        brain.deleteMemory(id)
+        refreshMemories()
     }
 
     fun forgetEverything() {
-        facts = emptyList()
-        persist()
+        memories.forEach { brain.deleteMemory(it.id) }
+        brain.log("memory", "Forgot everything")
+        refreshMemories()
     }
 
-    private fun upsert(id: String, change: (Conversation?) -> Conversation) {
-        val existing = conversations.firstOrNull { it.id == id }
-        val updated = change(existing)
-        conversations = (listOf(updated) + conversations.filterNot { it.id == id }).sortedByDescending { it.updatedMs }
+    /** REMEMBER/FORGET from a reply, into typed, sourced memory — the phone's rules (DesktopTurn). */
+    private fun applyMemory(actions: List<com.jarvis.os.data.MemoryAction>, sourceConversation: String) {
+        if (actions.isEmpty()) return
+        for (a in actions) {
+            when (a) {
+                is com.jarvis.os.data.MemoryAction.Remember ->
+                    brain.remember(a.fact.take(com.jarvis.os.data.MemoryActions.MAX_FACT), sourceConversation = sourceConversation)
+                        ?.let { brain.log("memory", "Remembered: ${it.text}") }
+                is com.jarvis.os.data.MemoryAction.Forget ->
+                    brain.forget(a.about).takeIf { it > 0 }?.let { brain.log("memory", "Forgot $it memory item(s) about “${a.about}”") }
+            }
+        }
+        refreshMemories()
     }
 
-    private fun persist() {
-        runCatching { store.save(ChatStore.State(conversations, facts)) }
-            .onFailure { DebugLog.log(DebugLog.Stage.ERROR, "could not save chat: ${it.javaClass.simpleName}") }
+    companion object {
+        /** Opens the brain and, the first time, moves the old chat.json into it. */
+        fun openBrain(): Brain {
+            val b = Brain.open(AppDirs.file("brain.db"))
+            runCatching { LegacyImport.run(b, AppDirs.file("chat.json")) }
+                .onFailure { DebugLog.log(DebugLog.Stage.ERROR, "legacy import failed: ${it.javaClass.simpleName}") }
+            return b
+        }
+
+        fun endOfToday(): Long = java.time.LocalDate.now().plusDays(1)
+            .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
     }
 }

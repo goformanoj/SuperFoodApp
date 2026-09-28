@@ -50,7 +50,7 @@ import com.jarvis.os.ui.theme.BackdropStyle
 import com.jarvis.os.ui.theme.JarvisPalette
 
 @Composable
-private fun Page(title: String, subtitle: String, scroll: Boolean = false, content: @Composable () -> Unit) {
+internal fun Page(title: String, subtitle: String, scroll: Boolean = false, content: @Composable () -> Unit) {
     val base = Modifier.fillMaxSize().padding(horizontal = 36.dp, vertical = 28.dp)
     Column(if (scroll) base.verticalScroll(rememberScrollState()) else base) {
         Text(title.uppercase(), color = J.Text, fontSize = 22.sp, fontFamily = J.Display, letterSpacing = 2.sp)
@@ -62,7 +62,7 @@ private fun Page(title: String, subtitle: String, scroll: Boolean = false, conte
 }
 
 @Composable
-private fun Card(modifier: Modifier = Modifier, selected: Boolean = false, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
+internal fun Card(modifier: Modifier = Modifier, selected: Boolean = false, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Box(
         modifier.clip(shape).background(J.Card)
@@ -116,38 +116,6 @@ fun AppearanceScreen(appearance: DesktopPrefs.Appearance, onChange: (DesktopPref
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun MemoryScreen(a: DesktopAssistant) {
-    Page("Memory", "What JARVIS keeps about you. It rides on every message, so keep it to what matters. Stored on this laptop.") {
-        if (a.facts.isEmpty()) {
-            Text("Nothing remembered yet. In chat, say “remember that …”.", color = J.TextMuted, fontSize = 15.sp)
-            return@Page
-        }
-        LazyColumn(Modifier.widthIn(max = 780.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(a.facts, key = { it }) { fact ->
-                Card(Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        // Masked like the phone's memory screen: a remembered number never sits in plain view.
-                        Text(MemoryFormat.masked(fact), color = J.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        Hint("Forget this") {
-                            Icon(
-                                Icons.Outlined.Close, "Forget this", tint = J.TextDim,
-                                modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).clicky { a.forget(fact) }.padding(7.dp),
-                            )
-                        }
-                    }
-                }
-            }
-            item {
-                Text(
-                    "Forget everything", color = Color(0xFFFF8A8A), fontSize = 13.sp,
-                    modifier = Modifier.padding(top = 10.dp).clip(RoundedCornerShape(8.dp)).clicky { a.forgetEverything() }.padding(8.dp),
-                )
             }
         }
     }
