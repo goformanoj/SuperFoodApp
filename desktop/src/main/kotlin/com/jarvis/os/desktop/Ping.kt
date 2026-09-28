@@ -16,11 +16,27 @@ import kotlin.system.exitProcess
  * Prints only safe facts — configured or not, the reply, plan and allowance — never
  * the secret or a token.
  */
-fun main() {
+fun main(args: Array<String>) {
     println("Worker configured: ${ProxyClient.isConfigured()} (Firebase key present: ${Identity.isConfigured()})")
     if (!ProxyClient.isConfigured()) {
         println("Missing PROXY_SECRET or FIREBASE_WEB_API_KEY in ~/.gradle/gradle.properties.")
         exitProcess(2)
+    }
+    // `:desktop:ping --args="some.wav"` checks the voice path instead: the file goes
+    // through the real TranscribeClient to the live /transcribe, and the text is printed.
+    args.firstOrNull()?.let { path ->
+        val ok = runBlocking {
+            try {
+                val text = com.jarvis.os.desktop.voice.TranscribeClient.transcribe(java.io.File(path).readBytes())
+                println("Heard: \"$text\"")
+                UsageStats.today()?.let { println("Tokens left today: ${UsageStats.format(it.remaining)}") }
+                true
+            } catch (e: Exception) {
+                println("FAILED: ${e.message ?: e.javaClass.simpleName}")
+                false
+            }
+        }
+        exitProcess(if (ok) 0 else 1)
     }
     val ok = runBlocking {
         try {
