@@ -36,6 +36,30 @@ class DesktopPrefsTest {
     }
 
     @Test
+    fun geometryRoundTripsAndDoesNotClobberTheTheme() {
+        val prefs = DesktopPrefs(tmp.root.resolve("p.properties"))
+        prefs.save(DesktopPrefs.Appearance(JarvisPalette.Nebula, ""))
+        val g = DesktopPrefs.Geometry(1400f, 820f, 40f, 30f, maximized = true)
+        prefs.saveGeometry(g)
+        assertEquals(g, prefs.loadGeometry())
+        assertEquals(JarvisPalette.Nebula, prefs.load().palette)
+    }
+
+    @Test
+    fun noGeometryMeansTheDefaultCentredWindow() {
+        assertEquals(DesktopPrefs.Geometry.DEFAULT, DesktopPrefs(tmp.root.resolve("p.properties")).loadGeometry())
+    }
+
+    @Test
+    fun aTinySavedWindowIsGrownToUsable() {
+        val prefs = DesktopPrefs(tmp.root.resolve("p.properties"))
+        prefs.saveGeometry(DesktopPrefs.Geometry(100f, 50f, null, null, false))
+        val g = prefs.loadGeometry()
+        assertEquals(900f, g.width)
+        assertEquals(600f, g.height)
+    }
+
+    @Test
     fun unknownIdsFallBackInsteadOfCrashing() {
         val f = tmp.root.resolve("p.properties").apply { writeText("theme=gone\nbackdrop=also-gone\n") }
         val a = DesktopPrefs(f).load()

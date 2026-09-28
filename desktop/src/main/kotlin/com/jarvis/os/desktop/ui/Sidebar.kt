@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.os.ai.UsageStats
 import com.jarvis.os.desktop.DesktopAssistant
+import com.jarvis.os.desktop.GoogleSignIn
 import com.jarvis.os.ui.components.JarvisWordmark
 
 enum class Screen(val label: String, val icon: ImageVector) {
@@ -186,10 +187,13 @@ private fun AccountFooter(a: DesktopAssistant) {
             Box(
                 Modifier.size(34.dp).clip(CircleShape).background(J.Accent.copy(alpha = 0.12f)).border(1.dp, J.Accent.copy(alpha = 0.5f), CircleShape),
                 contentAlignment = Alignment.Center,
-            ) { Text("G", color = J.Accent, fontWeight = FontWeight.SemiBold, fontSize = 14.sp) }
+            ) { Text(a.account.initial.toString(), color = J.Accent, fontWeight = FontWeight.SemiBold, fontSize = 14.sp) }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Guest · ${a.plan.replaceFirstChar { it.uppercase() }}", color = J.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    "${a.account.label()} · ${a.plan.replaceFirstChar { it.uppercase() }}",
+                    color = J.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
                 val u = a.usage
                 if (u != null) {
                     Box(Modifier.padding(vertical = 6.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x1AFFFFFF))) {
@@ -204,5 +208,22 @@ private fun AccountFooter(a: DesktopAssistant) {
                 }
             }
         }
+        // Google sign-in: shown only once this build has a Desktop OAuth client.
+        if (!a.account.isSignedIn && GoogleSignIn.isConfigured()) {
+            Row(
+                Modifier.fillMaxWidth().height(38.dp).clip(HudShapeSmall)
+                    .border(1.dp, J.Accent.copy(alpha = 0.45f), HudShapeSmall)
+                    .then(if (a.signingIn) Modifier else Modifier.clicky { a.signInWithGoogle() })
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    if (a.signingIn) "Finish signing in in your browser…" else "Sign in with Google",
+                    color = if (a.signingIn) J.TextDim else J.Text, fontSize = 13.sp,
+                )
+            }
+        }
+        a.signInError?.let { Text(it, color = Color(0xFFFF8A8A), fontSize = 12.sp) }
     }
 }

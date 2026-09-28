@@ -103,6 +103,13 @@ class DesktopTurnTest {
     }
 
     @Test
+    fun renamedTitlesAreTidied() {
+        assertEquals("Budget plan", DesktopTurn.cleanTitle("  Budget \n  plan "))
+        assertEquals(null, DesktopTurn.cleanTitle("   \n "))
+        assertEquals(DesktopTurn.TITLE_MAX, DesktopTurn.cleanTitle("x".repeat(80))!!.length)
+    }
+
+    @Test
     fun noUserTurnMeansNewChat() {
         assertEquals("New chat", DesktopTurn.titleFor(emptyList()))
     }

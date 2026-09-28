@@ -31,6 +31,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -74,11 +75,33 @@ fun main(args: Array<String>) = application {
     val composerFocus = remember { FocusRequester() }
     fun goHome() { assistant.newChat(); screen = Screen.Chat }
 
+    // Reopen where the user left it: same size, same place, maximised or not.
+    val geometry = remember { prefs.loadGeometry() }
+    val windowState = rememberWindowState(
+        placement = if (geometry.maximized) WindowPlacement.Maximized else WindowPlacement.Floating,
+        size = DpSize(geometry.width.dp, geometry.height.dp),
+        position = if (geometry.x != null && geometry.y != null) WindowPosition(geometry.x.dp, geometry.y.dp) else WindowPosition(Alignment.Center),
+    )
+    fun saveAndExit() {
+        val max = windowState.placement == WindowPlacement.Maximized
+        val pos = windowState.position
+        prefs.saveGeometry(
+            DesktopPrefs.Geometry(
+                width = windowState.size.width.value,
+                height = windowState.size.height.value,
+                x = if (pos.isSpecified) pos.x.value else null,
+                y = if (pos.isSpecified) pos.y.value else null,
+                maximized = max,
+            ),
+        )
+        exitApplication()
+    }
+
     Window(
-        onCloseRequest = ::exitApplication,
+        onCloseRequest = ::saveAndExit,
         title = "JARVIS",
         icon = remember(appearance.palette) { ReactorIcon(appearance.palette) },
-        state = rememberWindowState(size = DpSize(1280.dp, 760.dp), position = WindowPosition(Alignment.Center)),
+        state = windowState,
         onPreviewKeyEvent = { e ->
             when {
                 e.type != KeyEventType.KeyDown -> false
@@ -111,7 +134,7 @@ fun main(args: Array<String>) = application {
                             Screen.Chat -> ChatScreen(assistant, telemetry, composerText, composerFocus, onMemory = { screen = Screen.Memory })
                             Screen.Memory -> MemoryScreen(assistant)
                             Screen.Appearance -> AppearanceScreen(appearance) { appearance = it; prefs.save(it) }
-                            Screen.Settings -> SettingsScreen()
+                            Screen.Settings -> SettingsScreen(assistant)
                             Screen.Tasks -> ComingSoon(screen, "PHASE 3", "Tell JARVIS to do something on this laptop — open apps, sort files, work a website — and watch each step here. It stops for your OK before anything it can't undo.")
                             Screen.Scheduled -> ComingSoon(screen, "PHASE 4", "Reminders and routines that run by themselves: “every weekday at 8, brief me”, “remind me at 6 to call mom”.")
                             Screen.Files -> ComingSoon(screen, "PHASE 3", "Documents JARVIS makes for you — PDFs, notes, summaries. Already on the phone; coming to the laptop with Tasks.")

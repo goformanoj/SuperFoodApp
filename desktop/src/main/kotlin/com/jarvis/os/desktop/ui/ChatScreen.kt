@@ -43,7 +43,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -191,6 +194,46 @@ private fun Suggestion(text: String, onClick: () -> Unit) {
     )
 }
 
+/** The chat's title: click to rename, Enter saves, Esc or clicking away keeps the old one. */
+@Composable
+private fun EditableTitle(a: DesktopAssistant) {
+    val conv = a.active
+    var editing by remember(conv?.id) { mutableStateOf(false) }
+    var draft by remember(conv?.id) { mutableStateOf(conv?.title.orEmpty()) }
+    val focus = remember { FocusRequester() }
+    val style = TextStyle(color = J.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+    if (conv == null) {
+        Text("New chat", style = style, maxLines = 1)
+        return
+    }
+    if (!editing) {
+        Hint("Click to rename") {
+            Text(conv.title, style = style, maxLines = 1, modifier = Modifier.clicky { draft = conv.title; editing = true })
+        }
+        return
+    }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    BasicTextField(
+        value = draft,
+        onValueChange = { draft = it.replace("\n", "") },
+        singleLine = true,
+        textStyle = style,
+        cursorBrush = SolidColor(J.Accent),
+        modifier = Modifier.widthIn(min = 160.dp, max = 420.dp)
+            .border(1.dp, J.Accent.copy(alpha = 0.5f), HudShapeSmall).padding(horizontal = 8.dp, vertical = 4.dp)
+            .focusRequester(focus)
+            .onFocusChanged { if (!it.isFocused && editing) editing = false }
+            .onPreviewKeyEvent { e ->
+                when {
+                    e.type != KeyEventType.KeyDown -> false
+                    e.key == Key.Enter -> { a.rename(conv.id, draft); editing = false; true }
+                    e.key == Key.Escape -> { editing = false; true }
+                    else -> false
+                }
+            },
+    )
+}
+
 @Composable
 private fun ChatHeader(a: DesktopAssistant) {
     Row(
@@ -200,7 +243,7 @@ private fun ChatHeader(a: DesktopAssistant) {
         ReactorOrb(size = 64.dp, state = orbStateOf(a), labels = false)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(a.active?.title ?: "New chat", color = J.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            EditableTitle(a)
             Spacer(Modifier.height(3.dp))
             StatusLine(a)
         }

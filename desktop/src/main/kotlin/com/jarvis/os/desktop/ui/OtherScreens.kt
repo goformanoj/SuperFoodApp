@@ -42,6 +42,7 @@ import com.jarvis.os.ai.ProxyClient
 import com.jarvis.os.desktop.AppDirs
 import com.jarvis.os.desktop.DesktopAssistant
 import com.jarvis.os.desktop.DesktopPrefs
+import com.jarvis.os.desktop.GoogleSignIn
 import com.jarvis.os.memory.MemoryFormat
 import com.jarvis.os.ui.components.OrbPreview
 import com.jarvis.os.ui.components.ThemeBackdrop
@@ -153,11 +154,25 @@ fun MemoryScreen(a: DesktopAssistant) {
 }
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(a: DesktopAssistant) {
     Page("Settings", "How this laptop connects to JARVIS.") {
         Column(Modifier.widthIn(max = 780.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SettingRow("Server", if (ProxyClient.isConfigured()) "Connected · ${BuildConfig.WORKER_URL.removePrefix("https://")}" else "Not configured")
-            SettingRow("Account", "Guest (anonymous) · ${Identity.plan()} plan · Google sign-in arrives in Phase 1.4")
+            val acct = a.account
+            SettingRow(
+                "Account",
+                when {
+                    acct.isSignedIn -> "${acct.email ?: acct.label()} (Google) · ${a.plan} plan"
+                    GoogleSignIn.isConfigured() -> "Guest · ${a.plan} plan · sign in from the sidebar to use your Google account"
+                    else -> "Guest · ${a.plan} plan · Google sign-in needs a Desktop OAuth client (see desktop/README.md)"
+                },
+            )
+            if (acct.isSignedIn) {
+                Text(
+                    "Sign out of this laptop", color = Color(0xFFFF8A8A), fontSize = 13.sp,
+                    modifier = Modifier.clip(HudShapeSmall).clicky { a.signOut() }.padding(8.dp),
+                )
+            }
             SettingRow("Build secrets", "%USERPROFILE%\\.gradle\\gradle.properties — PROXY_SECRET, FIREBASE_WEB_API_KEY. Rebuild after changing.")
             SettingRow("Your data", AppDirs.root.absolutePath + " — conversations, memory, identity, appearance")
             SettingRow("Version", "Desktop ${BuildConfig.VERSION_NAME}")

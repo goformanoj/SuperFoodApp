@@ -93,6 +93,10 @@ val configValues: Map<String, String> = mapOf(
     "GROQ_API_KEY" to prop("GROQ_API_KEY"),
     "GEMINI_API_KEY" to prop("GEMINI_API_KEY"),
     "GOOGLE_WEB_CLIENT_ID" to prop("GOOGLE_WEB_CLIENT_ID"),
+    // Desktop Google sign-in (loopback OAuth). A "Desktop app" OAuth client in the
+    // Firebase project's Google Cloud console; blank = sign-in stays hidden.
+    "GOOGLE_DESKTOP_CLIENT_ID" to prop("GOOGLE_DESKTOP_CLIENT_ID"),
+    "GOOGLE_DESKTOP_CLIENT_SECRET" to prop("GOOGLE_DESKTOP_CLIENT_SECRET"),
     "VERSION_NAME" to prop("VERSION_NAME").ifBlank { "0.1.0" },
 )
 

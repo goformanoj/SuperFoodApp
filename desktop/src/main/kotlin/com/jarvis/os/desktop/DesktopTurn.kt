@@ -85,6 +85,13 @@ object DesktopTurn {
 
     const val TITLE_MAX = 42
 
+    /** A user-typed title, tidied: one line, collapsed spaces, capped; null if blank. */
+    fun cleanTitle(raw: String): String? {
+        val one = raw.replace(Regex("\\s+"), " ").trim()
+        if (one.isEmpty()) return null
+        return if (one.length <= TITLE_MAX) one else one.take(TITLE_MAX - 1).trimEnd() + "…"
+    }
+
     /**
      * The grounding context for a desktop turn. Tells the model where it is running
      * and what it cannot do here, so it answers in words instead of phone markers.

@@ -34,8 +34,12 @@ object Identity {
 
     private const val SIGNUP = "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key="
     private const val REFRESH = "https://securetoken.googleapis.com/v1/token?key="
+    private const val IDP = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key="
     private const val KEY_REFRESH = "refresh_token"
     private const val KEY_PLAN = "account_plan"
+    private const val KEY_EMAIL = "account_email"
+    private const val KEY_NAME = "account_name"
+    private const val KEY_PROVIDER = "account_provider"
 
     @Volatile private var idToken: String? = null
     @Volatile private var expiresAtMs: Long = 0L
@@ -53,6 +57,100 @@ object Identity {
     fun plan(): String = load().getProperty(KEY_PLAN) ?: "free"
 
     fun cachePlan(plan: String) = save { it.setProperty(KEY_PLAN, plan) }
+
+    /** Who is signed in on this laptop. Same shape as the phone's `Identity.Account`. */
+    data class Account(val email: String?, val name: String?, val isSignedIn: Boolean, val plan: String) {
+        val isPro: Boolean get() = plan == "pro"
+        val initial: Char
+            get() = (name?.trim()?.firstOrNull { it.isLetter() } ?: email?.trim()?.firstOrNull { it.isLetter() })
+                ?.uppercaseChar() ?: 'G'
+        fun label(): String = name?.takeIf { it.isNotBlank() } ?: email?.takeIf { it.isNotBlank() } ?: "Guest"
+    }
+
+    fun account(): Account {
+        val p = load()
+        return Account(
+            email = p.getProperty(KEY_EMAIL),
+            name = p.getProperty(KEY_NAME),
+            isSignedIn = p.getProperty(KEY_PROVIDER) == "google.com",
+            plan = p.getProperty(KEY_PLAN) ?: "free",
+        )
+    }
+
+    /**
+     * Signs this laptop in with Google: the ID token from [com.jarvis.os.desktop.GoogleSignIn]
+     * goes to Firebase `signInWithIdp`, LINKED onto the current anonymous uid so today's
+     * usage carries over — exactly the phone's `linkGoogle`. If that Google account already
+     * exists (it does, from the phone), Firebase refuses the link and we sign in AS it,
+     * which is the point: the laptop becomes the same account as the phone.
+     */
+    suspend fun linkGoogle(googleIdToken: String): Account {
+        val anon = runCatching { token() }.getOrNull()
+        return withContext(Dispatchers.IO) {
+            val key = BuildConfig.FIREBASE_API_KEY
+            if (key.isBlank()) throw IdentityException("No Firebase API key set")
+            var (code, body) = post(IDP + key, "application/json", buildIdpPayload(googleIdToken, anon))
+            if (code !in 200..299 && isLinkConflict(code, body)) {
+                DebugLog.log(DebugLog.Stage.SESSION, "google account already exists — signing in as it")
+                val retry = post(IDP + key, "application/json", buildIdpPayload(googleIdToken, null))
+                code = retry.first; body = retry.second
+            }
+            if (code !in 200..299) throw IdentityException("Google sign-in failed: HTTP $code")
+            val res = parseIdp(body)
+            store(TokenSet(res.idToken, res.refreshToken, res.expiresInSec), System.currentTimeMillis())
+            save {
+                it.setProperty(KEY_PROVIDER, "google.com")
+                if (res.email != null) it.setProperty(KEY_EMAIL, res.email) else it.remove(KEY_EMAIL)
+                if (res.name != null) it.setProperty(KEY_NAME, res.name) else it.remove(KEY_NAME)
+                // The plan is re-learned from the Worker on the next reply (owner email → pro).
+                it.remove(KEY_PLAN)
+            }
+            account()
+        }
+    }
+
+    /** Back to a fresh guest: forget the tokens and who we were. */
+    fun signOut() {
+        idToken = null
+        expiresAtMs = 0L
+        refreshToken = null
+        save { p -> listOf(KEY_REFRESH, KEY_EMAIL, KEY_NAME, KEY_PROVIDER, KEY_PLAN).forEach { p.remove(it) } }
+    }
+
+    internal data class IdpResult(
+        val idToken: String,
+        val refreshToken: String,
+        val expiresInSec: Long,
+        val email: String?,
+        val name: String?,
+    )
+
+    // The three below mirror the phone's tested helpers (app/.../ai/Identity.kt), which
+    // cannot be shared directly because that file imports android.content.Context.
+    internal fun buildIdpPayload(googleIdToken: String, anonIdToken: String?): String =
+        JSONObject().apply {
+            put("postBody", "id_token=$googleIdToken&providerId=google.com")
+            put("requestUri", "http://localhost")
+            put("returnSecureToken", true)
+            if (anonIdToken != null) put("idToken", anonIdToken)
+        }.toString()
+
+    internal fun parseIdp(json: String): IdpResult {
+        val o = JSONObject(json)
+        return IdpResult(
+            idToken = o.getString("idToken"),
+            refreshToken = o.getString("refreshToken"),
+            expiresInSec = o.optString("expiresIn", "3600").toLongOrNull() ?: 3600L,
+            email = o.optString("email").ifBlank { null },
+            name = o.optString("displayName").ifBlank { o.optString("fullName").ifBlank { null } },
+        )
+    }
+
+    internal fun isLinkConflict(code: Int, json: String): Boolean {
+        if (code in 200..299) return false
+        val msg = runCatching { JSONObject(json).optJSONObject("error")?.optString("message").orEmpty() }.getOrDefault("")
+        return msg.contains("FEDERATED_USER_ID_ALREADY_LINKED") || msg.contains("EMAIL_EXISTS") || msg.contains("CREDENTIAL_ALREADY_IN_USE")
+    }
 
     suspend fun token(): String = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()

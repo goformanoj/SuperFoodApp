@@ -26,8 +26,18 @@ Both builds read the same Gradle properties. Put them in your **user-level**
 ```properties
 PROXY_SECRET=...            # required: the Worker's X-Proxy-Secret
 FIREBASE_WEB_API_KEY=...    # required: public Firebase web API key (anonymous identity)
-GOOGLE_WEB_CLIENT_ID=...    # optional (phone sign-in; unused on desktop so far)
+GOOGLE_WEB_CLIENT_ID=...    # optional (phone sign-in)
+GOOGLE_DESKTOP_CLIENT_ID=...      # optional: desktop "Sign in with Google"
+GOOGLE_DESKTOP_CLIENT_SECRET=...  # (a "Desktop app" OAuth client — see below)
 ```
+
+**Desktop Google sign-in** needs its own OAuth client, because Google registers each kind
+of app separately. In Google Cloud Console → APIs & Services → Credentials for project
+`jarvis-os-4efe3`, choose Create credentials → OAuth client ID → **Desktop app**. Put its ID
+and secret in the two keys above and rebuild. The flow is Google's standard one for installed
+apps: the browser opens Google's own page, the answer returns to a one-shot server on
+127.0.0.1 (PKCE-protected), and Firebase `signInWithIdp` links the laptop to the same account
+as the phone, so the owner's Pro plan applies here too.
 
 Secrets are **baked in at build time**, so rebuild after changing them. The
 generated `BuildConfig` lives in `desktop/build/` (ignored), and CI builds this

@@ -60,7 +60,7 @@ class DesktopAssistant(
     val thinkingHere: Boolean get() = thinkingIn != null && thinkingIn == activeId
 
     val configured: Boolean get() = ProxyClient.isConfigured() || GroqClient.hasKey()
-    val plan: String get() = if (ProxyClient.isConfigured()) Identity.plan() else "dev"
+    val plan: String get() = if (ProxyClient.isConfigured()) account.plan else "dev"
 
     fun newChat() {
         activeId = null
@@ -76,6 +76,46 @@ class DesktopAssistant(
         if (thinkingIn == id) return
         conversations = conversations.filterNot { it.id == id }
         if (activeId == id) activeId = null
+        persist()
+    }
+
+    // ── Account ──────────────────────────────────────────────────────────────
+    var account by mutableStateOf(Identity.account())
+        private set
+    var signingIn by mutableStateOf(false)
+        private set
+    var signInError by mutableStateOf<String?>(null)
+        private set
+
+    /** Opens the browser for Google sign-in and links this laptop to that account. */
+    fun signInWithGoogle() {
+        if (signingIn) return
+        signingIn = true
+        signInError = null
+        scope.launch {
+            try {
+                val googleToken = GoogleSignIn.signIn()
+                account = Identity.linkGoogle(googleToken)
+                usage = null
+            } catch (e: Exception) {
+                DebugLog.log(DebugLog.Stage.ERROR, "desktop sign-in failed: ${e.javaClass.simpleName}")
+                signInError = e.message ?: "Sign-in failed — try again."
+            } finally {
+                signingIn = false
+            }
+        }
+    }
+
+    fun signOut() {
+        Identity.signOut()
+        account = Identity.account()
+        usage = null
+    }
+
+    /** Renames a conversation. A blank name is ignored (the old title stays). */
+    fun rename(id: String, title: String) {
+        val clean = DesktopTurn.cleanTitle(title) ?: return
+        conversations = conversations.map { if (it.id == id) it.copy(title = clean) else it }
         persist()
     }
 
@@ -116,6 +156,8 @@ class DesktopAssistant(
                 }
                 persist()
                 usage = UsageStats.today()
+                // The Worker reports the plan on every reply (the owner's email → pro).
+                account = Identity.account()
             } catch (e: Exception) {
                 DebugLog.log(DebugLog.Stage.ERROR, "desktop turn failed: ${e.javaClass.simpleName}")
                 // ProxyException already carries a human, speakable sentence.
