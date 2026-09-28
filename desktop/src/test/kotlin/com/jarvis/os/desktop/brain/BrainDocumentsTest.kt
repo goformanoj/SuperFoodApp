@@ -99,7 +99,7 @@ class BrainDocumentsTest {
         // Simulate a laptop that last ran the Phase 4 build: schema 1, no document tables.
         java.sql.DriverManager.getConnection("jdbc:sqlite:${file.absolutePath}").use { c ->
             c.createStatement().use { st ->
-                listOf("conversation_docs", "doc_pages", "documents").forEach { st.execute("DROP TABLE $it") }
+                listOf("conversation_docs", "doc_pages", "documents", "routines").forEach { st.execute("DROP TABLE $it") }
                 st.execute("DROP TABLE doc_fts")
                 st.execute("UPDATE meta SET value='1' WHERE key='schema'")
             }

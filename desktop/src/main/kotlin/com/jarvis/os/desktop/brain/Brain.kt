@@ -328,6 +328,45 @@ class Brain private constructor(private val db: Connection, private val clock: (
         "SELECT d.* FROM documents d JOIN conversation_docs c ON c.doc_id = d.id WHERE c.conversation_id=? ORDER BY c.created", conversationId,
     ) { doc(it) }
 
+    // ── Routines (AGENT_PLAN S9) ─────────────────────────────────────────────
+
+    /**
+     * Something JARVIS does by itself on a schedule ("every weekday at 8, brief me"): at
+     * [nextRun] the agent runs [instruction] with its tools, and the result arrives as a
+     * notification (spoken too when [speak]). Deleting is soft ([deleted]) so it can be undone.
+     */
+    data class Routine(
+        val id: String, val name: String, val instruction: String, val schedule: Schedule, val nextRun: Long,
+        val enabled: Boolean, val speak: Boolean, val lastRun: Long?, val sourceConversation: String?, val created: Long,
+    )
+
+    fun addRoutine(name: String, instruction: String, schedule: Schedule, nextRun: Long, speak: Boolean = true, sourceConversation: String? = null): Routine {
+        val r = Routine(newId(), name.trim().ifEmpty { "Routine" }, instruction.trim(), schedule, nextRun, true, speak, null, sourceConversation, clock())
+        exec(
+            "INSERT INTO routines(id,name,instruction,schedule,next_run,enabled,speak,deleted,last_run,source_conversation,created) VALUES(?,?,?,?,?,1,?,0,NULL,?,?)",
+            r.id, r.name, r.instruction, schedule.encode(), nextRun, if (speak) 1 else 0, sourceConversation, r.created,
+        )
+        return r
+    }
+
+    fun routine(id: String): Routine? = query("SELECT * FROM routines WHERE id=? AND deleted=0", id) { routine(it) }.firstOrNull()
+    /** Every live routine, soonest first. */
+    fun routines(): List<Routine> = query("SELECT * FROM routines WHERE deleted=0 ORDER BY enabled DESC, next_run") { routine(it) }.filterNotNull()
+    /** Enabled routines whose time has come. */
+    fun dueRoutines(now: Long = clock()): List<Routine> =
+        query("SELECT * FROM routines WHERE deleted=0 AND enabled=1 AND next_run<=? ORDER BY next_run", now) { routine(it) }.filterNotNull()
+
+    fun setRoutineEnabled(id: String, enabled: Boolean, nextRun: Long? = null) =
+        exec("UPDATE routines SET enabled=?, next_run=COALESCE(?, next_run) WHERE id=?", if (enabled) 1 else 0, nextRun, id)
+    fun setRoutineSpeak(id: String, speak: Boolean) = exec("UPDATE routines SET speak=? WHERE id=?", if (speak) 1 else 0, id)
+    fun setRoutineDeleted(id: String, deleted: Boolean) = exec("UPDATE routines SET deleted=? WHERE id=?", if (deleted) 1 else 0, id)
+    /** Records a run (or a skip, with [ranAt] null) and moves the routine to its next time. */
+    fun markRoutine(id: String, ranAt: Long?, nextRun: Long) =
+        exec("UPDATE routines SET last_run=COALESCE(?, last_run), next_run=? WHERE id=?", ranAt, nextRun, id)
+
+    /** Routines whose name contains [q] (case-insensitive). */
+    fun findRoutines(q: String): List<Routine> = routines().filter { it.name.contains(q.trim(), ignoreCase = true) || it.instruction.contains(q.trim(), ignoreCase = true) }
+
     // ── Activity ─────────────────────────────────────────────────────────────
 
     /** Every action JARVIS takes is logged here (AGENT_PLAN §4) — the user can see what it did. */
@@ -404,6 +443,15 @@ class Brain private constructor(private val db: Connection, private val clock: (
         r.getInt("pages"), r.getInt("chars"), r.getLongOrNull("modified"), r.getString("source_conversation"), r.getLong("created"),
     )
 
+    /** Null for a row whose schedule can't be read (never written by this code, but never crash on it). */
+    private fun routine(r: ResultSet): Routine? {
+        val s = Schedule.decode(r.getString("schedule")) ?: return null
+        return Routine(
+            r.getString("id"), r.getString("name"), r.getString("instruction"), s, r.getLong("next_run"),
+            r.getInt("enabled") == 1, r.getInt("speak") == 1, r.getLongOrNull("last_run"), r.getString("source_conversation"), r.getLong("created"),
+        )
+    }
+
     private fun rem(r: ResultSet) = Reminder(
         r.getString("id"), r.getString("text"), r.getLong("at"), r.getString("recurrence"), r.getInt("delivered") == 1, r.getString("task_id"),
     )
@@ -449,6 +497,10 @@ class Brain private constructor(private val db: Connection, private val clock: (
             SCHEMA_V2.forEach { exec(it) }
             exec("INSERT OR REPLACE INTO meta(key,value) VALUES('schema','2')")
         }
+        if (version < 3) tx {
+            SCHEMA_V3.forEach { exec(it) }
+            exec("INSERT OR REPLACE INTO meta(key,value) VALUES('schema','3')")
+        }
     }
 
     companion object {
@@ -490,6 +542,14 @@ class Brain private constructor(private val db: Connection, private val clock: (
             "the", "an", "and", "or", "of", "to", "in", "on", "for", "is", "are", "was", "were", "be",
             "what", "which", "who", "when", "where", "how", "does", "do", "did", "it", "this", "that", "with",
             "about", "from", "by", "as", "at", "me", "my", "tell", "say", "says", "document", "pdf", "file",
+        )
+
+        /** v3 (Phase 6): routines. */
+        private val SCHEMA_V3 = listOf(
+            """CREATE TABLE routines(id TEXT PRIMARY KEY, name TEXT NOT NULL, instruction TEXT NOT NULL, schedule TEXT NOT NULL,
+               next_run INTEGER NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, speak INTEGER NOT NULL DEFAULT 1,
+               deleted INTEGER NOT NULL DEFAULT 0, last_run INTEGER, source_conversation TEXT, created INTEGER NOT NULL)""",
+            "CREATE INDEX routines_due ON routines(deleted, enabled, next_run)",
         )
 
         /** v2 (Phase 5): documents, their pages, a passage index, and which chat each is attached to. */

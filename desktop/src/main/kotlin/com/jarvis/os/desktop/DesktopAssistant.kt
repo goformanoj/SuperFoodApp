@@ -293,7 +293,7 @@ class DesktopAssistant(
         val line = toolBox.undo(card.undo) ?: return
         brain.updateMessage(messageId, card.copy(undone = true, summary = card.summary + " — undone ($line)").encode())
         activeId?.let { turns = loadTurns(it) }
-        refreshTasks(); refreshMemories()
+        refreshTasks(); refreshMemories(); refreshRoutines(); refreshReminders()
     }
 
     // ── Knowledge (Phase 5) ─────────────────────────────────────────────────
@@ -391,6 +391,102 @@ class DesktopAssistant(
         }
     }
 
+    // ── Routines (Phase 6, S9) ──────────────────────────────────────────────
+
+    var routines by mutableStateOf(brain.routines())
+        private set
+    fun refreshRoutines() { routines = brain.routines() }
+
+    /** What a routine produced, for the notification (and speech) the app shows. */
+    class RoutineRun(val routine: Brain.Routine, val text: String, val late: Boolean, val ok: Boolean, val conversationId: String)
+
+    /**
+     * Runs every routine whose time has come, one after another. Waits while the user is
+     * mid-turn (the next 15-second tick picks it up). A run missed by hours (laptop off) is
+     * skipped and logged, never fired hours late; a run a little late says so.
+     */
+    suspend fun runDueRoutines(): List<RoutineRun> {
+        if (thinking || !ProxyClient.isConfigured()) return emptyList()
+        val now = System.currentTimeMillis()
+        val zone = java.time.ZoneId.systemDefault()
+        val out = mutableListOf<RoutineRun>()
+        for (r in brain.dueRoutines(now)) {
+            when (com.jarvis.os.desktop.brain.Schedule.due(r.nextRun, now)) {
+                com.jarvis.os.desktop.brain.Schedule.Due.SKIP -> {
+                    brain.markRoutine(r.id, null, r.schedule.next(now, zone))
+                    brain.log("routine", "Skipped “${r.name}”: it came due while JARVIS was off")
+                }
+                com.jarvis.os.desktop.brain.Schedule.Due.RUN -> out += runRoutine(r, late = false)
+                com.jarvis.os.desktop.brain.Schedule.Due.RUN_LATE -> out += runRoutine(r, late = true)
+            }
+        }
+        refreshRoutines()
+        return out
+    }
+
+    /** The Scheduled screen's "Run now": runs it and opens the chat it lands in. */
+    fun runRoutineNow(id: String, onDone: (RoutineRun) -> Unit = {}) {
+        val r = brain.routine(id) ?: return
+        if (thinking) return
+        scope.launch {
+            val run = runRoutine(r, late = false, manual = true)
+            select(run.conversationId)
+            onDone(run)
+        }
+    }
+
+    fun setRoutineEnabled(id: String, on: Boolean) {
+        val r = brain.routine(id) ?: return
+        // Turning one back on starts from the next future slot, never a backlog.
+        brain.setRoutineEnabled(id, on, if (on) r.schedule.next(System.currentTimeMillis(), java.time.ZoneId.systemDefault()) else null)
+        refreshRoutines()
+    }
+    fun setRoutineSpeak(id: String, on: Boolean) { brain.setRoutineSpeak(id, on); refreshRoutines() }
+    fun deleteRoutine(id: String) {
+        brain.routine(id)?.let { brain.log("routine", "Routine removed: ${it.name}") }
+        brain.setRoutineDeleted(id, true)
+        refreshRoutines()
+    }
+    fun deleteReminder(id: String) { brain.deleteReminder(id); brain.log("reminder", "Reminder cancelled"); refreshReminders() }
+
+    /**
+     * One routine run: its own conversation ("Morning brief · Tue 29 Sep"), the agent with
+     * every tool, and NO approvals: nobody is watching, so anything irreversible or that
+     * shares something is declined in code and the model is told so.
+     */
+    private suspend fun runRoutine(r: Brain.Routine, late: Boolean, manual: Boolean = false): RoutineRun {
+        val zone = java.time.ZoneId.systemDefault()
+        val started = System.currentTimeMillis()
+        val day = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))
+        val conv = brain.createConversation("${r.name} · $day")
+        brain.addMessage(conv.id, ChatTurn.USER, "${DesktopTurn.ROUTINE_MARK} ${r.name}\n${r.instruction}")
+        thinkingIn = conv.id
+        refreshConversations()
+        val (text, ok) = try {
+            val context = DesktopTurn.context(nowLine(), formatMemory("", facts), today = java.time.LocalDate.now()) + "\n\n" +
+                DesktopTurn.routineNote(r.name, manual)
+            val raw = AgentLoop(
+                toolBox,
+                step = { m, c, t -> AgentClient.step(m, c, t) },
+                approve = { ask -> brain.log("routine", "Declined in “${r.name}” (nobody to approve): ${ask.description}"); false },
+                onStep = { _, result -> brain.addMessage(conv.id, ActionCard.ROLE, ActionCard(result.summary, result.ok, result.undo).encode()) },
+            ).run(listOf(ChatTurn(ChatTurn.USER, r.instruction)), context, sourceConversation = conv.id)
+            DesktopTurn.process(raw).text.ifBlank { "…" } to true
+        } catch (e: Exception) {
+            DebugLog.log(DebugLog.Stage.ERROR, "routine failed: ${e.javaClass.simpleName}")
+            "I couldn't run “${r.name}”: ${e.message ?: "something went wrong"}" to false
+        } finally {
+            thinkingIn = null
+        }
+        brain.addMessage(conv.id, ChatTurn.ASSISTANT, text)
+        if (!manual) brain.markRoutine(r.id, started, r.schedule.next(started, zone))
+        brain.log("routine", (if (ok) "Ran “" else "Failed “") + r.name + "”" + if (late) " (late)" else "")
+        if (activeId == conv.id) turns = loadTurns(conv.id)
+        refreshConversations(); refreshTasks(); refreshMemories(); refreshReminders(); refreshRoutines()
+        usage = UsageStats.today()
+        return RoutineRun(r, text, late, ok, conv.id)
+    }
+
     fun dueReminders(): List<Brain.Reminder> = brain.dueReminders()
     fun markReminderDelivered(r: Brain.Reminder) {
         brain.markDelivered(r.id)
@@ -439,8 +535,37 @@ class DesktopAssistant(
         refreshConversations()
     }
 
+    // ── Quick bar (Phase 6) ─────────────────────────────────────────────────
+
+    /** The user's switch (Settings); on by default. */
+    var quickBarOn by mutableStateOf(true)
+    /** The key combination Windows gave the Quick bar, or null (off, or every choice was taken). */
+    var quickKey by mutableStateOf<String?>(null)
+
+    /** The Quick bar's current conversation (follow-ups continue it) and its latest answer. */
+    private var quickConversationId: String? = null
+    var quickAnswer by mutableStateOf<String?>(null)
+        private set
+    /** The error of the last quick question, if it failed. */
+    var quickError by mutableStateOf<String?>(null)
+        private set
+    val quickThinking: Boolean get() = thinkingIn != null && thinkingIn == quickConversationId
+
+    /** A fresh Quick bar session (the bar was just opened). */
+    fun quickReset() { quickConversationId = null; quickAnswer = null; quickError = null }
+
+    /** Asks from the Quick bar: a new chat the first time, then follow-ups in the same one. */
+    fun quickAsk(text: String): Boolean {
+        val conv = quickConversationId
+        if (conv != null && brain.conversation(conv) != null) select(conv) else newChat()
+        quickError = null
+        val ok = send(text, extraContext = QUICK_NOTE)
+        if (ok) quickConversationId = activeId
+        return ok
+    }
+
     /** Returns true if the message was accepted (so the input can be cleared). */
-    fun send(input: String, spoken: Boolean = false): Boolean {
+    fun send(input: String, spoken: Boolean = false, extraContext: String? = null): Boolean {
         val docs = pendingDocs
         val shot = pendingShot
         // A file or a screenshot with no words is still a question.
@@ -479,7 +604,8 @@ class DesktopAssistant(
                 val history = modelHistory(id).takeLast(DesktopTurn.MAX_CONTEXT_TURNS)
                 // Exact local time and zone: the agent turns "tomorrow at 5" into a real time.
                 val attached = brain.attachedDocuments(id).map { "${it.name} (${it.pages} ${it.unit}${if (it.pages == 1) "" else "s"})" }
-                val context = DesktopTurn.context(nowLine(), formatMemory("", facts), attached, java.time.LocalDate.now())
+                val context = DesktopTurn.context(nowLine(), formatMemory("", facts), attached, java.time.LocalDate.now()) +
+                    (extraContext?.let { "\n\n$it" } ?: "")
                 val started = System.currentTimeMillis()
                 val raw = if (shot != null && ProxyClient.isConfigured()) {
                     // The user took this screenshot and pressed send: that IS the approval.
@@ -502,7 +628,7 @@ class DesktopAssistant(
                             brain.addMessage(id, ActionCard.ROLE, ActionCard(result.summary, result.ok, result.undo).encode())
                             if (activeId == id) turns = loadTurns(id)
                             refreshTasks(); refreshMemories(); upcomingReminders = brain.upcomingReminders()
-                            documents = brain.documents()
+                            documents = brain.documents(); refreshRoutines()
                         },
                     ).run(history, context, sourceConversation = id)
                 } else {
@@ -512,6 +638,7 @@ class DesktopAssistant(
                 val result = DesktopTurn.process(raw)
                 applyMemory(result.memory, sourceConversation = id)
                 brain.addMessage(id, ChatTurn.ASSISTANT, result.text.ifBlank { "…" })
+                if (id == quickConversationId) quickAnswer = result.text
                 // Only redraw the chat if the user is still looking at it.
                 if (activeId == id) turns = loadTurns(id)
                 refreshConversations()
@@ -524,6 +651,7 @@ class DesktopAssistant(
                 DebugLog.log(DebugLog.Stage.ERROR, "desktop turn failed: ${e.javaClass.simpleName}")
                 // ProxyException already carries a human, speakable sentence.
                 error = e.message ?: "Something went wrong — try again."
+                if (id == quickConversationId) quickError = error
             } finally {
                 thinkingIn = null
                 pendingApproval?.let { it.answer.complete(false); pendingApproval = null }
@@ -561,6 +689,11 @@ class DesktopAssistant(
     }
 
     companion object {
+        /** Rides on Quick bar questions: the answer lands in a small box and is often pasted somewhere. */
+        const val QUICK_NOTE = "The user asked from the Quick bar (a small box over whatever they are doing). Keep the answer short. " +
+            "When they ask you to rewrite, translate, fix or draft text, reply with ONLY the finished text, no preamble, so it can be copied straight into place. " +
+            "\"What I copied\" / \"this\" means the clipboard: use read_clipboard."
+
         /** "Monday 28 September 2026, 17:05 (Asia/Kolkata, UTC+05:30)": exact, so "tomorrow at 5" becomes a real time. */
         fun nowLine(): String {
             val zone = java.time.ZoneId.systemDefault()

@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Monitor
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Stop
@@ -329,8 +330,12 @@ private fun UserMessage(content: String) {
     val (marks, text) = DesktopTurn.splitAttachments(content)
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         marks.forEach { m ->
-            val shot = m.startsWith(DesktopTurn.SHOT_MARK)
-            FileChip(if (shot) Icons.Outlined.Monitor else Icons.Outlined.Description, m.drop(if (shot) DesktopTurn.SHOT_MARK.length else DesktopTurn.DOC_MARK.length).trim(), null)
+            val (icon, mark) = when {
+                m.startsWith(DesktopTurn.SHOT_MARK) -> Icons.Outlined.Monitor to DesktopTurn.SHOT_MARK
+                m.startsWith(DesktopTurn.ROUTINE_MARK) -> Icons.Outlined.Schedule to DesktopTurn.ROUTINE_MARK
+                else -> Icons.Outlined.Description to DesktopTurn.DOC_MARK
+            }
+            FileChip(icon, m.drop(mark.length).trim(), if (mark == DesktopTurn.ROUTINE_MARK) "routine" else null)
         }
         if (text.isNotEmpty()) {
             val shape = HudShapeSmall

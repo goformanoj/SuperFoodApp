@@ -1,6 +1,7 @@
 package com.jarvis.os.desktop.agent
 
 import com.jarvis.os.desktop.brain.Brain
+import com.jarvis.os.desktop.brain.Schedule
 import com.jarvis.os.desktop.brain.TaskDates
 import com.jarvis.os.desktop.knowledge.DocText
 import com.jarvis.os.desktop.knowledge.FileSearch
@@ -157,6 +158,24 @@ class ToolBox(
             Risk.READ,
         ),
         Spec("read_clipboard", "Read the text the user has copied, to act on it.", obj(), Risk.READ),
+        // ── Routines (Phase 6, S9) ──
+        Spec(
+            "create_routine", "Set up something JARVIS does by itself on a schedule, e.g. \"every weekday at 8, brief me\". At that time the instruction is run with your tools and the result pops up (and is spoken).",
+            obj(
+                "name" to str("Short name, e.g. \"Morning brief\""),
+                "instruction" to str("What to do each time, as a clear request to yourself, e.g. \"Brief me: today's tasks and reminders, and the weather in Pune\""),
+                "days" to str("\"weekdays\", \"weekends\", \"daily\", or days like \"mon, thu\""),
+                "time" to str("Local time, HH:MM (24-hour)"),
+                required = listOf("name", "instruction", "days", "time"),
+            ),
+            Risk.UNDOABLE,
+        ),
+        Spec("list_routines", "List the user's routines and when each runs next.", obj(), Risk.READ),
+        Spec(
+            "delete_routine", "Stop and remove a routine. Identify it by (part of) its name.",
+            obj("routine" to str("Name or part of the name"), required = listOf("routine")),
+            Risk.UNDOABLE,
+        ),
         // ── Knowledge (Phase 5, AGENT_PLAN §5) ──
         Spec(
             "web_search", "Search the live web. Use for news, prices, weather, scores, schedules or anything that may have changed since your training.",
@@ -355,6 +374,41 @@ class ToolBox(
                 if (text.isNullOrBlank()) fail("The clipboard has no text.")
                 else ok(JSONObject().put("clipboard", text), "Read the clipboard (${text.length} characters)")
             }
+            "create_routine" -> {
+                val name = args.optString("name").trim()
+                val instruction = args.optString("instruction").trim()
+                if (name.isEmpty() || instruction.isEmpty()) return fail("A routine needs a name and an instruction.")
+                val schedule = Schedule.parse(args.optString("days"), args.optString("time"))
+                    ?: return fail("I couldn't read the schedule “${args.optString("days")} at ${args.optString("time")}”.")
+                val next = schedule.next(clock(), zone)
+                val r = brain.addRoutine(name, instruction, schedule, next, sourceConversation = sourceConversation)
+                brain.log("routine", "Routine set: ${r.name} · ${schedule.describe()}")
+                ok(JSONObject().put("routine", r.name).put("when", schedule.describe()).put("next", TaskDates.label(next, clock(), zone)),
+                    "Routine “${r.name}” · ${schedule.describe()} · next ${TaskDates.label(next, clock(), zone)}", Undo("routine", r.id))
+            }
+            "list_routines" -> {
+                val arr = JSONArray()
+                brain.routines().forEach { r ->
+                    arr.put(JSONObject().put("name", r.name).put("when", r.schedule.describe()).put("instruction", r.instruction)
+                        .put("enabled", r.enabled).put("next", if (r.enabled) TaskDates.label(r.nextRun, clock(), zone) else null))
+                }
+                ok(JSONObject().put("routines", arr), "Looked at your routines (${arr.length()})")
+            }
+            "delete_routine" -> {
+                val q = args.optString("routine").trim()
+                val matches = if (q.isEmpty()) emptyList() else brain.findRoutines(q)
+                when {
+                    matches.isEmpty() -> fail("No routine matches “$q”.")
+                    matches.size > 1 && matches.none { it.name.equals(q, ignoreCase = true) } ->
+                        fail("Several routines match “$q”: " + matches.joinToString("; ") { it.name } + ". Ask the user which one.")
+                    else -> {
+                        val r = matches.firstOrNull { it.name.equals(q, ignoreCase = true) } ?: matches.single()
+                        brain.setRoutineDeleted(r.id, true)
+                        brain.log("routine", "Routine removed: ${r.name}")
+                        ok(JSONObject().put("removed", r.name), "Removed routine “${r.name}”", Undo("routine-restore", r.id))
+                    }
+                }
+            }
             "web_search" -> {
                 val q = args.optString("query").trim()
                 if (q.isEmpty()) return fail("A web search needs something to look up.")
@@ -423,6 +477,8 @@ class ToolBox(
     /** Reverses an undoable step. Returns a line for the card, or null if nothing was left to undo. */
     fun undo(u: Undo): String? = when (u.kind) {
         "task" -> brain.task(u.id)?.let { brain.deleteTask(u.id); brain.log("undo", "Removed task: ${it.title}"); "Removed task “${it.title}”" }
+        "routine" -> brain.routine(u.id)?.let { brain.setRoutineDeleted(u.id, true); brain.log("undo", "Removed routine: ${it.name}"); "Removed the routine" }
+        "routine-restore" -> { brain.setRoutineDeleted(u.id, false); brain.routine(u.id)?.let { brain.log("undo", "Restored routine: ${it.name}"); "Restored “${it.name}”" } }
         "tasks" -> u.id.split(',').mapNotNull { id -> brain.task(id)?.also { brain.deleteTask(id) } }
             .takeIf { it.isNotEmpty() }?.let { gone -> brain.log("undo", "Removed ${gone.size} tasks"); "Removed ${gone.size} tasks" }
         "reopen" -> brain.task(u.id)?.let { brain.setTaskDone(u.id, false); brain.log("undo", "Reopened: ${it.title}"); "Reopened “${it.title}”" }

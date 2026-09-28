@@ -66,6 +66,39 @@ class DesktopPrefs(private val file: File = AppDirs.file("prefs.properties")) {
         it.setProperty(KEY_MAX, g.maximized.toString())
     }
 
+    /**
+     * Where the user left the Quick bar and how big (dp): [height] is its size with an answer
+     * showing (with none it is just the input row). [x]/[y] null = the default spot, top-centre.
+     */
+    data class QuickGeometry(val width: Float, val height: Float, val x: Float?, val y: Float?) {
+        companion object {
+            val DEFAULT = QuickGeometry(720f, 440f, null, null)
+            const val MIN_W = 460f
+            const val MAX_W = 1600f
+            const val MIN_H = 220f
+            const val MAX_H = 1200f
+        }
+    }
+
+    fun loadQuick(): QuickGeometry {
+        val p = props()
+        val d = QuickGeometry.DEFAULT
+        return QuickGeometry(
+            width = (p.getProperty(KEY_Q_W)?.toFloatOrNull() ?: d.width).coerceIn(QuickGeometry.MIN_W, QuickGeometry.MAX_W),
+            height = (p.getProperty(KEY_Q_H)?.toFloatOrNull() ?: d.height).coerceIn(QuickGeometry.MIN_H, QuickGeometry.MAX_H),
+            x = p.getProperty(KEY_Q_X)?.toFloatOrNull(),
+            y = p.getProperty(KEY_Q_Y)?.toFloatOrNull(),
+        )
+    }
+
+    fun saveQuick(g: QuickGeometry) = edit {
+        it.setProperty(KEY_Q_W, g.width.toString())
+        it.setProperty(KEY_Q_H, g.height.toString())
+        if (g.x != null && g.y != null) {
+            it.setProperty(KEY_Q_X, g.x.toString()); it.setProperty(KEY_Q_Y, g.y.toString())
+        }
+    }
+
     /** A simple on/off preference (e.g. the wake word). */
     fun flag(key: String, default: Boolean = false): Boolean =
         props().getProperty(key)?.let { it == "true" } ?: default
@@ -90,5 +123,9 @@ class DesktopPrefs(private val file: File = AppDirs.file("prefs.properties")) {
         private const val KEY_X = "window.x"
         private const val KEY_Y = "window.y"
         private const val KEY_MAX = "window.maximized"
+        private const val KEY_Q_W = "quickbar.width"
+        private const val KEY_Q_H = "quickbar.height"
+        private const val KEY_Q_X = "quickbar.x"
+        private const val KEY_Q_Y = "quickbar.y"
     }
 }

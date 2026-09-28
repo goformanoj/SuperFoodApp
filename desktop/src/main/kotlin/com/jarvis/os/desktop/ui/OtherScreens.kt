@@ -28,6 +28,10 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +47,7 @@ import com.jarvis.os.desktop.AppDirs
 import com.jarvis.os.desktop.DesktopAssistant
 import com.jarvis.os.desktop.DesktopPrefs
 import com.jarvis.os.desktop.GoogleSignIn
+import com.jarvis.os.desktop.StartWithWindows
 import com.jarvis.os.memory.MemoryFormat
 import com.jarvis.os.ui.components.OrbPreview
 import com.jarvis.os.ui.components.ThemeBackdrop
@@ -141,9 +146,45 @@ fun SettingsScreen(a: DesktopAssistant) {
                     modifier = Modifier.clip(HudShapeSmall).clicky { a.signOut() }.padding(8.dp),
                 )
             }
+            ToggleRow(
+                "Quick bar",
+                when {
+                    !a.quickBarOn -> "Off"
+                    a.quickKey != null -> "Press ${a.quickKey} anywhere to ask JARVIS"
+                    else -> "Couldn't get a key: Alt+Space and Ctrl+Alt+J are both taken by other apps"
+                },
+                a.quickBarOn,
+            ) { a.quickBarOn = it }
+            var startOn by remember { mutableStateOf(StartWithWindows.available && StartWithWindows.isOn()) }
+            ToggleRow(
+                "Start with Windows",
+                when {
+                    !StartWithWindows.available -> "Available in the installed JARVIS app (this is a development run)"
+                    startOn -> "JARVIS starts in the tray when you sign in to Windows, so routines and reminders keep working"
+                    else -> "Off. Turn on so routines and reminders keep working after a restart"
+                },
+                startOn, enabled = StartWithWindows.available,
+            ) { on -> if (StartWithWindows.set(on)) startOn = StartWithWindows.isOn() }
             SettingRow("Build secrets", "%USERPROFILE%\\.gradle\\gradle.properties — PROXY_SECRET, FIREBASE_WEB_API_KEY. Rebuild after changing.")
             SettingRow("Your data", AppDirs.root.absolutePath + " — conversations, memory, identity, appearance")
             SettingRow("Version", "Desktop ${BuildConfig.VERSION_NAME}")
+        }
+    }
+}
+
+@Composable
+private fun ToggleRow(label: String, value: String, on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = J.TextMuted, fontSize = 14.sp, modifier = Modifier.width(150.dp))
+            Text(value, color = J.Text, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.weight(1f))
+            Text(
+                if (on) "ON" else "OFF", color = if (on) J.OnAccent else J.TextDim, fontSize = 10.sp, fontFamily = J.Display, letterSpacing = 1.sp,
+                modifier = Modifier.padding(start = 12.dp).clip(HudShapeSmall).background(if (on) J.Accent else Color.Transparent)
+                    .border(1.dp, if (on) J.Accent else J.Border, HudShapeSmall)
+                    .then(if (enabled) Modifier.clicky { onChange(!on) } else Modifier)
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+            )
         }
     }
 }

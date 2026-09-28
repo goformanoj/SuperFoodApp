@@ -75,4 +75,15 @@ class DesktopPrefsTest {
         assertEquals(JarvisPalette.Default, a.palette)
         assertEquals(BackdropStyle.defaultFor(JarvisPalette.Default.orbStyle), a.backdrop)
     }
+    @Test
+    fun theQuickBarReopensWhereAndHowBigItWasLeftWithinSaneBounds() {
+        val prefs = DesktopPrefs(tmp.root.resolve("p.properties"))
+        assertEquals(DesktopPrefs.QuickGeometry.DEFAULT, prefs.loadQuick())
+        prefs.saveQuick(DesktopPrefs.QuickGeometry(900f, 500f, 120f, 80f))
+        assertEquals(DesktopPrefs.QuickGeometry(900f, 500f, 120f, 80f), prefs.loadQuick())
+        // A corrupt or absurd size is clamped, never restored unusable.
+        prefs.saveQuick(DesktopPrefs.QuickGeometry(5f, 99999f, 1f, 1f))
+        assertEquals(DesktopPrefs.QuickGeometry.MIN_W, prefs.loadQuick().width)
+        assertEquals(DesktopPrefs.QuickGeometry.MAX_H, prefs.loadQuick().height)
+    }
 }

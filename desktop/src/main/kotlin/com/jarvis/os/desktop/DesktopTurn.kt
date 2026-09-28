@@ -25,13 +25,40 @@ object DesktopTurn {
     /** Leading lines of a user message that record what came with it (a file, a screenshot). */
     const val DOC_MARK = "📎"
     const val SHOT_MARK = "🖥"
+    const val ROUTINE_MARK = "⏰"
 
     /** Splits a user message into its attachment lines and the words the user typed. Pure; tested. */
     fun splitAttachments(content: String): Pair<List<String>, String> {
         val lines = content.lines()
-        val marks = lines.takeWhile { it.startsWith(DOC_MARK) || it.startsWith(SHOT_MARK) }
+        val marks = lines.takeWhile { it.startsWith(DOC_MARK) || it.startsWith(SHOT_MARK) || it.startsWith(ROUTINE_MARK) }
         return marks to lines.drop(marks.size).joinToString("\n").trim()
     }
+
+    /**
+     * Rides on a routine's run. Nobody is watching: the model must produce the result, not
+     * ask questions, and knows that approval-needing steps will be declined.
+     */
+    fun routineNote(name: String, manual: Boolean): String =
+        "This is the user's routine “$name”, " + (if (manual) "run now from the Scheduled screen" else "running by itself on its schedule") +
+            ". The user is not watching the chat: do not ask questions; use your tools and give the result directly, " +
+            "short enough to read in a notification or hear in under a minute. Anything that needs the user's approval " +
+            "(deleting, sending, looking at the screen) will be declined, so don't attempt it."
+
+    /**
+     * A reply as plain text for a Windows notification or speech: no markdown symbols, one
+     * line per paragraph or list item. Pure; tested.
+     */
+    fun plain(text: String): String = text.lines()
+        .map { l ->
+            l.replace(Regex("^\\s{0,3}#{1,6}\\s+"), "")
+                .replace(Regex("^\\s*[-*•]\\s+"), "• ")
+                .replace(Regex("\\*\\*|__|`"), "")
+                .replace(Regex("(?<![\\w*])\\*(?!\\s)([^*]+)(?<!\\s)\\*"), "$1")
+                .replace(Regex("\\[([^\\]]+)]\\([^)]+\\)"), "$1")
+                .trim()
+        }
+        .filter { it.isNotEmpty() && !it.matches(Regex("[-*_]{3,}")) }
+        .joinToString("\n")
 
     const val PHONE_ONLY_NOTE =
         "That's something I can only do on your phone for now — desktop control is coming."

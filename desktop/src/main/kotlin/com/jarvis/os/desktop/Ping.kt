@@ -38,6 +38,13 @@ fun main(args: Array<String>) {
             val found = com.jarvis.os.desktop.knowledge.FileSearch.run(q)
             println("Windows Search: ${found.size} file(s); kinds: ${found.groupingBy { it.name.substringAfterLast('.', "?").lowercase() }.eachCount()}")
         } }) 0 else 1)
+        // This laptop's account id (the Firebase uid, not a secret: it's what PRO_UIDS lists).
+        // Read from the token's payload; the token itself is never printed.
+        joined.startsWith("--whoami") -> exitProcess(if (runBlocking { probe {
+            val payload = Identity.token().split('.').getOrNull(1) ?: error("no token")
+            val json = org.json.JSONObject(String(java.util.Base64.getUrlDecoder().decode(payload.padEnd((payload.length + 3) / 4 * 4, '='))))
+            println("uid: ${json.optString("user_id")}  plan: ${Identity.plan()}  signed in with Google: ${json.optString("email").isNotBlank()}")
+        } }) 0 else 1)
         // A synthetic error dialog drawn here, never the user's real screen.
         joined.startsWith("--vision-test") -> exitProcess(if (runBlocking { probe {
             val img = java.awt.image.BufferedImage(1280, 720, java.awt.image.BufferedImage.TYPE_INT_RGB)

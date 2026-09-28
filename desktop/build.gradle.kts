@@ -165,6 +165,9 @@ dependencies {
     // Documents (AGENT_PLAN §5): PDF text, page by page, extracted on the laptop. Word
     // (.docx) needs no library: it's a zip of XML, read with the JDK's StAX.
     implementation("org.apache.pdfbox:pdfbox:3.0.7")
+    // Windows APIs without C code (Phase 6): the Quick bar's global hotkey (RegisterHotKey)
+    // and DPAPI encryption for the Google refresh token.
+    implementation("net.java.dev.jna:jna-platform:5.17.0")
 
     testImplementation("junit:junit:4.13.2")
 }

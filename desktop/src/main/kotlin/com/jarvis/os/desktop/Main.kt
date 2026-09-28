@@ -45,6 +45,8 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.jarvis.os.desktop.ui.ActivityScreen
 import com.jarvis.os.desktop.ui.FilesScreen
+import com.jarvis.os.desktop.ui.ScheduledScreen
+import com.jarvis.os.desktop.ui.QuickBar
 import com.jarvis.os.desktop.ui.AppearanceScreen
 import com.jarvis.os.desktop.ui.SearchOverlay
 import com.jarvis.os.desktop.ui.TasksScreen
@@ -69,6 +71,8 @@ import java.awt.Dimension
  *   --screen=<name>   open on a section, e.g. --screen=appearance
  *   --theme=<id>      preview a theme for this run without saving it (arc, forge, nebula, orbit)
  *   --attach=<path>   start with that file in the composer, as if it had been dropped in
+ *   --quickbar        open the Quick bar at start (to see it without pressing the key)
+ *   --background      start hidden in the tray (what "Start with Windows" launches)
  */
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun main(args: Array<String>) = application {
@@ -110,6 +114,7 @@ fun main(args: Array<String>) = application {
                 maximized = max,
             ),
         )
+        GlobalHotkey.stop()
         assistant.shutdownVoice()
         exitApplication()
     }
@@ -118,7 +123,28 @@ fun main(args: Array<String>) = application {
     // Closing the window HIDES it: JARVIS keeps running in the tray so reminders can
     // pop up. Quit from the tray menu. The first hide explains this once.
     val trayState = rememberTrayState()
-    var windowVisible by remember { mutableStateOf(true) }
+    var windowVisible by remember { mutableStateOf(StartWithWindows.BACKGROUND_FLAG !in args) }
+
+    // ── The Quick bar (AGENT_PLAN §6): one key anywhere in Windows ─────────────
+    var quickOpen by remember { mutableStateOf("--quickbar" in args) }
+    fun toggleQuick() {
+        if (!quickOpen) assistant.quickReset()
+        quickOpen = !quickOpen
+    }
+    LaunchedEffect(assistant.quickBarOn) {
+        GlobalHotkey.stop()
+        assistant.quickKey = if (!assistant.quickBarOn) null else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            // The key arrives on the hotkey thread; state changes belong on the UI thread.
+            GlobalHotkey.start { javax.swing.SwingUtilities.invokeLater { toggleQuick() } }
+        }
+        prefs.setFlag(PREF_QUICKBAR_OFF, !assistant.quickBarOn)
+    }
+    QuickBar(
+        assistant, appearance.palette, quickOpen,
+        saved = remember { prefs.loadQuick() }, onSave = { prefs.saveQuick(it) },
+        onClose = { quickOpen = false },
+        onOpenMain = { quickOpen = false; windowVisible = true; screen = Screen.Chat },
+    )
     var toldAboutTray by remember { mutableStateOf(prefs.flag(PREF_TOLD_TRAY)) }
     Tray(
         icon = remember(appearance.palette) { ReactorIcon(appearance.palette) },
@@ -127,6 +153,7 @@ fun main(args: Array<String>) = application {
         onAction = { windowVisible = true },
         menu = {
             Item("Open JARVIS", onClick = { windowVisible = true })
+            Item("Quick bar" + (assistant.quickKey?.let { " ($it)" } ?: ""), onClick = { toggleQuick() })
             Item("New chat", onClick = { goHome(); windowVisible = true })
             Separator()
             Item("Quit JARVIS", onClick = ::saveAndExit)
@@ -162,6 +189,15 @@ fun main(args: Array<String>) = application {
                 assistant.markReminderDelivered(r)
             }
             assistant.refreshReminders()
+            // Routines (S9): run by themselves; the result arrives like a reminder, and is
+            // spoken when the routine says so.
+            assistant.runDueRoutines().forEach { run ->
+                val body = DesktopTurn.plain(run.text)
+                trayState.sendNotification(
+                    Notification(run.routine.name + if (run.late) " (a little late)" else "", body.take(240), if (run.ok) Notification.Type.Info else Notification.Type.Warning),
+                )
+                if (run.ok && run.routine.speak) assistant.speakText(body)
+            }
             kotlinx.coroutines.delay(15_000)
         }
     }
@@ -169,6 +205,7 @@ fun main(args: Array<String>) = application {
     // Voice choices persist; the wake listener follows state (see DesktopAssistant.syncWake).
     LaunchedEffect(Unit) {
         assistant.wakeWordOn = prefs.flag(PREF_WAKE)
+        assistant.quickBarOn = !prefs.flag(PREF_QUICKBAR_OFF)
         assistant.speakAllReplies = prefs.flag(PREF_SPEAK_ALL)
         snapshotFlow { Triple(assistant.wakeWordOn, assistant.speakAllReplies, assistant.voice to assistant.thinking) }
             .collect { (wakeOn, speakAll, _) ->
@@ -244,7 +281,7 @@ fun main(args: Array<String>) = application {
                             Screen.Appearance -> AppearanceScreen(appearance) { appearance = it; prefs.save(it) }
                             Screen.Settings -> SettingsScreen(assistant)
                             Screen.Tasks -> TasksScreen(assistant, ::openConversation)
-                            Screen.Scheduled -> ComingSoon(screen, "PHASE 4", "Reminders that pop up as Windows notifications, and routines that run by themselves: “every weekday at 8, brief me”, “remind me at 6 to call mom”.")
+                            Screen.Scheduled -> ScheduledScreen(assistant, onOpenChat = { screen = Screen.Chat })
                             Screen.Files -> FilesScreen(assistant, onAsk = { screen = Screen.Chat }, onOpenConversation = ::openConversation)
                             Screen.Automations -> ComingSoon(screen, "PHASE 7", "Your devices working together: “on my phone, set an alarm” from the laptop, and the other way round.")
                         }
@@ -282,6 +319,7 @@ fun main(args: Array<String>) = application {
 private const val PREF_WAKE = "voice.wakeword"
 private const val PREF_TOLD_TRAY = "ui.toldAboutTray"
 private const val PREF_SPEAK_ALL = "voice.speakAll"
+private const val PREF_QUICKBAR_OFF = "quickbar.off"
 
 @Composable
 private fun Divider() {
