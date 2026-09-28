@@ -30,6 +30,11 @@ object AgentClient {
         var res = post(Identity.token(), payload)
         if (res.first == 401) res = post(Identity.forceRefresh(), payload)
         val (code, body) = res
+        // JARVIS_AGENT_DEBUG=1: print the exchange (no credentials are in either side).
+        if (System.getenv("JARVIS_AGENT_DEBUG") == "1") {
+            System.err.println(">>> ${payload.take(4000)}")
+            System.err.println("<<< $code ${body.take(2000)}")
+        }
         if (code !in 200..299) throw ProxyException(if (code == 0) "I couldn't reach my server — check the internet connection." else ProxyClient.errorMessage(code, body))
         ProxyClient.parsePlan(body)?.let { Identity.cachePlan(it) }
         ProxyClient.parseRemaining(body)?.let { UsageStats.record(ProxyClient.parsePlan(body), it) }

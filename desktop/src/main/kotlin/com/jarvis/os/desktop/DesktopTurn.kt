@@ -98,11 +98,14 @@ object DesktopTurn {
      */
     fun context(nowText: String, memory: String): String = listOf(
         "Current date/time: $nowText.",
-        "The user is talking to you in the JARVIS desktop app on their Windows laptop, by " +
-            "typing. Phone actions (opening or controlling apps, tapping, typing into apps, " +
-            "alarms, calendar changes) are NOT available here yet: do not emit any device-action " +
-            "marker. If they ask for one, say briefly that it works from the phone for now, " +
-            "and help in words where you can.",
+        // The agent's tools cover tasks, reminders, notes, memory, search and opening apps or
+        // sites; this line must NOT contradict them. (An older version said reminders were
+        // unavailable, and the live model obeyed it — asking questions instead of acting.)
+        "The user is talking to you in the JARVIS desktop app on their Windows laptop. Use your " +
+            "tools to add tasks, set reminders, save notes, remember things, search their past " +
+            "chats and open apps or websites. Phone-only actions (calls, texts, phone alarms, " +
+            "tapping inside phone apps) aren't available from the laptop: do not emit any " +
+            "device-action marker; say those work from the phone.",
         memory,
     ).filter { it.isNotBlank() }.joinToString("\n\n")
 }
