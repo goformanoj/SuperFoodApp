@@ -1,5 +1,6 @@
 package com.jarvis.os.desktop
 
+import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.MemoryAction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -86,6 +87,24 @@ class DesktopTurnTest {
         assertTrue(c.contains("desktop app"))
         assertTrue(c.contains("do not emit any device-action marker"))
         assertTrue(c.endsWith("What you know about this user"))
+    }
+
+    @Test
+    fun titleIsTheFirstUserLine() {
+        val turns = listOf(ChatTurn(ChatTurn.USER, "\n  Plan my   morning\nwith details"), ChatTurn(ChatTurn.ASSISTANT, "ok"))
+        assertEquals("Plan my morning", DesktopTurn.titleFor(turns))
+    }
+
+    @Test
+    fun longTitlesAreTrimmedWithAnEllipsis() {
+        val t = DesktopTurn.titleFor(listOf(ChatTurn(ChatTurn.USER, "a".repeat(100))))
+        assertEquals(DesktopTurn.TITLE_MAX, t.length)
+        assertTrue(t.endsWith("…"))
+    }
+
+    @Test
+    fun noUserTurnMeansNewChat() {
+        assertEquals("New chat", DesktopTurn.titleFor(emptyList()))
     }
 
     @Test

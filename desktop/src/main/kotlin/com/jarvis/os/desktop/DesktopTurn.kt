@@ -1,6 +1,7 @@
 package com.jarvis.os.desktop
 
 import com.jarvis.os.assistant.Markers
+import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.MemoryAction
 import com.jarvis.os.data.MemoryActions
 
@@ -72,6 +73,17 @@ object DesktopTurn {
         }
         return out
     }
+
+    /** Sidebar title for a conversation: its first user line, trimmed to fit. */
+    fun titleFor(turns: List<ChatTurn>): String {
+        val first = turns.firstOrNull { it.role == ChatTurn.USER }?.content
+            ?.lineSequence()?.map { it.trim() }?.firstOrNull { it.isNotEmpty() }
+            ?: return "New chat"
+        val clean = Markers.strip(first).replace(Regex("\\s+"), " ").trim().ifEmpty { return "New chat" }
+        return if (clean.length <= TITLE_MAX) clean else clean.take(TITLE_MAX - 1).trimEnd() + "…"
+    }
+
+    const val TITLE_MAX = 42
 
     /**
      * The grounding context for a desktop turn. Tells the model where it is running
