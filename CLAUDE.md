@@ -79,6 +79,22 @@ and sending as one move (every `TYPE` example ended in `<<ENTER>>`), and it sent
 messages the user only asked to type. Prompts are probabilistic; guard
 irreversible actions in code (see `SendGuard`) and test the guard.
 
+## Rule 7 — talk to the user in plain English, and teach as you go
+
+The user is learning software design, not just commissioning it. So, after finishing
+the work for each prompt:
+
+- **Explain what was done in simple, everyday English.** No unexplained jargon
+  (say "a database that keeps its own search index" rather than just "FTS5"), no
+  wall of code dumped without a plain-language summary above it.
+- **Explain *why*, not only *what*** — the design choice behind it, in a sentence
+  or two: why this approach, what problem it solves, what the alternative would
+  have been. This is the part that actually teaches software design.
+- **Keep it short.** A few sentences or a short list beats an essay — the goal is
+  understanding, not a lecture.
+- This applies to the end-of-turn summary to the user, not to code comments or
+  commit messages, which follow their own conventions elsewhere in this file.
+
 ## Quick orientation
 
 - **Vision + spec:** [`PRODUCT_PLAN.md`](PRODUCT_PLAN.md)
