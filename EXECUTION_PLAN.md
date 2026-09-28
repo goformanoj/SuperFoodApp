@@ -97,9 +97,10 @@ tasks, reminders, notes, memory, search-my-stuff, open app/URL, clipboard, time.
 system tray, background running.
 - **Exit test:** S1 remind-at-5, S2 what's-on-today, S3 add-a-to-do, S10 what-did-we-decide — by voice and typing.
 
-### Phase 5 — Knowledge (AGENT_PLAN §5)
+### Phase 5 — Knowledge (AGENT_PLAN §5) ✅ 2026-09-28
 Documents in (PDF/DOCX/TXT) with cited Q&A; Windows file search; screenshot questions (vision); live web
-search (Groq's built-in search first).
+search (Groq's built-in search first). *Done: S4–S7 verified live (see PROGRESS). Web = Groq `browser_search`,
+vision = `qwen/qwen3.8-27b`; no second key. Scanned PDFs (OCR) not yet.*
 - **Exit test:** S4 summarise-a-PDF-into-tasks, S5 find-the-invoice, S6 explain-my-screen, S7 latest-news.
 
 ### Phase 6 — Everyday integrations + routines (AGENT_PLAN §6)

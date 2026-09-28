@@ -1,5 +1,32 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-28 — Phase 5 done: knowledge (documents, files, web, screen)
+
+Branch `desktop-kmp`; `main` fast-forwarded to each green commit (Worker `b91cb35`, laptop `7864a61`).
+
+- **Roadmap:** Phases 1–5 ✅ on the laptop. **Next: Phase 6** (AGENT_PLAN §7): Google sign-in on the desktop
+  + Calendar/Gmail (needs the user's Desktop OAuth client — still not created), routines, Quick bar (Alt+Space),
+  start-with-Windows, MSI.
+- **Knowledge code:** `desktop/.../knowledge/` — `DocText` (extract/parts/chunks/overview), `Library` (import =
+  extract on IO + store on the caller's thread), `FileSearch` (Windows Search SQL via PowerShell ADODB, SQL in an
+  env var), `ScreenGrab`, `KnowledgeClient` (/search, /vision). Worker: `backend/src/knowledge.js`.
+- **Live checks (safe, no user data):** `ping "--args=--search|<q>"`, `--vision-test` (draws a fake error dialog —
+  never the real screen), `--files|<q>` (counts only), `--doc|<path>`, `--agent-doc|<path>|<request>`. Gradle
+  rejects an apostrophe in `--args` ("unbalanced quotes") — rephrase.
+- **Gotcha — brain threading:** the brain is single-threaded; `ToolBox.execute` is now `suspend` and slow work
+  (HTTP, PowerShell, PDF parsing) hops to IO inside the host/Library, while brain writes stay on the UI thread.
+- **Gotcha — weekdays:** models get weekday arithmetic wrong; `DesktopTurn.weekAhead` puts this week and next in
+  the context. Keep it.
+- **Gotcha — honesty:** a model may claim N actions after making 1. Batch tools (`add_tasks`) + the prompt rule;
+  the step cards are the truth the user sees.
+- **Gotcha — packaged runtime:** there's no java.exe in the bundle; verify module needs with the JBR and
+  `--limit-modules <the MODULES line of runtime/release>`.
+- **Dev copy without touching the user's data:** run with `APPDATA=<scratch dir>`; `--attach=<file>` pre-fills the composer.
+- **User to try:** drag a PDF in and ask; "find the invoice from March"; the screen button on a real error;
+  "what's the latest on …".
+
+---
+
 ## Current position — 2026-09-28 — Phase 4 done: JARVIS acts (agent live)
 
 Branch `desktop-kmp`; `main` gets each green commit automatically (agent `1a5a111`, live fixes `8214da1`).

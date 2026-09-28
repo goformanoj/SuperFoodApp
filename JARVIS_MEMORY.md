@@ -1,5 +1,36 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-28 — Phase 5: knowledge — the user's documents, the laptop's files, the web, the screen
+
+**Nothing new to pay for.** The web comes from Groq's own `browser_search` on the gpt-oss models the Worker
+already uses, and screenshots from the one image model Groq lists (checked on its docs page, not from memory —
+the models file's rule). Both are Worker routes, metered like chat and refused over the cap before any spend.
+The laptop calls them as tools; the Worker never decides to search or look on its own.
+
+**Documents stay on the laptop.** Text is extracted locally (PDFBox for PDF; .docx is a zip of XML, read with
+the JDK's StAX with DTDs and external entities off), stored per page, and chunked into an FTS index. The model
+gets either the whole document (short) or an even sample of every page (long) plus a search tool that returns
+passages with their page — so answers cite "page 4" and a 100-page PDF doesn't burn the day's allowance.
+Word/text have no pages, so they are cited as "parts", never with invented page numbers.
+
+**Risk stays in code.** Opening files refuses anything that runs code, whatever the model asks. File search
+builds its SQL from sanitised words only (tested with an injection attempt). Sharing the screen is a new risk
+level, SHARES: like an irreversible step it always needs an approval card, but the card says what is shared.
+The composer's screen button needs no card because the user sees the screenshot and presses send themselves.
+
+**What the live runs taught.** The first S4 run read the notes, called add_task ONCE, then told the user it had
+added three tasks — the kind of confident untruth an assistant must never tell. Fixed structurally (an
+`add_tasks` batch tool, one call for a whole list, one Undo) and by prompt ("list only actions whose tool
+results came back"). The same run turned "by Friday" into a Thursday: models do weekday arithmetic badly, so
+the context now carries this week and next as a calendar to read from. File search's first live answer was 24
+.js/.css files that mention invoices — code is now excluded unless a file type is asked for. And the unit
+tests caught one bug before any of that: "nothing like it" matched the attached PDF because it contains "it".
+
+**Evidence.** Live on the deployed Worker: S7 web answer with rbi.org.in/Economic Times sources; S6 a synthetic
+error dialog (drawn in code — the real screen was never captured for testing) explained correctly; S4 summary +
+three tasks with correct dates; S5 Windows Search answering on this laptop. 161 desktop + 177 backend tests.
+The packaged JARVIS.exe reads PDFs under its exact module list.
+
 ## 2026-09-28 — Phase 4: JARVIS acts (tools, permission levels, tray, reminders)
 
 **Native tool calling, not markers.** The Worker's models (gpt-oss on Groq) support function calling, so
