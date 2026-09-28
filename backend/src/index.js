@@ -23,6 +23,7 @@ import { packFor } from './packs.js'
 import { effectivePlan, isActive } from './billing.js'
 import { groqProvider } from './providers/groq.js'
 import { AuthError, firebaseVerifier } from './auth.js'
+import { checkAudio, cleanTranscript, groqTranscriber, tokensForAudio } from './transcribe.js'
 
 /**
  * Builds a handler from its dependencies.
@@ -34,6 +35,7 @@ import { AuthError, firebaseVerifier } from './auth.js'
 export function createWorker({
   store,
   provider,
+  transcriber = null,
   proxySecret = null,
   verifyToken = null,
   verifySubscription = null,
@@ -154,6 +156,55 @@ export function createWorker({
         })
       }
 
+      // The user's effective plan: shared by /chat and /transcribe so they can never
+      // disagree about who is pro. See the comments at its /chat call site.
+      const planFor = async (auth, nowMs) => {
+        const userPlan = await store.userPlan(auth.uid)
+        let sub = null
+        try {
+          sub = await store.subscription(auth.uid)
+        } catch (e) {
+          sub = null
+        }
+        const ownerEmail = auth.email && proEmails.includes(auth.email.toLowerCase())
+        return ownerEmail || proUids.includes(auth.uid) ? 'pro' : effectivePlan(userPlan, sub, nowMs)
+      }
+
+      // Speech-to-text (Phase 2): a short WAV in, text out, metered in tokens against
+      // the same daily allowance as /chat, checked BEFORE the provider is paid.
+      if (request.method === 'POST' && url.pathname === '/transcribe') {
+        if (!transcriber) return Response.json({ error: 'not_found' }, { status: 404 })
+        const auth = await authenticate()
+        if (auth.error) return auth.error
+        const audio = new Uint8Array(await request.arrayBuffer())
+        const check = checkAudio(audio)
+        if (check.error) return Response.json({ error: check.error }, { status: check.status })
+
+        const nowMs = now()
+        const day = dayKey(nowMs)
+        const plan = await planFor(auth, nowMs)
+        const cap = capFor(plan)
+        const used = await store.usedToday(auth.uid, day)
+        if (isOverCap(used, cap)) return Response.json(overCapBody(nowMs, plan), { status: 429 })
+
+        let result
+        try {
+          result = await transcriber.transcribe(audio, { language: url.searchParams.get('lang') || undefined })
+        } catch (e) {
+          // Nothing charged: no transcript, no bill.
+          return Response.json({ error: 'transcription_failed' }, { status: e?.status ?? 502 })
+        }
+        const cost = tokensForAudio(check.seconds)
+        await store.addUsage(auth.uid, day, cost, 0)
+        return Response.json({
+          text: cleanTranscript(result.text),
+          seconds: Math.round(check.seconds * 10) / 10,
+          plan,
+          usage: { input: cost, output: 0 },
+          remaining: remaining(used + cost, cap),
+        })
+      }
+
       if (request.method !== 'POST' || url.pathname !== '/chat') {
         return Response.json({ error: 'not_found' }, { status: 404 })
       }
@@ -180,23 +231,14 @@ export function createWorker({
       // Effective plan: `pro` while a subscription is active, else the stored plan
       // (which stays `free` unless manually overridden). No subscription ⇒ identical
       // to the old behaviour, so nothing changes for a user who never subscribed.
-      const userPlan = await store.userPlan(uid)
-      // Billing is a DORMANT, optional feature. Reading the subscription must never
-      // be able to take down the brain: a missing `subscriptions` table (the exact
-      // outage this guards — the billing code deployed before the table was created)
-      // or any transient D1 error degrades to the base plan instead of a 500.
-      let sub = null
-      try {
-        sub = await store.subscription(uid)
-      } catch (e) {
-        sub = null
-      }
-      // Owner override: the owner's own account is always pro, so the free cap never
-      // stops development/testing. Matched by email (from the verified Google token —
-      // stable across the uid changes that anonymous↔Google linking causes) or by uid.
-      // Everyone else follows the normal effective plan.
-      const ownerEmail = auth.email && proEmails.includes(auth.email.toLowerCase())
-      const plan = ownerEmail || proUids.includes(uid) ? 'pro' : effectivePlan(userPlan, sub, nowMs)
+      // [planFor]: the stored plan, `pro` while a subscription is active — and billing
+      // is DORMANT and optional, so a subscription read that fails (a missing
+      // `subscriptions` table was a real outage) degrades to the base plan instead of
+      // a 500. Owner override: the owner's own account is always pro, so the free cap
+      // never stops development/testing. Matched by email (from the verified Google
+      // token — stable across the uid changes that anonymous↔Google linking causes)
+      // or by uid. Everyone else follows the normal effective plan.
+      const plan = await planFor(auth, nowMs)
       const cap = capFor(plan)
       const used = await store.usedToday(uid, day)
 
@@ -332,8 +374,10 @@ export default {
     // wrangler.toml [vars] only once the eval confirms markers still fire; "off"
     // reverts instantly.
     const conversationTier = (env.CONVO_TIER ?? '').trim().toLowerCase() === 'on'
+    // Speech-to-text uses the same server-held Groq key (Whisper), metered as tokens.
+    const transcriber = groqTranscriber(env.GROQ_API_KEY)
     return createWorker({
-      store, provider, proxySecret: env.PROXY_SECRET, verifyToken, proUids, proEmails, conversationTier,
+      store, provider, transcriber, proxySecret: env.PROXY_SECRET, verifyToken, proUids, proEmails, conversationTier,
     }).fetch(request)
   },
 }
