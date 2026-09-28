@@ -163,7 +163,9 @@ private fun Cockpit(
                 Text("How can I help you today?", color = J.TextMuted, fontSize = 14.sp)
                 ReactorOrb(size = orbSize, state = orbStateOf(a))
                 StatusLine(a)
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(10.dp))
+                WakeChip(a)
+                Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("Plan my day", "Explain it simply", "Remember something").forEach { s -> Suggestion(s) { text.value = suggestionText(s) } }
                 }
@@ -256,6 +258,8 @@ private fun ChatHeader(a: DesktopAssistant) {
             StatusLine(a)
         }
         Pill("Runs on this laptop")
+        Spacer(Modifier.width(10.dp))
+        WakeChip(a)
         Spacer(Modifier.width(10.dp))
         Hint(if (a.speakAllReplies) "JARVIS reads every reply aloud — click to stop" else "Spoken questions get spoken answers — click to read every reply aloud") {
             Row(
@@ -525,6 +529,38 @@ private fun MicButton(a: DesktopAssistant) {
                     tint = if (listening) J.OnAccent else J.Accent, modifier = Modifier.size(18.dp),
                 )
             }
+        }
+    }
+}
+
+/**
+ * The wake-word switch. Off by default — an always-open mic is the user's choice. When
+ * on, the dot glows while the background listener holds the mic; detection is local,
+ * only the command after "Jarvis" is ever sent anywhere.
+ */
+@Composable
+fun WakeChip(a: DesktopAssistant) {
+    val on = a.wakeWordOn
+    val tip = when {
+        !on -> "Turn on to start JARVIS by saying “Jarvis” (listening stays on this laptop)"
+        a.wakeListening -> "Listening for “Jarvis” — click to turn off"
+        else -> "Wake word on — paused while JARVIS is busy"
+    }
+    Hint(tip) {
+        Row(
+            Modifier.height(36.dp).clip(HudShapeSmall)
+                .background(if (on) J.Accent.copy(alpha = 0.16f) else Color.Transparent)
+                .border(1.dp, if (on) J.Accent else J.Border, HudShapeSmall)
+                .clicky { a.wakeWordOn = !a.wakeWordOn }
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier.size(8.dp).clip(CircleShape)
+                    .background(if (on && a.wakeListening) J.Green else if (on) J.Accent.copy(alpha = 0.5f) else J.TextFaint),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(if (on) "Say “Jarvis”" else "Wake word off", color = J.Text, fontSize = 13.sp)
         }
     }
 }

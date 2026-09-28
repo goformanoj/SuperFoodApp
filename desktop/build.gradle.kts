@@ -40,6 +40,8 @@ val SHARED_FROM_APP = listOf(
     "com/jarvis/os/voice/VoiceState.kt",
     // What is safe to read aloud (strips markdown, emoji, markers) — the phone's own rules.
     "com/jarvis/os/voice/SpokenText.kt",
+    // The wake word's first stage, pure Kotlin (the phone moved it off TFLite).
+    "com/jarvis/os/voice/MelSpectrogram.kt",
     // The orbs and the worlds behind them — the phone's own drawing code, byte-for-byte.
     // These import androidx.compose.* only, which Compose for Desktop provides under the
     // same names. The one Android-only thing they touch has a desktop stand-in:
@@ -68,6 +70,10 @@ val SHARED_FROM_APP = listOf(
 val sharedResDir = layout.buildDirectory.dir("generated/sharedRes")
 val syncSharedRes by tasks.registering(Sync::class) {
     from(rootProject.file("app/src/main/res/font")) { into("font") }
+    // The wake word's mel-spectrogram weights: the phone's own file (one source of truth).
+    // The two ONNX models live in desktop/src/main/resources/openwakeword — the phone's
+    // copies are .tflite, which has no desktop runtime.
+    from(rootProject.file("app/src/main/assets/openwakeword")) { include("melspec_weights.bin"); into("openwakeword") }
     into(sharedResDir)
 }
 
@@ -149,6 +155,10 @@ dependencies {
     // org.json ships inside Android; on the JVM it is this artifact, same API —
     // which is what lets ProxyClient/GroqClient compile here unchanged.
     implementation("org.json:json:20250517")
+    // Wake word ("hey jarvis"): runs openWakeWord's embedding + classifier models on the
+    // laptop. The phone uses TFLite, which has no desktop runtime; these are the same
+    // models in ONNX form (openWakeWord v0.5.1 release).
+    implementation("com.microsoft.onnxruntime:onnxruntime:1.17.3")
 
     testImplementation("junit:junit:4.13.2")
 }

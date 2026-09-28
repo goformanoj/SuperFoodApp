@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -94,8 +95,20 @@ fun main(args: Array<String>) = application {
                 maximized = max,
             ),
         )
-        assistant.speaker.shutdown()
+        assistant.shutdownVoice()
         exitApplication()
+    }
+
+    // Voice choices persist; the wake listener follows state (see DesktopAssistant.syncWake).
+    LaunchedEffect(Unit) {
+        assistant.wakeWordOn = prefs.flag(PREF_WAKE)
+        assistant.speakAllReplies = prefs.flag(PREF_SPEAK_ALL)
+        snapshotFlow { Triple(assistant.wakeWordOn, assistant.speakAllReplies, assistant.voice to assistant.thinking) }
+            .collect { (wakeOn, speakAll, _) ->
+                prefs.setFlag(PREF_WAKE, wakeOn)
+                prefs.setFlag(PREF_SPEAK_ALL, speakAll)
+                assistant.syncWake()
+            }
     }
 
     Window(
@@ -153,6 +166,9 @@ fun main(args: Array<String>) = application {
         }
     }
 }
+
+private const val PREF_WAKE = "voice.wakeword"
+private const val PREF_SPEAK_ALL = "voice.speakAll"
 
 @Composable
 private fun Divider() {

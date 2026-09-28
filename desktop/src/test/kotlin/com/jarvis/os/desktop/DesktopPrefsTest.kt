@@ -60,6 +60,15 @@ class DesktopPrefsTest {
     }
 
     @Test
+    fun flagsDefaultOffAndRoundTrip() {
+        val prefs = DesktopPrefs(tmp.root.resolve("p.properties"))
+        assertEquals(false, prefs.flag("voice.wakeword"))
+        prefs.setFlag("voice.wakeword", true)
+        assertEquals(true, prefs.flag("voice.wakeword"))
+        assertEquals(JarvisPalette.Default, prefs.load().palette) // other keys untouched
+    }
+
+    @Test
     fun unknownIdsFallBackInsteadOfCrashing() {
         val f = tmp.root.resolve("p.properties").apply { writeText("theme=gone\nbackdrop=also-gone\n") }
         val a = DesktopPrefs(f).load()

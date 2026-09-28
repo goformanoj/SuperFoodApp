@@ -66,6 +66,12 @@ class DesktopPrefs(private val file: File = AppDirs.file("prefs.properties")) {
         it.setProperty(KEY_MAX, g.maximized.toString())
     }
 
+    /** A simple on/off preference (e.g. the wake word). */
+    fun flag(key: String, default: Boolean = false): Boolean =
+        props().getProperty(key)?.let { it == "true" } ?: default
+
+    fun setFlag(key: String, value: Boolean) = edit { it.setProperty(key, value.toString()) }
+
     private fun props(): Properties = Properties().apply {
         if (file.exists()) runCatching { file.inputStream().use { load(it) } }
     }

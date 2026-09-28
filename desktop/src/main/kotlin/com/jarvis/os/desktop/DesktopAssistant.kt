@@ -14,6 +14,7 @@ import com.jarvis.os.desktop.ChatStore.Conversation
 import com.jarvis.os.desktop.voice.MicRecorder
 import com.jarvis.os.desktop.voice.Speaker
 import com.jarvis.os.desktop.voice.TranscribeClient
+import com.jarvis.os.desktop.voice.WakeListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -78,6 +79,39 @@ class DesktopAssistant(
     /** Speak every reply aloud, not only answers to spoken questions. */
     var speakAllReplies by mutableStateOf(false)
 
+    // ── Wake word (Phase 2.2) ────────────────────────────────────────────────
+    private val wake = WakeListener(scope)
+    /** The user's choice. Off by default: an always-open mic is theirs to turn on. */
+    var wakeWordOn by mutableStateOf(false)
+    /** True while the background listener actually holds the mic. */
+    var wakeListening by mutableStateOf(false)
+        private set
+
+    /**
+     * Keeps the wake listener in step with everything else: armed only when the user
+     * wants it AND nothing else needs the mic or the speaker — not while recording, not
+     * while transcribing or thinking, and not while JARVIS talks (its own voice saying
+     * "Jarvis" must not wake it). Called whenever any of those change.
+     */
+    fun syncWake() {
+        val shouldListen = wakeWordOn && voice == Voice.Idle && !thinking && ProxyClient.isConfigured()
+        if (shouldListen && !wake.armed) {
+            wake.arm(
+                onWake = { scope.launch { wakeListening = false; toggleMic() } },
+                onError = { msg -> scope.launch { wakeListening = false; wakeWordOn = false; error = msg } },
+            )
+            wakeListening = true
+        } else if (!shouldListen && wake.armed) {
+            wake.disarm()
+            wakeListening = false
+        }
+    }
+
+    fun shutdownVoice() {
+        wake.shutdown()
+        speaker.shutdown()
+    }
+
     /**
      * The mic button. Idle → listen; listening → finish now; speaking → cut JARVIS off
      * and listen (the phone's barge-in, as a click). One owner of the mic, always.
@@ -94,6 +128,9 @@ class DesktopAssistant(
             return
         }
         error = null
+        // The recorder must be the ONLY mic owner: release the wake listener first.
+        wake.disarm()
+        wakeListening = false
         voice = Voice.Listening
         scope.launch {
             try {
