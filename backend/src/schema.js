@@ -37,7 +37,27 @@ export const MIGRATIONS = [
      expiry_ms      INTEGER NOT NULL DEFAULT 0,
      updated_at     INTEGER NOT NULL
    )`,
+  // Phase 7 (AGENT_PLAN §7): one small table holds every device's tasks,
+  // reminders, notes and memory for an account — not one table per kind, so a
+  // new synced kind is a code change here, never another migration. `kind`+`id`
+  // together are the row's identity (the device that made it chose `id`, a
+  // UUID, so two devices can never collide by picking the same one), and
+  // `uid` leads the primary key, so SQLite's own index on it already answers
+  // "this account's rows" fast — no separate index needed at this scale.
+  // Last-write-wins by `updated_at`: whichever device's clock says later wins,
+  // ties go to whatever is already stored. `deleted` is a tombstone, not a
+  // DELETE — the row must survive so every OTHER device can be told to remove
+  // its own copy; nothing here is ever actually deleted.
+  `CREATE TABLE IF NOT EXISTS sync_rows (
+     uid        TEXT NOT NULL,
+     kind       TEXT NOT NULL,
+     ref_id     TEXT NOT NULL,
+     updated_at INTEGER NOT NULL,
+     deleted    INTEGER NOT NULL DEFAULT 0,
+     data       TEXT NOT NULL DEFAULT '{}',
+     PRIMARY KEY (uid, kind, ref_id)
+   )`,
 ]
 
 /** Table names, for the drift check against `schema.sql`. */
-export const TABLES = ['users', 'usage_daily', 'subscriptions']
+export const TABLES = ['users', 'usage_daily', 'subscriptions', 'sync_rows']

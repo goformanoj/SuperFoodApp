@@ -24,6 +24,7 @@ import { effectivePlan, isActive } from './billing.js'
 import { groqProvider } from './providers/groq.js'
 import { AuthError, firebaseVerifier } from './auth.js'
 import { checkAudio, cleanTranscript, groqTranscriber, tokensForAudio } from './transcribe.js'
+import { checkPush, checkRow, parseKinds, parseSince, MAX_PULL_LIMIT } from './sync.js'
 import {
   WEB_SEARCH_MODELS, VISION_MODELS, WEB_SEARCH_PROMPT, VISION_PROMPT,
   checkSearch, checkVision, cleanAnswer, sourcesOf, stripThinking,
@@ -172,6 +173,40 @@ export function createWorker({
         }
         const ownerEmail = auth.email && proEmails.includes(auth.email.toLowerCase())
         return ownerEmail || proUids.includes(auth.uid) ? 'pro' : effectivePlan(userPlan, sub, nowMs)
+      }
+
+      // Phase 7 sync (AGENT_PLAN §7): tasks, reminders, notes and memory shared between
+      // a signed-in account's devices. No model call, so no quota check and no charge —
+      // only the shared secret and a verified uid, same as everywhere else.
+      if (request.method === 'POST' && url.pathname === '/sync/push') {
+        const auth = await authenticate()
+        if (auth.error) return auth.error
+        let body
+        try {
+          body = await request.json()
+        } catch {
+          return Response.json({ error: 'bad_json' }, { status: 400 })
+        }
+        const rows = body?.rows
+        const pushError = checkPush(rows)
+        if (pushError) return Response.json({ error: pushError }, { status: 400 })
+        for (const row of rows) {
+          const rowError = checkRow(row)
+          if (rowError) return Response.json({ error: rowError, id: row?.id }, { status: 400 })
+        }
+        const result = await store.pushSyncRows(auth.uid, rows)
+        return Response.json(result)
+      }
+
+      if (request.method === 'GET' && url.pathname === '/sync/pull') {
+        const auth = await authenticate()
+        if (auth.error) return auth.error
+        const nowMs = now()
+        const since = parseSince(url.searchParams.get('since'))
+        const kinds = parseKinds(url.searchParams.get('kinds'))
+        const limit = MAX_PULL_LIMIT
+        const rows = await store.pullSyncRows(auth.uid, since, kinds, limit + 1)
+        return Response.json({ rows: rows.slice(0, limit), hasMore: rows.length > limit, serverTime: nowMs })
       }
 
       // Speech-to-text (Phase 2): a short WAV in, text out, metered in tokens against

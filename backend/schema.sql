@@ -30,3 +30,16 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   expiry_ms      INTEGER NOT NULL DEFAULT 0, -- epoch ms of latest line item expiry
   updated_at     INTEGER NOT NULL
 );
+
+-- Phase 7 (AGENT_PLAN §7): one row per synced task/reminder/note/memory, from
+-- whichever device last touched it. Last-write-wins by updated_at; deleted is
+-- a tombstone (never an actual DELETE), so every device learns to remove it too.
+CREATE TABLE IF NOT EXISTS sync_rows (
+  uid        TEXT NOT NULL,
+  kind       TEXT NOT NULL,               -- 'task' | 'reminder' | 'note' | 'memory'
+  ref_id     TEXT NOT NULL,               -- the id the creating device chose (a UUID)
+  updated_at INTEGER NOT NULL,
+  deleted    INTEGER NOT NULL DEFAULT 0,
+  data       TEXT NOT NULL DEFAULT '{}',  -- the entity's fields, as JSON
+  PRIMARY KEY (uid, kind, ref_id)
+);
