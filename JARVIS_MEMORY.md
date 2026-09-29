@@ -1,5 +1,45 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-29 — Phase 7, part 1: one brain, syncing — the laptop's half
+
+**Why the account, not the device, is the sync key.** Firebase's anonymous auth hands out a
+fresh uid to every fresh install — the phone and a guest laptop are, cryptographically,
+two different people until the user signs in with the same Google account on both. So
+"sync across devices" is really "sync across one signed-in account," and the Settings
+switch says so plainly and stays disabled until sign-in exists — which is also why this
+still can't be checked with the user's own two real devices: Google sign-in on the laptop
+is the SAME dormant piece Phase 6 is waiting on.
+
+**One small table, not four.** `sync_rows` holds tasks, reminders, notes and memory alike —
+kind, id, updated_at, deleted, and the entity's own fields as JSON. A fifth synced kind
+later is a code change, not a migration. Last-write-wins by each device's own clock:
+a real trade-off, not a technicality — two near-simultaneous edits on different devices,
+the later clock silently wins. Fine for one person's own small, rarely-contested data;
+wrong for anything where losing an edit would be expensive.
+
+**Deletions are tombstones, and a bad row can't jam the queue.** A DELETE would never reach
+a second device — so `deleted: true` is stored and kept, and every device is told about it.
+And a push used to fail WHOLE on one malformed row (an oversized note, say) — since the
+client retries the same batch every cycle, that would have jammed every other pending edit
+behind it forever. Each row is now judged on its own; the good ones go through, the bad
+ones come back named so the client can drop just that one.
+
+**Tested against a fake server, not only checked live.** SyncClient's network calls are
+constructor-injected lambdas — the same trick AgentLoop and ToolBox already use for the
+model and the host — so batching, pagination, the cursor, and the accepted/serverWins/
+rejected handling are exercised by SyncClientTest's small in-memory stand-in for the
+Worker, real logic under test rather than hand-typed JSON strings. The live round trip
+(`--sync-test`, against the deployed Worker) then checks the parts a fake server can't:
+the URL, the auth headers, and that `/admin/migrate` was actually run in production —
+which is exactly the mistake that took the Worker down once before (see PROGRESS.md,
+the `subscriptions` 500), so it was run again before calling this done.
+
+**A live-only bug, from the calendar not the calendar reader.** Real time rolling past
+2026-09-28 broke a test that hardcoded "today," and reading why revealed `calendar_events`
+used the real wall clock instead of the clock ToolBox already threads through everything
+else — invisible in Phase 6 because nothing had exercised it since the date changed. Fixed
+and now covered: "today" always means what the agent's own clock says, never the OS's.
+
 ## 2026-09-28 — Phase 6: JARVIS comes to you — routines, the Quick bar, Calendar & Gmail
 
 **Routines are agent turns nobody watches.** "Every weekday at 8, brief me" is stored as a schedule plus an

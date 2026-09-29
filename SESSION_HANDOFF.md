@@ -1,5 +1,31 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-29 — Phase 7 part 1: sync across devices (laptop side)
+
+Branch `desktop-kmp`; `main` @ `eb24e26` (Worker `4f084b1`+`c364687`, laptop `eb24e26`).
+
+- **Roadmap:** Phases 1–6 built; Phase 7 PART 1 (laptop-side sync) built and verified live.
+  **Next:** the phone side of Phase 7 (needs the Android app + emulator — ask before booting
+  it, per stored memory) and cross-device commands; OR Google Calendar/Gmail once the user
+  creates the Desktop OAuth client. Either needs the user's steering, not a default pick.
+- **Sync code:** `backend/src/sync.js` (pure: checkRow/checkPush/incomingWins/parseKinds),
+  `backend/src/db.js`'s pushSyncRows/pullSyncRows, `brain/Brain.kt`'s sync_outbox + touch() +
+  pendingSync/clearSynced/applyRemoteRow/syncCursor, `sync/SyncClient.kt` (push/pull
+  orchestration, network calls as injected lambdas — see SyncClientTest's FakeServer).
+  `AgentClient` grew a `getJson` alongside `postJson` (both now go through one `request()`).
+- **Gotcha — a new D1 table needs `/admin/migrate` run in prod, not just the code merged.**
+  This bit PROGRESS.md once already (the `subscriptions` 500). Done for `sync_rows` this
+  round — check it's still there before assuming a fresh table exists.
+- **Gotcha — sync only makes sense once both devices are the SAME signed-in Google account**;
+  an anonymous Firebase uid is per-install. The Settings toggle is disabled until then.
+- **Gotcha — reminder delivery is per-device on purpose,** not synced — see Brain.kt's
+  `markDelivered` comment. Don't "fix" this to sync; it would silence the OTHER device.
+- **Live check (safe, throwaway data):** `:desktop:ping --args=--sync-test`.
+- **User to try:** once Google sign-in works (needs the Desktop OAuth client either way),
+  turn on Sync in Settings on two signed-in installs and confirm a task shows on both.
+
+---
+
 ## Current position — 2026-09-28 — Phase 6 built: routines, Quick bar, Calendar & Gmail (dormant)
 
 Branch `desktop-kmp`; `main` @ `eefd397` (Worker `31f1c5d`, laptop `9127358` + `eefd397`).

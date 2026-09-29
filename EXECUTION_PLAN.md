@@ -112,6 +112,11 @@ schedule with notifications/speech; the Alt+Space Quick bar; start-with-Windows 
 Account sync through the Worker (D1 rows, R2 files); the phone uses the same tasks/reminders/notes/memory and
 moves to the same tool loop; cross-device commands with pairing and a visible "being controlled" indicator.
 - **Exit test:** a task added on the laptop appears on the phone; "on my phone, set an alarm" rings there.
+- **Part 1 built 2026-09-29 (laptop side of sync):** the Worker's sync_rows table + /sync/push
+  and /sync/pull; the laptop's outbox, SyncClient and a Settings toggle (off by default, needs
+  Google sign-in). Verified live against the deployed Worker (`:desktop:ping --args=--sync-test`).
+  *Still open:* the phone side (it stays on markers until it adopts this tool loop) and
+  cross-device commands — both touch the Android app and weren't started this session.
 
 ### Phase 8 — Hands on the computer (was Phase 3's automation)
 Browser automation (Playwright/CDP) and app automation for multi-step errands, live view, approval gate.
