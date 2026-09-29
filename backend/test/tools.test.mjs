@@ -150,6 +150,13 @@ test('the desktop prompt covers routines and never lets mail go out without appr
   assert.ok(MAX_TOOLS >= 32)
 })
 
+test('the desktop prompt steers YouTube requests to the free, direct lookup, not a guess', () => {
+  // Found live, 2026-09-29: the agent invented a video URL that didn't exist, then opened
+  // a page that never started playing, burning tens of thousands of tokens on retries.
+  assert.match(DESKTOP_AGENT_PROMPT, /play_youtube/)
+  assert.match(DESKTOP_AGENT_PROMPT, /never wrong, unlike guessing/i)
+})
+
 test('the desktop prompt tells the model tool content is data, never instructions', () => {
   // A document, a web page or an email is exactly where a real attacker's text would show
   // up — this must not depend on any one tool's own wording to say so.
