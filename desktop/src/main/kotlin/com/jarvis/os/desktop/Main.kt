@@ -44,6 +44,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.jarvis.os.desktop.ui.ActivityScreen
+import com.jarvis.os.desktop.ui.PermissionsScreen
 import com.jarvis.os.desktop.ui.FilesScreen
 import com.jarvis.os.desktop.ui.ScheduledScreen
 import com.jarvis.os.desktop.ui.QuickBar
@@ -222,6 +223,11 @@ fun main(args: Array<String>) = application {
         assistant.syncOn = prefs.flag(PREF_SYNC_ON)
         snapshotFlow { assistant.syncOn }.collect { prefs.setFlag(PREF_SYNC_ON, it) }
     }
+    // Permissions: laptop-file access is OFF until the user turns it on in Settings.
+    LaunchedEffect(Unit) {
+        assistant.filesAllowed = prefs.flag(PREF_FILES_ALLOWED)
+        snapshotFlow { assistant.filesAllowed }.collect { prefs.setFlag(PREF_FILES_ALLOWED, it) }
+    }
     LaunchedEffect(Unit) {
         while (true) {
             assistant.syncNow()
@@ -292,6 +298,7 @@ fun main(args: Array<String>) = application {
                             Screen.Chat -> ChatScreen(assistant, telemetry, composerText, composerFocus, onMemory = { screen = Screen.Memory }, onTasks = { screen = Screen.Tasks })
                             Screen.Memory -> MemoryScreen(assistant, ::openConversation)
                             Screen.Activity -> ActivityScreen(assistant)
+                            Screen.Permissions -> PermissionsScreen(assistant)
                             Screen.Appearance -> AppearanceScreen(appearance) { appearance = it; prefs.save(it) }
                             Screen.Settings -> SettingsScreen(assistant)
                             Screen.Tasks -> TasksScreen(assistant, ::openConversation)
@@ -335,6 +342,7 @@ private const val PREF_TOLD_TRAY = "ui.toldAboutTray"
 private const val PREF_SPEAK_ALL = "voice.speakAll"
 private const val PREF_QUICKBAR_OFF = "quickbar.off"
 private const val PREF_SYNC_ON = "sync.on"
+private const val PREF_FILES_ALLOWED = "permissions.files"
 
 @Composable
 private fun Divider() {

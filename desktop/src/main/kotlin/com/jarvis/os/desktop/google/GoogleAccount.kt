@@ -1,8 +1,9 @@
 package com.jarvis.os.desktop.google
 
 import com.jarvis.os.desktop.AppDirs
+import com.jarvis.os.desktop.Dpapi
 import com.jarvis.os.desktop.GoogleSignIn
-import com.sun.jna.platform.win32.Crypt32Util
+import com.jarvis.os.desktop.Vault
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -22,19 +23,9 @@ import java.util.Base64
  */
 class GoogleAccount(
     private val file: File = AppDirs.file("google.bin"),
+    /** Sealed with [Dpapi] in production; tests inject a stand-in (see [com.jarvis.os.desktop.Vault]). */
     private val vault: Vault = Dpapi,
 ) {
-    /** Seals secrets at rest. Production: DPAPI (per Windows user). Tests: a stand-in. */
-    interface Vault {
-        fun seal(plain: ByteArray): ByteArray
-        fun open(sealed: ByteArray): ByteArray
-    }
-
-    object Dpapi : Vault {
-        override fun seal(plain: ByteArray): ByteArray = Crypt32Util.cryptProtectData(plain)
-        override fun open(sealed: ByteArray): ByteArray = Crypt32Util.cryptUnprotectData(sealed)
-    }
-
     data class Stored(val email: String?, val refreshToken: String, val scope: String)
 
     private var cached: Stored? = null

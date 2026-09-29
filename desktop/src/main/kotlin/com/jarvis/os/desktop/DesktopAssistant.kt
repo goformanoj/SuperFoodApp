@@ -314,9 +314,20 @@ class DesktopAssistant(
         }
     }
 
+    // ── Permissions (off by default — the user's own laptop, the user's own call) ──────
+
+    /**
+     * Laptop-file access: search_files, open_file, and reading a NEW document by path.
+     * OFF by default — JARVIS starts with no reach onto the laptop's files at all; a file
+     * the user attaches themselves (the paperclip, drag-and-drop) always works regardless,
+     * since that is the user choosing to share it, not JARVIS reaching for it.
+     */
+    var filesAllowed by mutableStateOf(false)
+
     private val toolBox = ToolBox(
         brain, WindowsHost(context = { "Current date/time: ${nowLine()}." }, captureScreen = { captureScreenJpeg() }),
         google = googleApis,
+        filesAllowed = { filesAllowed },
     )
 
     /** A step waiting for the user's click (Rule 6: never by prompt): what it does, and what approving means. */

@@ -38,6 +38,13 @@ class ToolBox(
     private val zone: ZoneId = ZoneId.systemDefault(),
     /** The user's Google Calendar + Gmail, when connected (Phase 6). Its tools appear only then. */
     private val google: Google? = null,
+    /**
+     * The user's laptop-files permission (search_files, open_file, and reading a NEW
+     * document by path — never an already-attached one, which the user shared themselves).
+     * Off by default at the app level; this class defaults to on so every existing test,
+     * which exercises the granted behaviour, needs no change for this to exist.
+     */
+    private val filesAllowed: () -> Boolean = { true },
 ) {
     /** What the Google tools need; production is [GoogleApis], tests fake it. */
     interface Google {
@@ -92,7 +99,8 @@ class ToolBox(
     class Spec(val name: String, val description: String, val params: JSONObject, val risk: Risk)
 
     /** Every tool the model is offered right now: the Google ones only while an account is connected. */
-    val specs: List<Spec> get() = baseSpecs + if (google?.connected == true) googleSpecs else emptyList()
+    val specs: List<Spec>
+        get() = baseSpecs.filter { it.name !in FILE_TOOLS || filesAllowed() } + if (google?.connected == true) googleSpecs else emptyList()
 
     private val googleSpecs: List<Spec> = listOf(
         Spec(
@@ -272,7 +280,7 @@ class ToolBox(
             Risk.READ,
         ),
         Spec(
-            "search_files", "Find files on this laptop by name and content (Windows Search). For \"the invoice from March\" use query \"invoice\" with modified_after/modified_before for March.",
+            "search_files", "Find files on this laptop by name and content (Windows Search; only offered when the user has allowed laptop-file access in Settings → Permissions). For \"the invoice from March\" use query \"invoice\" with modified_after/modified_before for March.",
             obj(
                 "query" to str("Words in the file's name or content"),
                 "kind" to enumStr("Optional file category", *FileSearch.KINDS.toTypedArray()),
@@ -519,6 +527,7 @@ class ToolBox(
                     "Looked through ${only?.let { "“${it.name}”" } ?: "your documents"} for “$q” (${hits.size} passage${if (hits.size == 1) "" else "s"})")
             }
             "search_files" -> {
+                if (!filesAllowed()) return fail("The user hasn't allowed JARVIS to search files on this laptop. It can be turned on in Settings → Permissions.")
                 val q = FileSearch.query(args.optString("query"), args.optString("kind").ifBlank { null },
                     args.optString("modified_after").ifBlank { null }, args.optString("modified_before").ifBlank { null })
                     ?: return fail("Tell me what the file is called or what's in it.")
@@ -530,6 +539,7 @@ class ToolBox(
                     "Searched the laptop for “${args.optString("query")}” (${found.size} file${if (found.size == 1) "" else "s"})")
             }
             "open_file" -> {
+                if (!filesAllowed()) return fail("The user hasn't allowed JARVIS to open files on this laptop. It can be turned on in Settings → Permissions.")
                 val f = File(args.optString("path").trim())
                 if (!f.isFile) return fail("There's no file at that path.")
                 if (f.extension.lowercase() in NEVER_OPEN) return fail("I only open documents, not programs or scripts. To start an app, use open_app.")
@@ -649,14 +659,17 @@ class ToolBox(
     // ── helpers ──────────────────────────────────────────────────────────────
 
     /**
-     * "this PDF", "the lease", or a path. A path is read (and kept) if it's a readable
-     * file; a name matches this chat's attachments first, then everything added before.
+     * "this PDF", "the lease", or a path. A path is read (and kept) — but ONLY when the
+     * user has allowed laptop-file access: this is the model reaching onto the disk by
+     * itself, unlike a name match below, which only ever finds a document the USER already
+     * attached (the paperclip, drag-and-drop) — that stays available either way, because
+     * sharing it was the user's own action, not JARVIS's.
      */
     private suspend fun resolveDocument(ref: String, sourceConversation: String?): Brain.Document? {
         val r = ref.trim().trim('"', '“', '”')
         val attached = sourceConversation?.let { brain.attachedDocuments(it) }.orEmpty()
         if (r.isEmpty()) return attached.lastOrNull()
-        if (r.contains(":\\") || r.contains(":/") || r.startsWith("\\\\")) {
+        if (filesAllowed() && (r.contains(":\\") || r.contains(":/") || r.startsWith("\\\\"))) {
             val f = File(r)
             if (f.isFile) return Library.import(brain, f, sourceConversation)
         }
@@ -700,12 +713,17 @@ class ToolBox(
     companion object {
         /** Most tasks one add_tasks call may create. */
         const val MAX_BATCH = 25
+        /** Gated by the laptop-files permission (Settings → Permissions). read_document stays
+         *  listed always — it also serves documents the user attached themselves, which the
+         *  permission never restricts; only its own path-lookup branch is gated, in code. */
+        val FILE_TOOLS = setOf("search_files", "open_file")
         /** Characters of document text handed to the model in one read (~3k tokens). */
         const val READ_BUDGET = 12_000
         /** Never opened by open_file, whatever the model asks: things that run code. */
         val NEVER_OPEN = setOf(
-            "exe", "com", "bat", "cmd", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "msi", "msp", "scr",
-            "pif", "lnk", "jar", "reg", "hta", "cpl", "dll", "sys", "inf", "application", "appref-ms", "url", "gadget",
+            "exe", "com", "bat", "cmd", "ps1", "psm1", "psc1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "wsc", "ws",
+            "msi", "msp", "msc", "scr", "pif", "lnk", "jar", "reg", "hta", "cpl", "dll", "sys", "inf", "scf", "chm",
+            "application", "appref-ms", "url", "gadget", "vb", "vbscript", "workflow", "action",
         )
         private val GENERIC_WORDS = setOf("this", "that", "the", "it", "attached", "my", "one", "document", "doc", "pdf", "file", "word", "docx", "text", "report")
         /** "this document", "the attached pdf": words that point at the attachment rather than name one. */

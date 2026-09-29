@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.Icon
@@ -62,6 +63,7 @@ enum class Screen(val label: String, val icon: ImageVector, val primary: Boolean
     Automations("Automations", Icons.Outlined.Bolt),
     // Secondary: a compact icon row at the foot of the sidebar, so the chat list keeps its room.
     Activity("Activity", Icons.Outlined.History, primary = false),
+    Permissions("Permissions", Icons.Outlined.Shield, primary = false),
     Appearance("Themes", Icons.Outlined.Palette, primary = false),
     Settings("Settings", Icons.Outlined.Tune, primary = false),
 }

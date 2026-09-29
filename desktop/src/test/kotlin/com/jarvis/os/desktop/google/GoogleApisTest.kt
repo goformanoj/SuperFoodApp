@@ -108,7 +108,7 @@ class GoogleApisTest {
 
     // ── the account: sealed at rest, refresh token required ──
 
-    private val fakeVault = object : GoogleAccount.Vault {
+    private val fakeVault = object : com.jarvis.os.desktop.Vault {
         override fun seal(plain: ByteArray) = plain.reversedArray()
         override fun open(sealed: ByteArray) = sealed.reversedArray()
     }

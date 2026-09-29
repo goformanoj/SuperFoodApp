@@ -172,7 +172,7 @@ class ToolBoxKnowledgeTest {
         val doc = tmp.newFile("notes.pdf")
         assertTrue(run("open_file", JSONObject().put("path", doc.absolutePath).toString()).ok)
         assertEquals(listOf(doc.path), openedFiles)
-        for (name in listOf("setup.exe", "run.bat", "x.ps1", "evil.lnk", "a.js", "b.vbs", "c.msi")) {
+        for (name in listOf("setup.exe", "run.bat", "x.ps1", "evil.lnk", "a.js", "b.vbs", "c.msi", "d.msc", "e.scf", "f.chm", "g.wsc")) {
             val f = tmp.newFile(name)
             val r = run("open_file", JSONObject().put("path", f.absolutePath).toString())
             assertFalse(name, r.ok)
