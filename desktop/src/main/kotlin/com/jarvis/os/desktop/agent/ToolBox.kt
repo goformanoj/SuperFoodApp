@@ -579,7 +579,10 @@ class ToolBox(
             "calendar_events" -> {
                 val fromArg = args.optString("from").trim()
                 val toArg = args.optString("to").trim()
-                val start = if (fromArg.isEmpty()) java.time.LocalDate.now(zone).atStartOfDay(zone) else
+                // clock(), not LocalDate.now() — everything else in this class treats time as
+                // whatever clock() says (so tests, and any future replay/simulation, agree
+                // with the rest of the agent about what "today" is).
+                val start = if (fromArg.isEmpty()) java.time.Instant.ofEpochMilli(clock()).atZone(zone).toLocalDate().atStartOfDay(zone) else
                     parseLocal(fromArg)?.let { java.time.Instant.ofEpochMilli(it).atZone(zone) }?.let { if (fromArg.length <= 10) it.toLocalDate().atStartOfDay(zone) else it }
                         ?: return fail("I couldn't read the date “$fromArg”.")
                 val end = if (toArg.isEmpty()) start.toLocalDate().plusDays(1).atStartOfDay(zone) else

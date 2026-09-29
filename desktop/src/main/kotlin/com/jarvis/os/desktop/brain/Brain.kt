@@ -1,5 +1,6 @@
 package com.jarvis.os.desktop.brain
 
+import org.json.JSONObject
 import java.io.File
 import java.sql.Connection
 import java.sql.DriverManager
@@ -142,6 +143,7 @@ class Brain private constructor(private val db: Connection, private val clock: (
         val m = Memory(newId(), kind, clean, sourceConversation, clock())
         exec("INSERT INTO memories(id,kind,text,source_conversation,created) VALUES(?,?,?,?,?)", m.id, kind.name, clean, sourceConversation, m.created)
         index("memory", m.id, kind.name.lowercase(), clean)
+        touch("memory", m.id)
         return m
     }
 
@@ -157,6 +159,7 @@ class Brain private constructor(private val db: Connection, private val clock: (
     fun deleteMemory(id: String) {
         exec("DELETE FROM memories WHERE id=?", id)
         unindex(id)
+        touch("memory", id, deleted = true)
     }
 
     fun memories(kind: MemoryKind? = null): List<Memory> = if (kind == null) {
@@ -164,6 +167,8 @@ class Brain private constructor(private val db: Connection, private val clock: (
     } else {
         query("SELECT * FROM memories WHERE kind=? ORDER BY created", kind.name) { mem(it) }
     }
+
+    fun memory(id: String): Memory? = query("SELECT * FROM memories WHERE id=?", id) { mem(it) }.firstOrNull()
 
     // ── Tasks ────────────────────────────────────────────────────────────────
 
@@ -178,6 +183,7 @@ class Brain private constructor(private val db: Connection, private val clock: (
             t.id, t.title, t.notes, t.dueAt, t.priority, t.status.name, projectId, sourceConversation, t.created, t.created,
         )
         index("task", t.id, t.title, t.notes.orEmpty())
+        touch("task", t.id)
         return t
     }
 
@@ -186,6 +192,7 @@ class Brain private constructor(private val db: Connection, private val clock: (
     fun setTaskDone(id: String, done: Boolean) {
         val now = clock()
         exec("UPDATE tasks SET status=?, completed_at=?, updated=? WHERE id=?", if (done) "DONE" else "OPEN", if (done) now else null, now, id)
+        touch("task", id)
     }
 
     fun updateTask(id: String, title: String? = null, dueAt: Long? = null, clearDue: Boolean = false, notes: String? = null) {
@@ -195,11 +202,13 @@ class Brain private constructor(private val db: Connection, private val clock: (
         val newNotes = notes ?: t.notes
         exec("UPDATE tasks SET title=?, due_at=?, notes=?, updated=? WHERE id=?", newTitle, newDue, newNotes, clock(), id)
         index("task", id, newTitle, newNotes.orEmpty())
+        touch("task", id)
     }
 
     fun deleteTask(id: String) {
         exec("DELETE FROM tasks WHERE id=?", id)
         unindex(id)
+        touch("task", id, deleted = true)
     }
 
     /** Open tasks: overdue and dated first (soonest first), then undated by priority and age. */
@@ -221,8 +230,11 @@ class Brain private constructor(private val db: Connection, private val clock: (
     fun addReminder(text: String, at: Long, recurrence: String? = null, taskId: String? = null): Reminder {
         val r = Reminder(newId(), text.trim(), at, recurrence, false, taskId)
         exec("INSERT INTO reminders(id,text,at,recurrence,delivered,task_id,created) VALUES(?,?,?,?,0,?,?)", r.id, r.text, at, recurrence, taskId, clock())
+        touch("reminder", r.id)
         return r
     }
+
+    fun reminder(id: String): Reminder? = query("SELECT * FROM reminders WHERE id=?", id) { rem(it) }.firstOrNull()
 
     /** Undelivered reminders whose time has come — what the notifier fires. */
     fun dueReminders(now: Long = clock()): List<Reminder> =
@@ -231,8 +243,15 @@ class Brain private constructor(private val db: Connection, private val clock: (
     fun upcomingReminders(): List<Reminder> =
         query("SELECT * FROM reminders WHERE delivered=0 ORDER BY at") { rem(it) }
 
+    // Delivery is deliberately NOT synced: it is each device's own record of whether IT has
+    // notified the user, so the same reminder still notifies once on the phone and once on
+    // the laptop, rather than one device's notification silencing the other's.
     fun markDelivered(id: String) = exec("UPDATE reminders SET delivered=1 WHERE id=?", id)
-    fun deleteReminder(id: String) = exec("DELETE FROM reminders WHERE id=?", id)
+
+    fun deleteReminder(id: String) {
+        exec("DELETE FROM reminders WHERE id=?", id)
+        touch("reminder", id, deleted = true)
+    }
 
     // ── Notes ────────────────────────────────────────────────────────────────
 
@@ -241,16 +260,17 @@ class Brain private constructor(private val db: Connection, private val clock: (
         val n = Note(newId(), title.trim().ifEmpty { "Untitled note" }, body, projectId, sourceConversation, now)
         exec("INSERT INTO notes(id,title,body,project_id,source_conversation,created,updated) VALUES(?,?,?,?,?,?,?)", n.id, n.title, body, projectId, sourceConversation, now, now)
         index("note", n.id, n.title, body)
+        touch("note", n.id)
         return n
     }
 
-    fun notes(): List<Note> = query("SELECT * FROM notes ORDER BY updated DESC") {
-        Note(it.getString("id"), it.getString("title"), it.getString("body"), it.getString("project_id"), it.getString("source_conversation"), it.getLong("updated"))
-    }
+    fun notes(): List<Note> = query("SELECT * FROM notes ORDER BY updated DESC") { noteRow(it) }
+    fun note(id: String): Note? = query("SELECT * FROM notes WHERE id=?", id) { noteRow(it) }.firstOrNull()
 
     fun deleteNote(id: String) {
         exec("DELETE FROM notes WHERE id=?", id)
         unindex(id)
+        touch("note", id, deleted = true)
     }
 
     // ── Documents (AGENT_PLAN §5, S4) ────────────────────────────────────────
@@ -367,6 +387,108 @@ class Brain private constructor(private val db: Connection, private val clock: (
     /** Routines whose name contains [q] (case-insensitive). */
     fun findRoutines(q: String): List<Routine> = routines().filter { it.name.contains(q.trim(), ignoreCase = true) || it.instruction.contains(q.trim(), ignoreCase = true) }
 
+    // ── Sync (AGENT_PLAN §7) ─────────────────────────────────────────────────
+
+    /**
+     * One pending edit to push: [kind] is "task"/"reminder"/"note"/"memory", [deleted]
+     * marks a tombstone, and [data] is that entity's own fields as JSON — built fresh from
+     * the live row when this is read, never stored twice. Conversations, documents,
+     * projects, routines and activity are NOT synced: v1 covers exactly what AGENT_PLAN §7
+     * names (tasks, reminders, notes, memory), and everything else stays local-first.
+     */
+    data class SyncRow(val kind: String, val id: String, val updatedAt: Long, val deleted: Boolean, val data: JSONObject)
+
+    /** Local edits [SyncClient] hasn't pushed yet, oldest first. */
+    fun pendingSync(limit: Int = 300): List<SyncRow> = query(
+        "SELECT kind, ref_id, updated_at, deleted FROM sync_outbox ORDER BY updated_at LIMIT ?", limit,
+    ) { r ->
+        val kind = r.getString(1); val id = r.getString(2); val deleted = r.getInt(4) == 1
+        SyncRow(kind, id, r.getLong(3), deleted, if (deleted) JSONObject() else payloadFor(kind, id) ?: JSONObject())
+    }.filter { it.deleted || it.data.length() > 0 } // a row the outbox still remembers but was itself removed some other way
+
+    /** After a successful push: these (kind, id) pairs need not be sent again. */
+    fun clearSynced(entries: List<Pair<String, String>>) = tx {
+        entries.forEach { (kind, id) -> exec("DELETE FROM sync_outbox WHERE kind=? AND ref_id=?", kind, id) }
+    }
+
+    /**
+     * A row from ANOTHER device, already decided as the winner: write it locally and index
+     * it, but never re-enqueue it — that would just push it straight back to the same
+     * server that sent it. [markSynced] then clears any local edit it just overrode, so a
+     * push this device already had in flight for the same id does not fight the pull.
+     */
+    fun applyRemoteRow(row: SyncRow) {
+        when (row.kind) {
+            "task" -> if (row.deleted) {
+                exec("DELETE FROM tasks WHERE id=?", row.id); unindex(row.id)
+            } else {
+                val d = row.data
+                exec(
+                    """INSERT INTO tasks(id,title,notes,due_at,priority,status,project_id,source_conversation,created,updated,completed_at)
+                       VALUES(?,?,?,?,?,?,NULL,NULL,?,?,?)
+                       ON CONFLICT(id) DO UPDATE SET title=excluded.title, notes=excluded.notes, due_at=excluded.due_at,
+                         priority=excluded.priority, status=excluded.status, updated=excluded.updated, completed_at=excluded.completed_at""",
+                    row.id, d.optString("title"), d.optStringOrNull("notes"), d.optLongOrNull("dueAt"), d.optInt("priority", 0),
+                    d.optString("status", "OPEN"), d.optLong("created", row.updatedAt), row.updatedAt, d.optLongOrNull("completedAt"),
+                )
+                index("task", row.id, d.optString("title"), d.optStringOrNull("notes").orEmpty())
+            }
+            "reminder" -> if (row.deleted) {
+                exec("DELETE FROM reminders WHERE id=?", row.id)
+            } else {
+                val d = row.data
+                // delivered/task_id are per-device (see deleteReminder's note); a brand new
+                // row starts undelivered, an existing one keeps whatever this device already
+                // recorded — an edit to the time or text is not, by itself, a fresh alarm.
+                exec(
+                    """INSERT INTO reminders(id,text,at,recurrence,delivered,task_id,created) VALUES(?,?,?,?,0,NULL,?)
+                       ON CONFLICT(id) DO UPDATE SET text=excluded.text, at=excluded.at, recurrence=excluded.recurrence""",
+                    row.id, d.optString("text"), d.optLong("at", row.updatedAt), d.optStringOrNull("recurrence"), d.optLong("created", row.updatedAt),
+                )
+            }
+            "note" -> if (row.deleted) {
+                exec("DELETE FROM notes WHERE id=?", row.id); unindex(row.id)
+            } else {
+                val d = row.data
+                exec(
+                    """INSERT INTO notes(id,title,body,project_id,source_conversation,created,updated) VALUES(?,?,?,NULL,NULL,?,?)
+                       ON CONFLICT(id) DO UPDATE SET title=excluded.title, body=excluded.body, updated=excluded.updated""",
+                    row.id, d.optString("title"), d.optString("body"), d.optLong("created", row.updatedAt), row.updatedAt,
+                )
+                index("note", row.id, d.optString("title"), d.optString("body"))
+            }
+            "memory" -> if (row.deleted) {
+                exec("DELETE FROM memories WHERE id=?", row.id); unindex(row.id)
+            } else {
+                val d = row.data
+                val kind = runCatching { MemoryKind.valueOf(d.optString("kind", "FACT")) }.getOrDefault(MemoryKind.FACT)
+                exec(
+                    """INSERT INTO memories(id,kind,text,source_conversation,created) VALUES(?,?,?,NULL,?)
+                       ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, text=excluded.text""",
+                    row.id, kind.name, d.optString("text").take(MAX_MEMORY), d.optLong("created", row.updatedAt),
+                )
+                index("memory", row.id, kind.name.lowercase(), d.optString("text"))
+            }
+        }
+        exec("DELETE FROM sync_outbox WHERE kind=? AND ref_id=?", row.kind, row.id)
+    }
+
+    /** How far pull has read: epoch ms of the last row this device has seen from the server. */
+    fun syncCursor(): Long = query("SELECT value FROM meta WHERE key='sync_cursor'") { it.getString(1).toLong() }.firstOrNull() ?: 0L
+    fun setSyncCursor(v: Long) = exec("INSERT OR REPLACE INTO meta(key,value) VALUES('sync_cursor', ?)", v.toString())
+
+    /** This entity's fields as sent over the wire (never conversation/project links — those don't sync). */
+    private fun payloadFor(kind: String, id: String): JSONObject? = when (kind) {
+        "task" -> task(id)?.let {
+            JSONObject().put("title", it.title).put("notes", it.notes).put("dueAt", it.dueAt).put("priority", it.priority)
+                .put("status", it.status.name).put("completedAt", it.completedAt).put("created", it.created)
+        }
+        "reminder" -> reminder(id)?.let { JSONObject().put("text", it.text).put("at", it.at).put("recurrence", it.recurrence) }
+        "note" -> note(id)?.let { JSONObject().put("title", it.title).put("body", it.body).put("created", it.updated) }
+        "memory" -> memory(id)?.let { JSONObject().put("kind", it.kind.name).put("text", it.text).put("created", it.created) }
+        else -> null
+    }
+
     // ── Activity ─────────────────────────────────────────────────────────────
 
     /** Every action JARVIS takes is logged here (AGENT_PLAN §4) — the user can see what it did. */
@@ -422,6 +544,17 @@ class Brain private constructor(private val db: Connection, private val clock: (
 
     private fun unindex(refId: String) = exec("DELETE FROM search_fts WHERE ref_id=?", refId)
 
+    /**
+     * Records that a sync-eligible row changed, for [pendingSync] to pick up later. One row
+     * per (kind, id) — a second edit before the last sync just moves its clock forward,
+     * rather than queuing every intermediate state.
+     */
+    private fun touch(kind: String, refId: String, deleted: Boolean = false) = exec(
+        """INSERT INTO sync_outbox(kind,ref_id,updated_at,deleted) VALUES(?,?,?,?)
+           ON CONFLICT(kind,ref_id) DO UPDATE SET updated_at=excluded.updated_at, deleted=excluded.deleted""",
+        kind, refId, clock(), if (deleted) 1 else 0,
+    )
+
     private fun conv(r: ResultSet) = Conversation(
         r.getString("id"), r.getString("title"), r.getString("project_id"), r.getInt("pinned") == 1,
         r.getInt("archived") == 1, r.getLong("created"), r.getLong("updated"),
@@ -456,7 +589,15 @@ class Brain private constructor(private val db: Connection, private val clock: (
         r.getString("id"), r.getString("text"), r.getLong("at"), r.getString("recurrence"), r.getInt("delivered") == 1, r.getString("task_id"),
     )
 
+    private fun noteRow(r: ResultSet) = Note(
+        r.getString("id"), r.getString("title"), r.getString("body"), r.getString("project_id"), r.getString("source_conversation"), r.getLong("updated"),
+    )
+
     private fun ResultSet.getLongOrNull(col: String): Long? = getLong(col).let { if (wasNull()) null else it }
+
+    /** [JSONObject] has no built-in nullable getters; `null`/absent both read back as null. */
+    private fun JSONObject.optStringOrNull(key: String): String? = if (has(key) && !isNull(key)) getString(key) else null
+    private fun JSONObject.optLongOrNull(key: String): Long? = if (has(key) && !isNull(key)) getLong(key) else null
 
     private fun exec(sql: String, vararg args: Any?) {
         db.prepareStatement(sql).use { st ->
@@ -501,6 +642,17 @@ class Brain private constructor(private val db: Connection, private val clock: (
             SCHEMA_V3.forEach { exec(it) }
             exec("INSERT OR REPLACE INTO meta(key,value) VALUES('schema','3')")
         }
+        if (version < 4) tx {
+            SCHEMA_V4.forEach { exec(it) }
+            // Backfill: everything this laptop already had becomes a pending sync edit, so
+            // turning sync on for the first time pushes the FULL existing local history —
+            // not just what changes from this point on.
+            exec("INSERT INTO sync_outbox(kind,ref_id,updated_at,deleted) SELECT 'task', id, updated, 0 FROM tasks")
+            exec("INSERT INTO sync_outbox(kind,ref_id,updated_at,deleted) SELECT 'reminder', id, created, 0 FROM reminders")
+            exec("INSERT INTO sync_outbox(kind,ref_id,updated_at,deleted) SELECT 'note', id, updated, 0 FROM notes")
+            exec("INSERT INTO sync_outbox(kind,ref_id,updated_at,deleted) SELECT 'memory', id, created, 0 FROM memories")
+            exec("INSERT OR REPLACE INTO meta(key,value) VALUES('schema','4')")
+        }
     }
 
     companion object {
@@ -542,6 +694,17 @@ class Brain private constructor(private val db: Connection, private val clock: (
             "the", "an", "and", "or", "of", "to", "in", "on", "for", "is", "are", "was", "were", "be",
             "what", "which", "who", "when", "where", "how", "does", "do", "did", "it", "this", "that", "with",
             "about", "from", "by", "as", "at", "me", "my", "tell", "say", "says", "document", "pdf", "file",
+        )
+
+        /**
+         * v4 (Phase 7): one small "outbox" of local edits still waiting to be pushed —
+         * appended to by [touch] whenever a task, reminder, note or memory changes, drained
+         * by [SyncClient]. `(kind, ref_id)` is the primary key so several edits before the
+         * next sync collapse into one row, not a growing log of every intermediate state.
+         */
+        private val SCHEMA_V4 = listOf(
+            """CREATE TABLE sync_outbox(kind TEXT NOT NULL, ref_id TEXT NOT NULL, updated_at INTEGER NOT NULL,
+               deleted INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(kind, ref_id))""",
         )
 
         /** v3 (Phase 6): routines. */

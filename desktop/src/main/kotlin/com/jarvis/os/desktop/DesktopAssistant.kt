@@ -575,6 +575,51 @@ class DesktopAssistant(
         usage = null
     }
 
+    // ── Sync (Phase 7, AGENT_PLAN §7) ────────────────────────────────────────
+
+    /**
+     * The user's switch — OFF by default (AGENT_PLAN §8 decision 4: opt-in, not automatic).
+     * Only meaningful once signed in with Google: an anonymous account is a fresh identity
+     * on every install, so there is no "other device" to share with until both devices are
+     * signed in as the SAME account. [syncAvailable] is what Settings actually gates on.
+     */
+    var syncOn by mutableStateOf(false)
+    val syncAvailable: Boolean get() = syncOn && account.isSignedIn && ProxyClient.isConfigured()
+
+    var syncing by mutableStateOf(false)
+        private set
+    var lastSyncedAt by mutableStateOf<Long?>(null)
+        private set
+    var syncError by mutableStateOf<String?>(null)
+        private set
+
+    private val syncClient = com.jarvis.os.desktop.sync.SyncClient(brain)
+
+    /**
+     * One push-then-pull round. Called from a slow periodic loop (Main.kt) — sync is
+     * eventually-consistent by design, not a live channel, so once a minute is plenty and
+     * keeps this off the critical path of everything else the laptop is doing. A network
+     * hiccup is logged and swallowed, exactly like the reminders loop: one failed round
+     * must never crash the loop that would otherwise fix itself next time.
+     */
+    suspend fun syncNow() {
+        if (!syncAvailable || syncing) return
+        syncing = true
+        try {
+            if (syncClient.syncOnce()) {
+                refreshConversations(); refreshTasks(); refreshMemories(); refreshRoutines(); refreshReminders()
+                documents = brain.documents()
+            }
+            lastSyncedAt = System.currentTimeMillis()
+            syncError = null
+        } catch (e: Exception) {
+            DebugLog.log(DebugLog.Stage.ERROR, "sync failed: ${e.javaClass.simpleName}")
+            syncError = e.message ?: "Sync failed — will try again."
+        } finally {
+            syncing = false
+        }
+    }
+
     /** Renames a conversation. A blank name is ignored (the old title stays). */
     fun rename(id: String, title: String) {
         val clean = DesktopTurn.cleanTitle(title) ?: return

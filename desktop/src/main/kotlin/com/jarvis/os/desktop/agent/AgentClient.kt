@@ -35,13 +35,20 @@ object AgentClient {
      * credentials; refreshes the token once on a 401; records the plan and allowance the
      * Worker reports. Returns the body, or throws [ProxyException] with a speakable sentence.
      */
-    suspend fun postJson(path: String, payload: String, readTimeoutMs: Int = 45_000): String = withContext(Dispatchers.IO) {
-        var res = post(path, Identity.token(), payload, readTimeoutMs)
-        if (res.first == 401) res = post(path, Identity.forceRefresh(), payload, readTimeoutMs)
+    suspend fun postJson(path: String, payload: String, readTimeoutMs: Int = 45_000): String =
+        request("POST", path, payload, readTimeoutMs)
+
+    /** The GET counterpart (e.g. /sync/pull): same credentials, retry and error handling. */
+    suspend fun getJson(path: String, readTimeoutMs: Int = 45_000): String =
+        request("GET", path, null, readTimeoutMs)
+
+    private suspend fun request(method: String, path: String, payload: String?, readTimeoutMs: Int): String = withContext(Dispatchers.IO) {
+        var res = call(method, path, Identity.token(), payload, readTimeoutMs)
+        if (res.first == 401) res = call(method, path, Identity.forceRefresh(), payload, readTimeoutMs)
         val (code, body) = res
         // JARVIS_AGENT_DEBUG=1: print the exchange (no credentials are in either side).
         if (System.getenv("JARVIS_AGENT_DEBUG") == "1") {
-            System.err.println(">>> $path ${payload.take(4000)}")
+            System.err.println(">>> $method $path ${payload?.take(4000).orEmpty()}")
             System.err.println("<<< $code ${body.take(2000)}")
         }
         if (code !in 200..299) throw ProxyException(if (code == 0) "I couldn't reach my server — check the internet connection." else ProxyClient.errorMessage(code, body))
@@ -74,17 +81,17 @@ object AgentClient {
     fun toolResultMessage(callId: String, content: String): JSONObject =
         JSONObject().put("role", "tool").put("tool_call_id", callId).put("content", content)
 
-    private fun post(path: String, token: String, payload: String, readTimeoutMs: Int): Pair<Int, String> {
+    private fun call(method: String, path: String, token: String, payload: String?, readTimeoutMs: Int): Pair<Int, String> {
         val conn = URL(BuildConfig.WORKER_URL.trimEnd('/') + path).openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.doOutput = true
+        conn.requestMethod = method
+        conn.doOutput = payload != null
         conn.connectTimeout = 15000
         conn.readTimeout = readTimeoutMs
-        conn.setRequestProperty("Content-Type", "application/json")
+        if (payload != null) conn.setRequestProperty("Content-Type", "application/json")
         conn.setRequestProperty("X-Proxy-Secret", BuildConfig.PROXY_SECRET)
         conn.setRequestProperty("Authorization", "Bearer $token")
         return try {
-            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+            payload?.let { p -> conn.outputStream.use { it.write(p.toByteArray(Charsets.UTF_8)) } }
             val code = conn.responseCode
             code to ((if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty())
         } catch (e: Exception) {

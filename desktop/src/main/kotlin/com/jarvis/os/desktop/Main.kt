@@ -215,6 +215,20 @@ fun main(args: Array<String>) = application {
             }
     }
 
+    // Sync (Phase 7): off by default (AGENT_PLAN §8 decision 4 — opt-in), remembered once
+    // the user turns it on. A slow loop, not a live channel — every minute is plenty for
+    // tasks/reminders/notes/memory, and keeps this off the critical path of everything else.
+    LaunchedEffect(Unit) {
+        assistant.syncOn = prefs.flag(PREF_SYNC_ON)
+        snapshotFlow { assistant.syncOn }.collect { prefs.setFlag(PREF_SYNC_ON, it) }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            assistant.syncNow()
+            kotlinx.coroutines.delay(60_000)
+        }
+    }
+
     Window(
         onCloseRequest = ::hideToTray,
         visible = windowVisible,
@@ -320,6 +334,7 @@ private const val PREF_WAKE = "voice.wakeword"
 private const val PREF_TOLD_TRAY = "ui.toldAboutTray"
 private const val PREF_SPEAK_ALL = "voice.speakAll"
 private const val PREF_QUICKBAR_OFF = "quickbar.off"
+private const val PREF_SYNC_ON = "sync.on"
 
 @Composable
 private fun Divider() {

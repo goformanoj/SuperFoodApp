@@ -65,6 +65,26 @@ fun main(args: Array<String>) {
             val ex = com.jarvis.os.desktop.knowledge.DocText.extract(java.io.File(joined.substringAfter("|")))
             println("${ex.name}: ${ex.pages.size} ${ex.unit}(s), ${ex.chars} chars, ${com.jarvis.os.desktop.knowledge.DocText.chunks(ex.pages).size} chunks")
         } }) 0 else 1)
+        // A real push + pull against the LIVE Worker (Phase 7), on a throwaway in-memory
+        // brain — never touches the user's real brain.db. Proves the deployed endpoint,
+        // auth and D1 table actually work, not just the pure logic the unit tests cover.
+        joined.startsWith("--sync-test") -> exitProcess(if (runBlocking { probe {
+            val brain = com.jarvis.os.desktop.brain.Brain.inMemory()
+            val client = com.jarvis.os.desktop.sync.SyncClient(brain)
+            val t = brain.addTask("Sync smoke test " + System.currentTimeMillis())
+            println("  pushing 1 pending edit...")
+            val pushed = client.pushOnce()
+            println("  pushed=$pushed, outbox now empty=${brain.pendingSync().isEmpty()}")
+            // A second, independent brain simulates "the other device": it starts with
+            // nothing, pulls from the same account, and should see the task just pushed.
+            val other = com.jarvis.os.desktop.brain.Brain.inMemory()
+            val otherClient = com.jarvis.os.desktop.sync.SyncClient(other)
+            val pulled = otherClient.pullOnce()
+            val seen = other.task(t.id)
+            println("  pulled=$pulled, other device sees it: ${seen?.title}")
+            if (seen?.title != t.title) error("round trip did not match: sent \"${t.title}\", other device has \"${seen?.title}\"")
+            println("  OK: the live Worker's sync round trip works.")
+        } }) 0 else 1)
     }
     // `:desktop:ping --args="--agent|<request>"` runs the REAL agent against the live Worker,
     // on a throwaway in-memory brain with a host that opens nothing — the user's data and

@@ -47,6 +47,7 @@ import com.jarvis.os.desktop.AppDirs
 import com.jarvis.os.desktop.DesktopAssistant
 import com.jarvis.os.desktop.DesktopPrefs
 import com.jarvis.os.desktop.GoogleSignIn
+import com.jarvis.os.desktop.brain.TaskDates
 import com.jarvis.os.desktop.StartWithWindows
 import com.jarvis.os.memory.MemoryFormat
 import com.jarvis.os.ui.components.OrbPreview
@@ -147,6 +148,7 @@ fun SettingsScreen(a: DesktopAssistant) {
                 )
             }
             GoogleRow(a)
+            SyncRow(a)
             ToggleRow(
                 "Quick bar",
                 when {
@@ -210,6 +212,25 @@ private fun GoogleRow(a: DesktopAssistant) {
             )
         }
     }
+}
+
+/**
+ * Sync across devices (Phase 7): off by default (AGENT_PLAN §8 decision 4 — opt-in), and
+ * only meaningful once signed in with Google, since it is the account that ties the phone
+ * and laptop together — an anonymous laptop has no "other device" to share with.
+ */
+@Composable
+private fun SyncRow(a: DesktopAssistant) {
+    val enabled = a.account.isSignedIn
+    val status = when {
+        !enabled -> "Needs Google sign-in above — an account is what ties your phone and laptop together"
+        !a.syncOn -> "Off. Turn on to share tasks, reminders, notes and memory with your other signed-in devices"
+        a.syncing -> "Syncing…"
+        a.syncError != null -> "On, but the last attempt failed: ${a.syncError}"
+        a.lastSyncedAt != null -> "On · last synced ${TaskDates.label(a.lastSyncedAt!!, System.currentTimeMillis())}"
+        else -> "On · syncing shortly"
+    }
+    ToggleRow("Sync across devices", status, a.syncOn, enabled = enabled) { a.syncOn = it }
 }
 
 @Composable
