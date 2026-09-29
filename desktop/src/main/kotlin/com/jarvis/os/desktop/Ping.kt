@@ -112,6 +112,8 @@ fun main(args: Array<String>) {
                 override fun openFile(path: String): Boolean { println("  (would open a file)"); return true }
                 override suspend fun webSearch(query: String) = com.jarvis.os.desktop.knowledge.KnowledgeClient.webSearch(query)
                 override suspend fun searchFiles(q: com.jarvis.os.desktop.knowledge.FileSearch.Query) = com.jarvis.os.desktop.knowledge.FileSearch.run(q)
+                override suspend fun youtubeVideo(query: String) = com.jarvis.os.desktop.knowledge.YouTubeSearch.firstVideo(query)
+                override suspend fun youtubePlaylist(query: String) = com.jarvis.os.desktop.knowledge.YouTubeSearch.firstPlaylist(query)
             }
             val conv = brain.createConversation("test").id
             val attached = docPath?.let { listOf(com.jarvis.os.desktop.knowledge.Library.import(brain, java.io.File(it), conv)) }.orEmpty()
