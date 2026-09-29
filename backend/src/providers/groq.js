@@ -43,6 +43,10 @@ export function groqProvider(apiKey, options = {}) {
   // Same-model attempts before giving up on a transient failure. Injectable sleep
   // so tests do not actually wait.
   const maxAttempts = options.maxAttempts ?? 3
+  // The same adapter serves every platform that speaks the OpenAI chat format (Cerebras,
+  // OpenRouter, ...): only the address and a few headers differ. Defaults are Groq's own.
+  const endpoint = options.endpoint ?? ENDPOINT
+  const extraHeaders = options.headers ?? {}
   const sleep = options.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
 
   async function once(model, messages, system, tools, extra = {}) {
@@ -61,9 +65,9 @@ export function groqProvider(apiKey, options = {}) {
       if (tools.some((t) => t?.type === 'function')) body.tool_choice = 'auto'
     }
     if (extra.reasoningEffort) body.reasoning_effort = extra.reasoningEffort
-    const res = await fetch(ENDPOINT, {
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`, ...extraHeaders },
       body: JSON.stringify(body),
     })
     const text = await res.text()
@@ -155,6 +159,9 @@ export function groqProvider(apiKey, options = {}) {
     },
   }
 }
+
+/** Same adapter under its honest name: it works for any OpenAI-compatible platform. */
+export const openAiCompatProvider = groqProvider
 
 /** Groq states the wait in the header, or in the message body. Clamped. */
 export function retryAfterSeconds(header, body) {

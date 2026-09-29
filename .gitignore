@@ -36,3 +36,7 @@ google-services.json
 # whenever the compile daemon restarts, which is routine and not a failure — but
 # `git add -A` sweeps it into the next commit, and one reached `main` that way.
 .kotlin/
+
+# Local secrets for the backend scripts (wrangler's own convention) — NEVER commit keys.
+.dev.vars
+**/.dev.vars

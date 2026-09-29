@@ -6,6 +6,35 @@ Phone ──▶ this Worker ──(server-held key)──▶ Groq ──▶ back
                 └──▶ D1: check the daily allowance, record what it cost
 ```
 
+## AI platforms — the router
+
+One key is enough; more keys add safety nets. Every platform whose key is set as a Worker
+secret joins a router (`src/providers/`), tried in priority order:
+
+| Platform | Secret | Notes |
+|---|---|---|
+| Groq | `GROQ_API_KEY` | First, fastest. The only one with built-in web search, so `/search` is Groq-only. Also Whisper for voice. |
+| Cerebras | `CEREBRAS_API_KEY` | Models default to `gpt-oss-120b`, `qwen-3.8-27b` (its docs, 2026-09-29); override with `CEREBRAS_MODELS`. |
+| OpenRouter | `OPENROUTER_API_KEY` | **Free models only**, discovered live from OpenRouter's public list (best/biggest first), never a frozen list. |
+| Gemini, Mistral | `GEMINI_API_KEY` / `MISTRAL_API_KEY` + `*_MODELS` | **Off unless `ALLOW_TRAINING_TIERS=yes`**: their free tiers may train on prompts. |
+
+**Why several.** Free tiers are small and per-minute: Groq's is 8,000 tokens/minute per model, and
+one JARVIS call is ~4,000 tokens of instructions. One platform cannot carry the app; several can.
+
+**What the router does per request:** skips platforms that can't do the job (no built-in search, no
+vision) or that just failed (short cooldown); tries the rest in order; and **checks each reply**
+(`normalize.js`): strips `<think>` blocks, turns a tool call printed as text into a real one, and
+REJECTS an invented tool, bad arguments or an empty reply so the next platform gets a turn. It also
+fills in missing token counts so a turn is never free.
+
+**Categories.** `catalog.js` sorts models by size from their names (large ≥100B, medium ≥20B,
+small) and by suitability (`chat` / `vision` / `agent`). Guesses are replaced by measurements:
+`node scripts/probe.mjs --write` runs JARVIS's real requests against every model and saves who
+passed to `src/scorecard.js`, which the router then uses to order (and demote) models.
+
+**Adding a platform:** set its secret. Nothing else. **Local use:** copy `.dev.vars.example` to
+`.dev.vars` (git-ignored). `node scripts/list-models.mjs` shows what each key can reach.
+
 ## Run the tests
 
 ```sh
@@ -24,7 +53,7 @@ rather than reasoned about and handed to the user to try on a phone.
 |---|---|---|
 | Quota + token accounting | **real, tested** | — |
 | Model list per plan | **real, tested** | — |
-| Provider | **real Groq**, with the fallback chain | — |
+| Provider | **a router over several AI platforms** (Groq, Cerebras, OpenRouter free models, ...), each with its own fallback chain | — |
 | App gate | **shared secret** (`X-Proxy-Secret`) | Phase 3 replaces with Firebase |
 | User identity | **stubbed** — `X-Uid` header | Phase 3: Firebase ID token |
 | Storage | D1 in prod, in-memory in tests | — |

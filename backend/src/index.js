@@ -21,7 +21,7 @@ import { lastUserText, looksActiony, shouldEscalate } from './promptTier.js'
 import { dropSecretMemories } from './guards.js'
 import { packFor } from './packs.js'
 import { effectivePlan, isActive } from './billing.js'
-import { groqProvider } from './providers/groq.js'
+import { providerFor } from './providers/build.js'
 import { AuthError, firebaseVerifier } from './auth.js'
 import { checkAudio, cleanTranscript, groqTranscriber, tokensForAudio } from './transcribe.js'
 import { checkPush, checkRow, parseKinds, parseSince, MAX_PULL_LIMIT } from './sync.js'
@@ -424,6 +424,8 @@ export function createWorker({
         // Only present when the model asked to act; the client runs them and calls again.
         ...(result.toolCalls?.length ? { tool_calls: result.toolCalls } : {}),
         model: result.model,
+        // Which platform answered — for diagnosing a failover, not something the app needs.
+        ...(result.backend ? { backend: result.backend } : {}),
         plan,
         usage: { input: inTok, output: outTok },
         remaining: remaining(used + inTok + outTok, cap),
@@ -490,10 +492,13 @@ export default {
     if (!env.PROXY_SECRET) {
       return Response.json({ error: 'server_unconfigured' }, { status: 503 })
     }
-    if (!env.GROQ_API_KEY) {
+    // One key or several: every AI platform whose key is set joins the router (see
+    // providers/build.js). With none, there is nothing to answer with, so fail closed.
+    const built = providerFor(env)
+    if (!built) {
       return Response.json({ error: 'server_unconfigured' }, { status: 503 })
     }
-    const provider = groqProvider(env.GROQ_API_KEY)
+    const provider = built.provider
     const store = d1Store(env.DB)
     // Phase 3 turns on the moment a Firebase project id is present. Until then
     // the Worker keeps the stubbed-uid behaviour, so this code can ship and
@@ -512,8 +517,9 @@ export default {
     // wrangler.toml [vars] only once the eval confirms markers still fire; "off"
     // reverts instantly.
     const conversationTier = (env.CONVO_TIER ?? '').trim().toLowerCase() === 'on'
-    // Speech-to-text uses the same server-held Groq key (Whisper), metered as tokens.
-    const transcriber = groqTranscriber(env.GROQ_API_KEY)
+    // Speech-to-text is Groq's Whisper, so it exists only when a Groq key does (the
+    // route answers 404 without a transcriber). Metered as tokens.
+    const transcriber = env.GROQ_API_KEY ? groqTranscriber(env.GROQ_API_KEY) : null
     return createWorker({
       store, provider, transcriber, proxySecret: env.PROXY_SECRET, verifyToken, proUids, proEmails, conversationTier,
     }).fetch(request)

@@ -92,6 +92,12 @@ the work for each prompt:
   have been. This is the part that actually teaches software design.
 - **Keep it short.** A few sentences or a short list beats an essay — the goal is
   understanding, not a lecture.
+- **When the user states something factually wrong, say so plainly and correct it
+  before going along with it.** Getting a detail wrong means they haven't fully
+  understood the underlying mechanism yet — that's a cue to explain that piece
+  properly, not a thing to smooth over, agree with to be polite, or quietly work
+  around. Say clearly what's wrong, then teach the correct version the same way
+  as the rest of this rule: in plain English, with the why.
 - This applies to the end-of-turn summary to the user, not to code comments or
   commit messages, which follow their own conventions elsewhere in this file.
 

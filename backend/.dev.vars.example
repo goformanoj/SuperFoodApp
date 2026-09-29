@@ -1,0 +1,24 @@
+# Copy to `.dev.vars` (git-ignored) to run the scripts locally:
+#   node scripts/list-models.mjs     # what can each key reach?
+#   node scripts/probe.mjs --write   # score every model on JARVIS's real requests
+#
+# In production these are Cloudflare Worker SECRETS (dashboard: Workers > superfoodapp >
+# Settings > Variables and Secrets, type "Secret"), or:  wrangler secret put CEREBRAS_API_KEY
+# A platform with no key is simply absent; one key is enough, more just adds fallbacks.
+# NEVER put a real key in this example file.
+
+GROQ_API_KEY=
+CEREBRAS_API_KEY=
+OPENROUTER_API_KEY=
+
+# Platforms whose FREE tier may train on your prompts (JARVIS sends emails/documents).
+# Off unless ALLOW_TRAINING_TIERS=yes. Model ids must come from `list-models.mjs`, not memory.
+# GEMINI_API_KEY=
+# GEMINI_MODELS=
+# MISTRAL_API_KEY=
+# MISTRAL_MODELS=
+# ALLOW_TRAINING_TIERS=yes
+
+# Optional: change the order platforms are tried, or switch one off without deleting its key.
+# PROVIDER_ORDER=cerebras,groq
+# DISABLED_PROVIDERS=openrouter

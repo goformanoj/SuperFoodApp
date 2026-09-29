@@ -1,5 +1,8 @@
-# Config only — NEVER a key. The Groq key is set with:
-#   wrangler secret put GROQ_API_KEY
+# Config only — NEVER a key. AI keys are Worker secrets, one per platform, each optional
+# (at least one required); see README "AI platforms — the router":
+#   wrangler secret put GROQ_API_KEY        (also powers voice + web search)
+#   wrangler secret put CEREBRAS_API_KEY
+#   wrangler secret put OPENROUTER_API_KEY
 name = "superfoodapp"
 main = "src/index.js"
 compatibility_date = "2026-08-18"
