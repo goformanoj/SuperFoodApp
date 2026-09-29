@@ -1,5 +1,48 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-29 — A security pass, a real bug it found, and the Permissions panel
+
+**Asked, and answered directly: "no access to any files on the laptop right now."**
+`ToolBox` already had one risk-gated escape hatch pattern (the Google tools, offered only
+once connected); the Permissions panel reuses exactly that shape for a category the USER
+controls rather than an account state — a `() -> Boolean` lambda the tool list filters on,
+checked again inside each gated tool's own `execute`, never left to the model just not
+seeing the tool in its list. The one subtlety worth remembering: `read_document` serves
+TWO different things — a document the user handed over themselves, and one JARVIS would
+have to go get by a raw filesystem path — and only the second is what "laptop files" means.
+Splitting the gate at exactly that line, inside `resolveDocument`, was more work than
+gating the whole tool, and also the entire point: sharing something is not JARVIS reaching
+for it.
+
+**The review found a real one.** The laptop's own signed-in identity — the token that,
+once the laptop is linked to a real Google account, authenticates as that account to the
+server — was sitting in a plain-text file, the one piece of desktop-native code that had
+never been brought up to the standard the Google integration set for itself (DPAPI) when
+IT was built in Phase 6. Fixed by extracting that Phase 6 code's `Vault`/`Dpapi` into its
+own small file and pointing `Identity` at the same thing, rather than writing a second
+copy — the kind of reuse that should have happened the first time.
+
+**Fixing it surfaced a second, worse bug, live, on the very first real run.** A sealed
+file that also happened to contain a few bytes this code didn't recognise — plausibly from
+an earlier, buggier version of this exact change, mid-development — kept getting carried
+forward and growing on every subsequent save, and once corrupted the stored refresh token
+badly enough to force an unwanted fresh anonymous sign-up. Caught immediately because the
+uid printed by a live check changed when it should not have — a lesson in its own right for
+verifying identity-affecting code against the REAL file, not only synthetic test fixtures,
+before calling it done. Three defenses now, layered rather than relying on any one of them
+alone: an explicit allowlist of the only keys this code understands (garbage never survives
+a read), a write that reopens and checks its own output before it is trusted, and an atomic
+rename so a process killed mid-write can never leave a half-written file behind. The
+laptop's real identity file was corrupted twice in the course of finding this — and
+recovered cleanly both times, without anyone having to sign in again, which is exactly what
+the fix was for.
+
+**One prompt-level fix instead of one per tool.** `read_mail` already told the model to
+treat an email's content as data, not instructions — the right idea, in exactly the one
+place a NEW tool wouldn't inherit it. Moved to the shared desktop agent prompt instead, so
+a document, a web page, or anything a future tool returns gets the same protection by
+default, not by every tool author remembering to ask for it.
+
 ## 2026-09-29 — Phase 7, part 1: one brain, syncing — the laptop's half
 
 **Why the account, not the device, is the sync key.** Firebase's anonymous auth hands out a

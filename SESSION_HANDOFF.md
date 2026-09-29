@@ -1,5 +1,40 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-29 — security review + Permissions panel
+
+Branch `desktop-kmp`; `main` @ `a396b98` (Worker `8910e99`, laptop `a396b98`).
+
+- **Roadmap:** unchanged from Phase 7 part 1 — the phone side of sync and cross-device
+  commands are still the next PLAN item; this round was a user-requested security pass and
+  a new Permissions panel, done alongside.
+- **New file `desktop/Dpapi.kt`:** the shared `Vault`/`Dpapi` (Windows DPAPI) used by both
+  `GoogleAccount` and `Identity`. Anything else worth sealing at rest should use this, not
+  write its own copy.
+- **Gotcha — CI runs `:desktop:test` on `ubuntu-latest`, not Windows.** Real DPAPI
+  (`Crypt32Util`) does not exist on Linux. Every test that touches a `Vault` MUST inject a
+  fake one (see `DesktopIdentityTest`'s `fakeVault`, `GoogleApisTest`'s) — never the real
+  `Dpapi` object — or CI breaks. A scratch repro file that used the real vault was written
+  while diagnosing the bug below and DELETED before committing for exactly this reason.
+  Confirmed real DPAPI itself works fine on the laptop via a one-off `Ping` mode (also
+  removed once it had done its job) — the bug was in this code's own read/write logic.
+- **Gotcha — don't detect "is this sealed?" by whether `vault.open()` throws.** Real DPAPI
+  happens to reject non-DPAPI bytes; nothing in the `Vault` contract promises that, and a
+  test fake has no reason to either (learned the hard way — see `Identity.SEALED_MARKER`,
+  an explicit marker byte instead).
+- **Gotcha — a file that might hold unrecognised entries must not blindly carry them
+  forward.** `Identity.KNOWN_KEYS` filters on every read now; a similar filter is worth
+  copying into anything else that persists a small property set this way.
+- **The Permissions panel's pattern for a new category:** a spec in `ToolBox`'s
+  constructor (a `() -> Boolean` lambda, like `google`), `specs` filtered by it, each
+  gated tool's `execute` branch checked too (never only hidden from the schema), a row in
+  `ui/PermissionsScreen.kt`, a pref key persisted the same way `syncOn`/`quickBarOn` are
+  in `Main.kt`. `resolveDocument` is the one place that needs care: only its raw-PATH
+  branch is gated — an already-attached document must keep working regardless.
+- **User to try:** Settings has nothing new to check here; go to the shield icon
+  (Permissions) in the sidebar and confirm "Laptop files" reads as OFF.
+
+---
+
 ## Current position — 2026-09-29 — Phase 7 part 1: sync across devices (laptop side)
 
 Branch `desktop-kmp`; `main` @ `eb24e26` (Worker `4f084b1`+`c364687`, laptop `eb24e26`).
