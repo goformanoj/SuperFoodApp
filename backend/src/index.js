@@ -188,14 +188,21 @@ export function createWorker({
           return Response.json({ error: 'bad_json' }, { status: 400 })
         }
         const rows = body?.rows
+        // A malformed BATCH (not an array, empty, absurdly large) is the client's own bug —
+        // refused whole, same as elsewhere. A malformed ROW is different: one oversized note
+        // must never jam every other pending edit behind it forever, so bad rows are named
+        // and skipped while every good row in the same batch still goes through.
         const pushError = checkPush(rows)
         if (pushError) return Response.json({ error: pushError }, { status: 400 })
+        const good = []
+        const rejected = []
         for (const row of rows) {
           const rowError = checkRow(row)
-          if (rowError) return Response.json({ error: rowError, id: row?.id }, { status: 400 })
+          if (rowError) rejected.push({ id: typeof row?.id === 'string' ? row.id : null, error: rowError })
+          else good.push(row)
         }
-        const result = await store.pushSyncRows(auth.uid, rows)
-        return Response.json(result)
+        const result = good.length ? await store.pushSyncRows(auth.uid, good) : { accepted: [], serverWins: [] }
+        return Response.json({ ...result, rejected })
       }
 
       if (request.method === 'GET' && url.pathname === '/sync/pull') {

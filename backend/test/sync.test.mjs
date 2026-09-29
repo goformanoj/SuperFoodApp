@@ -31,7 +31,7 @@ test('a new row is accepted and stored', async () => {
   const res = await worker.fetch(req('POST', '/sync/push', { rows: [task('t1', 100, 'Call the bank')] }))
   assert.equal(res.status, 200)
   const body = await res.json()
-  assert.deepEqual(body, { accepted: ['t1'], serverWins: [] })
+  assert.deepEqual(body, { accepted: ['t1'], serverWins: [], rejected: [] })
   assert.equal(store._syncRows.get('u1|task|t1').data.title, 'Call the bank')
 })
 
@@ -49,7 +49,7 @@ test('an older or equal edit is refused, and the server hands back its own versi
   await worker.fetch(req('POST', '/sync/push', { rows: [task('t1', 200, 'server')] }))
 
   const older = await (await worker.fetch(req('POST', '/sync/push', { rows: [task('t1', 100, 'older')] }))).json()
-  assert.deepEqual(older, { accepted: [], serverWins: [{ kind: 'task', id: 't1', updatedAt: 200, deleted: false, data: { title: 'server' } }] })
+  assert.deepEqual(older, { accepted: [], serverWins: [{ kind: 'task', id: 't1', updatedAt: 200, deleted: false, data: { title: 'server' } }], rejected: [] })
 
   const tie = await (await worker.fetch(req('POST', '/sync/push', { rows: [task('t1', 200, 'tie')] }))).json()
   assert.deepEqual(tie.accepted, [])
@@ -84,17 +84,11 @@ test('different accounts never see each other\'s rows', async () => {
   assert.equal(store._syncRows.get('u2|task|t1').data.title, 'other account')
 })
 
-test('bad rows are refused before anything is stored, one bad row fails the whole push', async () => {
+test('a malformed BATCH is refused whole (the client\'s own bug)', async () => {
   const { worker, store } = build()
   const cases = [
     { rows: [] },
     { rows: 'nope' },
-    { rows: [{ kind: 'nope', id: 'x', updatedAt: 1, data: {} }] },
-    { rows: [{ kind: 'task', id: '', updatedAt: 1, data: {} }] },
-    { rows: [{ kind: 'task', id: 'x', updatedAt: -1, data: {} }] },
-    { rows: [{ kind: 'task', id: 'x', updatedAt: 1, data: 'nope' }] },
-    { rows: [{ kind: 'task', id: 'x', updatedAt: 1, data: { big: 'x'.repeat(9000) } }] },
-    { rows: [task('ok', 1), { kind: 'task', id: 'bad', updatedAt: -1, data: {} }] },
     { rows: Array.from({ length: MAX_ROWS_PER_PUSH + 1 }, (_, i) => task(`t${i}`, i + 1)) },
   ]
   for (const body of cases) {
@@ -102,6 +96,39 @@ test('bad rows are refused before anything is stored, one bad row fails the whol
     assert.equal(res.status, 400, JSON.stringify(body).slice(0, 60))
   }
   assert.equal(store._syncRows.size, 0)
+})
+
+test('a bad ROW is named and skipped; it never blocks the good rows behind it', async () => {
+  const { worker, store } = build()
+  const res = await worker.fetch(req('POST', '/sync/push', {
+    rows: [
+      task('good1', 1),
+      { kind: 'nope', id: 'bad-kind', updatedAt: 1, data: {} },
+      { kind: 'task', id: '', updatedAt: 1, data: {} },
+      { kind: 'task', id: 'bad-date', updatedAt: -1, data: {} },
+      { kind: 'task', id: 'bad-data', updatedAt: 1, data: 'nope' },
+      { kind: 'task', id: 'too-big', updatedAt: 1, data: { big: 'x'.repeat(9000) } },
+      task('good2', 2),
+    ],
+  }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.deepEqual(body.accepted.sort(), ['good1', 'good2'])
+  // The empty-string id is still a string, so it's kept as-is (not turned into null) —
+  // only a genuinely non-string id (missing, a number, ...) falls back to null.
+  assert.deepEqual(body.rejected.map((r) => r.id), ['bad-kind', '', 'bad-date', 'bad-data', 'too-big'])
+  assert.equal(body.rejected.find((r) => r.id === 'bad-date').error, 'bad_updated_at')
+  assert.ok(store._syncRows.has('u1|task|good1'))
+  assert.ok(store._syncRows.has('u1|task|good2'))
+  assert.equal(store._syncRows.size, 2)
+})
+
+test('a push that is ALL bad rows still returns 200 with everything in rejected', async () => {
+  const { worker } = build()
+  const res = await worker.fetch(req('POST', '/sync/push', { rows: [{ kind: 'nope', id: 'x', updatedAt: 1, data: {} }] }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.deepEqual(body, { accepted: [], serverWins: [], rejected: [{ id: 'x', error: 'bad_kind' }] })
 })
 
 test('the routes sit behind the same auth as everything else: no uid, no sync', async () => {
