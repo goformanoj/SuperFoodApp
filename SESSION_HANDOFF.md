@@ -1,5 +1,45 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-29 — play_youtube: found + fixed a real live bug, live-verified end to end
+
+Branch `desktop-kmp`; `main` @ `c388d77` (Worker `303cac5`, laptop `c388d77`).
+
+- **Roadmap:** unchanged — this was a user-reported bug fix, not a plan phase. Next is still
+  the user's call: the phone side of Phase 7, or the Google OAuth client setup.
+- **New tool `play_youtube`** (desktop/knowledge/YouTubeSearch.kt + agent/ToolBox.kt):
+  a direct, non-AI YouTube lookup. **If `ToolBox.Host` ever grows another method, update
+  BOTH `WindowsHost` (the real app) AND `Ping.kt`'s `--agent|` test host** — the second one
+  was missed this round and silently no-op'd instead of erroring, which is exactly the kind
+  of gap a live check is supposed to catch, so it very nearly didn't.
+- **Gotcha — YouTube's internal JSON has at least three different shapes for a "title" field**
+  across renderer types (`runs`, `simpleText`, `content` — a playlist "lockup" renderer uses
+  the third). `YouTubeSearch.TITLE_RUN` handles all three; if extraction starts coming back
+  null again, that's the first thing to suspect (dump a real page with a quick temporary
+  `Ping` mode, the way this round's fix was found — see the git history for the pattern,
+  then delete the diagnostic once it's done its job).
+- **Gotcha — a bare YouTube `/playlist?list=` URL is a listing page, not a player.** Always
+  pair a playlist id with a real starting video id (`&v=...&list=...&autoplay=1`) or it
+  repeats the exact "opened but didn't play" bug this tool exists to fix.
+- **Gotcha — token cost of a tool-calling turn.** Every step resends the full system prompt
+  + tool schemas (~4,000 tokens of pure overhead per step), and `web_search` (Groq's
+  browser_search) alone runs ~8,000 tokens a call. A 3-step turn that includes one
+  web_search is routinely 15–20k tokens. Before reaching for web_search or a multi-step
+  chain for something narrow and well-defined (a known site's own search, a specific
+  lookup), consider whether a direct, non-AI fetch (like this tool) does the job for free —
+  it's also strictly more reliable, since it can't hallucinate.
+- **Gotcha — the daily allowance can run out MID-TURN**, not just be refused up front; a
+  step that would exceed it fails with a generic 5xx-style message ("My server hit a snag"),
+  not the clearer 429 "allowance used up" one — the CAP check happens before the FIRST step
+  of a turn, but a later step in the SAME turn can still cross it. Rapid-fire live testing
+  will find this the same way it did this round.
+- **Live check (free, no AI tokens):** `:desktop:ping --args=--youtube-test|<query>`.
+- **Reinstall needs the user physically present** to approve the UAC prompt — `msiexec`
+  cannot be pushed through unattended; two attempts this round were cancelled (no one at
+  the keyboard), so the Program Files copy is one version behind the dev build until the
+  user runs the installer (or approves the next automated attempt) themselves.
+
+---
+
 ## Current position — 2026-09-29 — security review + Permissions panel
 
 Branch `desktop-kmp`; `main` @ `a396b98` (Worker `8910e99`, laptop `a396b98`).

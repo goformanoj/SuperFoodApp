@@ -1,5 +1,47 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-29 — "play a song" turned out to be two bugs and a cost problem, all from one cause
+
+**The user's report, exactly:** a video that didn't exist, then (told so) a page that opened
+but never played — and, once asked to look closer, three prompts that cost roughly 50,000
+tokens for what should have been a trivial request. All three trace back to the same root:
+the model was being asked to do something it fundamentally cannot do reliably — recall a
+specific YouTube video's exact id from memory — and the fallback for when that failed
+(Groq's own web-reading tool) is accurate but built for genuinely open-ended research, not
+"find one known thing," and is priced and shaped accordingly.
+
+**The fix was to stop asking the model at all.** `play_youtube` fetches YouTube's own
+public search page directly — the same page a browser shows, no API key — and pulls a real
+id out of its embedded JSON with a regex. This is not a new idea (this is how most
+"YouTube search without an API key" tools work), but it is the right one here specifically
+because it turns an unreliable, expensive, multi-step AI operation into one deterministic,
+free HTTP request that can never return something that doesn't exist. The model's only job
+becomes deciding WHEN to call it and with WHAT type (video vs playlist) — exactly the kind
+of decision a language model is actually good at, leaving the part it is bad at (recalling
+an exact opaque id) to a tool that doesn't need to recall anything.
+
+**"Opened" is not "playing."** Separately from the wrong-video bug, a real page that DOES
+exist still just sits there until something presses play — the assistant had been claiming
+"Enjoy!" without that ever being guaranteed. `&autoplay=1` closes most of that gap for a
+single video; a playlist needed more thought, because YouTube's bare listing page for a
+playlist is not a player at all — it needed pairing with a real starting video id, extracted
+from the SAME search result rather than assumed, which the first version of this fix missed
+and a live check caught immediately.
+
+**A live check found a bug in the live check.** The very first end-to-end run of the fix
+against the real deployed agent still failed — not because the fix was wrong, but because
+the SEPARATE, simplified host object the safe `Ping --agent` test harness uses hadn't been
+taught about the two new host methods, and quietly returned nothing instead of erroring.
+Caught in seconds by re-running the same lookup directly (free) and seeing it still worked
+fine — proof the bug was in the harness, not the fix — then confirmed properly once fixed.
+Worth remembering: any interface a test harness re-implements needs updating in lockstep
+with the real thing, or the "safe" test stops being a test of anything.
+
+**Evidence.** Both of the user's exact original phrasings — "play Channa Mereya by Arijit
+Singh" and "play the best Arijit Singh playlist" — now resolve in one tool call each against
+the live, deployed agent, to real, currently-existing YouTube content, confirmed by fetching
+the results back and checking their real titles. 237 desktop tests, 197 backend tests.
+
 ## 2026-09-29 — A security pass, a real bug it found, and the Permissions panel
 
 **Asked, and answered directly: "no access to any files on the laptop right now."**
