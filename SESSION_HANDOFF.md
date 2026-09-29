@@ -1,5 +1,22 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-29 — the multi-platform router (backend) is merged; awaiting real keys
+
+Branch `desktop-kmp`; code commit `c71a90c`.
+
+- **Add a platform = set its Worker secret** (`CEREBRAS_API_KEY`, `OPENROUTER_API_KEY`, …; see `backend/.dev.vars.example` and the README section "AI platforms — the router"). No code change. Cloudflare Git-Builds redeploys from `main`; secrets are runtime secrets (dashboard → Workers → superfoodapp → Variables and Secrets, type *Secret*).
+- **Gotcha — the provider used to be rebuilt on EVERY request**, so `groq.js`'s "remember dead / cooling-down models" memory reset each time (its comments claimed per-isolate memory; the code didn't deliver it). `providerFor(env)` in `providers/build.js` now memoises the router per isolate, keyed on the keys.
+- **Gotcha — third-party "free API" articles go stale.** GitHub Models was retired 2026-07-30 while a 2026 comparison article still listed it. Verify at the provider's own docs, and never hardcode a model id from memory (models.js's rule). Free catalogs churn (Cerebras once dropped from ~12 models to 2 overnight), hence OpenRouter's live discovery.
+- **Gotcha — free-tier limits that actually bind:** Groq gpt-oss-120b/20b free = 30 RPM, 1K RPD, **8K TPM**, 200K TPD (per organisation, i.e. shared by every JARVIS user); Cerebras free = 5 RPM, 1M TPD, $5 credit expiring in 30 days; OpenRouter free models = 20 RPM and **50 requests/day** (1,000/day after ~$10 of credits ever bought), per account across all free models. Free tiers are also often non-commercial — check the terms before the public launch.
+- **Privacy gate:** Gemini and Mistral free tiers may train on prompts → skipped unless `ALLOW_TRAINING_TIERS=yes`. Tested (`build.test.mjs`).
+- **The router REJECTS bad replies rather than passing them on** (invented tool, malformed/missing arguments, empty). With a single platform configured a rejected reply becomes a 502 `provider_failed` — deliberate: the desktop client used to receive the bad tool call and fail later, less clearly.
+- **Categories/measurement:** `catalog.js` (size tier from the id: large ≥100B, medium ≥20B, small; suitability chat/vision/agent) → `scripts/probe.mjs --write` → `src/scorecard.js` (measured beats guessed). The scorecard is EMPTY until the probe is run with real keys.
+- **Local models were evaluated and rejected for JARVIS** (Ollama on this i5-1035G1 / 16 GB / MX230 2 GB): CPU-only llama3.2:3b = ~15 tok/s generation, ~46 tok/s prompt reading (a real ~3,300-token JARVIS prompt takes ~98 s cold, ~2 s once cached) and it faked a "multiply" tool call for "12 × 13"; qwen3:4b wrote its reasoning instead of calling tools. **Both GPUs were SLOWER than the CPU** (the Intel iGPU shares the same RAM; the MX230's driver 556 crashes Ollama's CUDA build). Ollama is at `D:\ollama` (6 GB; safe to delete). **Measurement trap:** my first benchmark looked ~6× too slow because Ollama silently put layers on the MX230 via Vulkan; `OLLAMA_LLM_LIBRARY=cpu` + `OLLAMA_VULKAN=0` is what forces a true CPU run — always check the server log for `offloaded x/y layers`.
+- **Process gotcha:** scripted find-and-replace edits (`node -e` / heredoc patch scripts) FAILED SILENTLY three times this session (an anchor didn't match and nothing was written). Prefer the Edit tool, and grep to confirm every change landed.
+- **Rule 3 slip, disclosed:** commit `6ccdbba` (the Ping.kt harness fix) carries a `Co-Authored-By` trailer naming a model, against CLAUDE.md Rule 3. It's already on `main`; not rewritten (that would need a force-push). All later commits omit the trailer.
+
+---
+
 ## Current position — 2026-09-29 — play_youtube: found + fixed a real live bug, live-verified end to end
 
 Branch `desktop-kmp`; `main` @ `c388d77` (Worker `303cac5`, laptop `c388d77`).

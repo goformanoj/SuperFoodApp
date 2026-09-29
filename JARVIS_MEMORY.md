@@ -1,5 +1,19 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-29 — "one key" was the wrong shape; a router over several free platforms, with replies checked
+
+**How it started.** After the YouTube fixes the user asked whether JARVIS could use Claude Haiku, then local models, then OpenRouter, and finally to "build the router and insert multiple API keys instead of one", plus research the best platforms, make outputs consistent, and categorise models by size and ability.
+
+**Local models first (rejected, with evidence).** The same-model idea fails on size (production uses gpt-oss-120b/20b; a 16 GB laptop can't hold the first and only barely the second). Small stand-ins were measured with Ollama. The first benchmark said 2.4 tok/s; the truth, once the server log showed Ollama was quietly offloading layers to the MX230 over Vulkan, was ~15 tok/s on the CPU alone — **a measurement setup can lie; read the log for what actually ran.** Even correctly measured, small models failed the point of JARVIS: llama3.2:3b faked a tool call for plain arithmetic and qwen3:4b wrote out its reasoning instead of calling tools. Both GPUs were slower than the CPU (the Intel GPU shares system RAM — Windows' "8 GB shared" is borrowed from the same 16 GB; the MX230's driver is too old for Ollama's CUDA build).
+
+**Then the real cause of the earlier failures.** The provider docs show Groq's free plan is 8,000 tokens/minute per model. A desktop turn sends ~4,000 tokens of instructions and tools every step, so ~2 calls/minute, whatever the request quota. That fits the mid-turn "My server hit a snag" failures far better than "the allowance ran out". Free tiers are small, per-minute and per-organisation; the fix isn't a bigger single tier, it's several platforms.
+
+**The design.** One adapter already served Groq; every other platform speaks the same OpenAI-shaped chat format, so it became `openAiCompatProvider` with a configurable address. On top: `router.js` (capability filtering, cooldowns, failover), `normalize.js` (the "make every model look alike" layer — deliberately NOT fine-tuning, which retrains a model's weights and can't be done to a hosted free model), `catalog.js` (platform registry + size/ability categories), `build.js` (keys → router, memoised, live OpenRouter discovery). The router **rejects** bad replies (an invented tool, bad arguments, empty) so the next platform answers instead of the user seeing a wrong thing; a tool call printed as text is repaired, not thrown away.
+
+**Evidence.** 248 tests (51 new), every existing one still passing. OpenRouter discovery ran against the real live catalog and found a bug the fake catalog couldn't (a safety-classifier model was being offered as a chat model) → excluded, with a regression test. All six endpoints were probed with a deliberately fake key: each answered 401/400, i.e. exists. That probe caught **GitHub Models**, which answered `200 OK` to garbage — its docs say it was retired 2026-07-30; a comparison article the research leaned on still listed it. Removed. **Not yet proven:** any platform other than Groq with a real key, and the probe scorecard (both need the user to create accounts/keys).
+
+**Two things done wrong, recorded honestly.** (1) A test-harness commit went out with a model-naming `Co-Authored-By` trailer, against Rule 3 (see SESSION_HANDOFF). (2) Three scripted find-and-replace edits silently did nothing; the tests caught one (`normalizeResult` kept the old over-broad check). Trust the tests and grep, not the script's silence.
+
 ## 2026-09-29 — "play a song" turned out to be two bugs and a cost problem, all from one cause
 
 **The user's report, exactly:** a video that didn't exist, then (told so) a page that opened
