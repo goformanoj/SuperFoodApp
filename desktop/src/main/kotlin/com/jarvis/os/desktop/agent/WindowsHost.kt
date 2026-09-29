@@ -2,6 +2,7 @@ package com.jarvis.os.desktop.agent
 
 import com.jarvis.os.desktop.knowledge.FileSearch
 import com.jarvis.os.desktop.knowledge.KnowledgeClient
+import com.jarvis.os.desktop.knowledge.YouTubeSearch
 import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
@@ -52,6 +53,9 @@ class WindowsHost(
     override suspend fun webSearch(query: String) = KnowledgeClient.webSearch(query, context())
 
     override suspend fun searchFiles(q: FileSearch.Query) = FileSearch.run(q)
+
+    override suspend fun youtubeVideo(query: String) = YouTubeSearch.firstVideo(query)
+    override suspend fun youtubePlaylist(query: String) = YouTubeSearch.firstPlaylist(query)
 
     override suspend fun askAboutScreen(question: String): String {
         val shot = captureScreen ?: throw UnsupportedOperationException("Looking at the screen isn't available here.")

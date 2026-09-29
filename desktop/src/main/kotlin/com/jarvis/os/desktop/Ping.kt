@@ -61,6 +61,15 @@ fun main(args: Array<String>) {
                 com.jarvis.os.desktop.knowledge.ScreenGrab.jpeg(img), "What's this error and how do I fix it?")
             println("Vision: $answer")
         } }) 0 else 1)
+        // A real fetch of YouTube's own search page (Phase 4 tool play_youtube) — no AI
+        // model involved, so this costs nothing against the daily allowance.
+        joined.startsWith("--youtube-test|") -> exitProcess(if (runBlocking { probe {
+            val q = joined.substringAfter("|")
+            val v = com.jarvis.os.desktop.knowledge.YouTubeSearch.firstVideo(q) ?: error("no video result")
+            println("video: ${v.title} -> ${com.jarvis.os.desktop.knowledge.YouTubeSearch.videoUrl(v.id)}")
+            val p = com.jarvis.os.desktop.knowledge.YouTubeSearch.firstPlaylist(q) ?: error("no playlist result")
+            println("playlist: ${p.title} startVideo=${p.startVideoId} -> ${com.jarvis.os.desktop.knowledge.YouTubeSearch.playlistUrl(p.id, p.startVideoId)}")
+        } }) 0 else 1)
         joined.startsWith("--doc|") -> exitProcess(if (runBlocking { probe {
             val ex = com.jarvis.os.desktop.knowledge.DocText.extract(java.io.File(joined.substringAfter("|")))
             println("${ex.name}: ${ex.pages.size} ${ex.unit}(s), ${ex.chars} chars, ${com.jarvis.os.desktop.knowledge.DocText.chunks(ex.pages).size} chunks")

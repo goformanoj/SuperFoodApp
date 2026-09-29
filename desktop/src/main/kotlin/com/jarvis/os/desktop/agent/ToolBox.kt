@@ -94,6 +94,9 @@ class ToolBox(
         suspend fun searchFiles(q: FileSearch.Query): List<FileSearch.Found> = throw UnsupportedOperationException("File search isn't available here.")
         /** One screenshot (JARVIS's own window out of the way) → the vision model's answer. */
         suspend fun askAboutScreen(question: String): String = throw UnsupportedOperationException("Looking at the screen isn't available here.")
+        /** A direct YouTube lookup — no model involved, so it costs no tokens and never guesses a URL. */
+        suspend fun youtubeVideo(query: String): com.jarvis.os.desktop.knowledge.YouTubeSearch.Result? = null
+        suspend fun youtubePlaylist(query: String): com.jarvis.os.desktop.knowledge.YouTubeSearch.Result? = null
     }
 
     class Spec(val name: String, val description: String, val params: JSONObject, val risk: Risk)
@@ -227,7 +230,16 @@ class ToolBox(
             Risk.IRREVERSIBLE,
         ),
         Spec(
-            "open_url", "Open a web page in the user's browser.",
+            "play_youtube", "Play a song, video or playlist on YouTube. ALWAYS use this for YouTube, never web_search + open_url — it looks up a real result directly (free, instant, never a wrong or made-up video) and starts it playing.",
+            obj(
+                "query" to str("What to play, e.g. \"Channa Mereya Arijit Singh\" or \"best Arijit Singh playlist\""),
+                "type" to enumStr("\"video\" for a specific song/video (default), \"playlist\" when the user asks for a playlist/mix/album", "video", "playlist"),
+                required = listOf("query"),
+            ),
+            Risk.READ,
+        ),
+        Spec(
+            "open_url", "Open a web page in the user's browser. Only a URL you actually KNOW is right: the user gave it, or it came from a web_search/search_files result. Never invent a specific article or product URL from memory — its exact address is not something you can reliably recall, and a wrong guess opens nothing or the wrong thing. For YouTube, use play_youtube instead; for anything else specific, web_search for it first and open a URL from the results.",
             obj("url" to str("Full http(s) URL"), required = listOf("url")),
             Risk.READ,
         ),
@@ -438,9 +450,22 @@ class ToolBox(
                 if (n > 0) brain.log("memory", "Forgot $n item(s) about “$about”")
                 ok(JSONObject().put("forgotten", n), if (n > 0) "Forgot $n item(s) about “$about”" else "Nothing remembered about “$about”")
             }
+            "play_youtube" -> {
+                val q = args.optString("query").trim()
+                if (q.isEmpty()) return fail("What should I play?")
+                val wantsPlaylist = args.optString("type").equals("playlist", ignoreCase = true)
+                val found = (if (wantsPlaylist) host.youtubePlaylist(q) else host.youtubeVideo(q))
+                    ?: return fail("YouTube didn't return a result for “$q”.")
+                val url = if (wantsPlaylist) com.jarvis.os.desktop.knowledge.YouTubeSearch.playlistUrl(found.id, found.startVideoId) else com.jarvis.os.desktop.knowledge.YouTubeSearch.videoUrl(found.id)
+                if (!host.openUrl(url)) return fail("The browser didn't open.")
+                val label = found.title ?: q
+                brain.log("open", "Playing on YouTube: $label")
+                ok(JSONObject().put("opened", url).put("title", found.title), "Playing “$label” on YouTube")
+            }
             "open_url" -> {
-                val url = args.optString("url").trim()
-                if (!(url.startsWith("https://") || url.startsWith("http://"))) return fail("Only web addresses (http/https) can be opened.")
+                val raw = args.optString("url").trim()
+                if (!(raw.startsWith("https://") || raw.startsWith("http://"))) return fail("Only web addresses (http/https) can be opened.")
+                val url = withAutoplay(raw)
                 if (!host.openUrl(url)) return fail("The browser didn't open.")
                 brain.log("open", "Opened $url")
                 ok(JSONObject().put("opened", url), "Opened $url")
@@ -689,6 +714,20 @@ class ToolBox(
     }
 
     private fun hostOf(url: String) = runCatching { java.net.URI(url).host.removePrefix("www.") }.getOrNull() ?: url
+
+    /**
+     * A defence-in-depth net for open_url: a YouTube link opened bare just sits there
+     * until clicked — that alone confused a "play X" request once (see AGENT_PLAN memory,
+     * 2026-09-29). play_youtube is the intended path and already does this; this only
+     * covers a YouTube link that reaches open_url some other way (e.g. straight from a
+     * web_search result), so playback still starts on its own either way.
+     */
+    fun withAutoplay(url: String): String {
+        val host = runCatching { java.net.URI(url).host?.removePrefix("www.")?.lowercase() }.getOrNull()
+        val isYouTube = host == "youtube.com" || host == "youtu.be" || host == "m.youtube.com"
+        if (!isYouTube || Regex("""[?&]autoplay=""").containsMatchIn(url)) return url
+        return url + (if ('?' in url) "&" else "?") + "autoplay=1"
+    }
 
     private fun findTasks(q: String, includeDone: Boolean): List<Brain.Task> {
         if (q.isBlank()) return emptyList()

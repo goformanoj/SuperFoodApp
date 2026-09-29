@@ -28,8 +28,11 @@ class ToolBoxKnowledgeTest {
     private val fileQueries = mutableListOf<FileSearch.Query>()
     private val openedFiles = mutableListOf<String>()
     private var screenLooks = 0
+    private val openedUrls = mutableListOf<String>()
+    var youtubeVideoResult: com.jarvis.os.desktop.knowledge.YouTubeSearch.Result? = null
+    var youtubePlaylistResult: com.jarvis.os.desktop.knowledge.YouTubeSearch.Result? = null
     private val host = object : ToolBox.Host {
-        override fun openUrl(url: String) = true
+        override fun openUrl(url: String): Boolean { openedUrls += url; return true }
         override fun openApp(name: String): String? = null
         override fun clipboardText(): String? = null
         override fun openFile(path: String): Boolean { openedFiles += path; return true }
@@ -42,6 +45,8 @@ class ToolBoxKnowledgeTest {
             return listOf(FileSearch.Found("C:\\Users\\me\\Documents\\Invoice-March.pdf", "2026-03-14T10:22", 48_213))
         }
         override suspend fun askAboutScreen(question: String): String { screenLooks++; return "A “disk full” error from OneDrive." }
+        override suspend fun youtubeVideo(query: String) = youtubeVideoResult
+        override suspend fun youtubePlaylist(query: String) = youtubePlaylistResult
     }
     private val tools = ToolBox(brain, host, { 1_000L }, ZoneId.of("Asia/Kolkata"))
     private val conv = brain.createConversation("Lease").id
@@ -216,5 +221,45 @@ class ToolBoxKnowledgeTest {
         val r = runBlocking { bare.execute("web_search", """{"query":"x"}""", null) }
         assertFalse(r.ok)
         assertTrue(r.summary.contains("isn't available"))
+    }
+
+    // ── play_youtube (found live, 2026-09-29: the model guessed a video URL that didn't
+    // exist, then opened a page that didn't start playing) ──
+
+    @Test
+    fun playsARealVideoDirectlyNeverGuessingAUrl() {
+        youtubeVideoResult = com.jarvis.os.desktop.knowledge.YouTubeSearch.Result("bzSTpdcs-EI", "Channa Mereya - Arijit Singh")
+        val r = run("play_youtube", """{"query":"Channa Mereya Arijit Singh"}""")
+        assertTrue(r.forModel, r.ok)
+        assertEquals("https://www.youtube.com/watch?v=bzSTpdcs-EI&autoplay=1", openedUrls.single())
+        assertEquals("Playing “Channa Mereya - Arijit Singh” on YouTube", r.summary)
+    }
+
+    @Test
+    fun playsAPlaylistStartingItRatherThanJustOpeningTheListing() {
+        youtubePlaylistResult = com.jarvis.os.desktop.knowledge.YouTubeSearch.Result("PL123", "Best Of Arijit Singh", startVideoId = "ElZfdU54Cp8")
+        val r = run("play_youtube", """{"query":"best arjit singh playlist","type":"playlist"}""")
+        assertTrue(r.ok)
+        assertEquals("https://www.youtube.com/watch?v=ElZfdU54Cp8&list=PL123&autoplay=1", openedUrls.single())
+    }
+
+    @Test
+    fun noResultIsReportedHonestlyRatherThanFallingBackToAGuess() {
+        youtubeVideoResult = null
+        val r = run("play_youtube", """{"query":"asdkfjasldkfj nonsense"}""")
+        assertFalse(r.ok)
+        assertTrue(openedUrls.isEmpty())
+    }
+
+    @Test
+    fun openUrlAddsAutoplayForAYouTubeLinkButLeavesEverythingElseAlone() {
+        run("open_url", """{"url":"https://www.youtube.com/watch?v=abc12345678"}""")
+        assertEquals("https://www.youtube.com/watch?v=abc12345678&autoplay=1", openedUrls.single())
+        openedUrls.clear()
+        run("open_url", """{"url":"https://example.com/page?x=1"}""")
+        assertEquals("https://example.com/page?x=1", openedUrls.single())     // untouched
+        openedUrls.clear()
+        run("open_url", """{"url":"https://youtu.be/abc12345678?autoplay=0"}""")
+        assertEquals("https://youtu.be/abc12345678?autoplay=0", openedUrls.single())   // already has one — not doubled
     }
 }
