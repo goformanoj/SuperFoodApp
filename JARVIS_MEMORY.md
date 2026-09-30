@@ -1,5 +1,19 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-30 — the router's first real-world correction: "free" needs the platform's own word for it
+
+**What happened.** Right after shipping the multi-platform router, an action-list answer repeated "Cerebras: no card needed for the free trial" — wrong on both halves. The user pushed back ("cerebras is paid, what you talking about, research properly and tell me") instead of accepting it, which is exactly the CLAUDE.md Rule 7 behaviour they'd asked for the session before ("always correct me when I say something factually wrong") turned around onto me.
+
+**The actual terms**, from Cerebras' own pricing page: a card is required before the API works AT ALL (no card, no access, not even the playground); what you get is a ONE-TIME $5 credit that expires 30 days after it's granted. Not a renewing free tier. A GitHub issue titled *"Six AI guides sell Cerebras as '1M tokens/day free'; Cerebras says it has no permanent free tier"* shows this is a common, spreading error — including, this time, mine.
+
+**The fix wasn't just a sentence — it went into the code.** `catalog.js` now has `requiresCard: true` on Cerebras, `build.js` prints a loud warning every time it's configured ("this is a PAID platform"), and its router priority moved from 2nd to LAST — free platforms are now tried first on purpose, not just by accident of insertion order. Docs and `.dev.vars.example` no longer list it next to the genuinely free platforms.
+
+**Then a genuinely free one was added properly.** Cloudflare Workers AI: 10,000 Neurons/day, no card, verified against Cloudflare's own model docs (not a summary article) — including catching that Cloudflare quietly moved Kimi and GLM-5.x behind a paid plan on 2026-07-28, so those were deliberately left off the model list. It needed a new pattern: an endpoint that includes the caller's OWN Cloudflare account id, substituted at build time from a second secret — the router's first "two secrets, one platform" case.
+
+**A real mistake, caught by re-reading rather than by the tests.** A broad find-and-replace on `catalog.js` (meant to insert Cloudflare before Cerebras) accidentally matched all the way through Cerebras's own entry and deleted it. The test suite still passed — nothing NEEDED Cerebras to exist, it just quietly stopped being offered. Caught by re-reading the file afterwards, which is now the standing habit for any edit whose match spans more than the one block intended.
+
+**Evidence.** 254 tests (6 new), all passing, including one that reads the actual URL a fake network call received to prove the account id lands in the right place, not just that config was accepted.
+
 ## 2026-09-29 — "one key" was the wrong shape; a router over several free platforms, with replies checked
 
 **How it started.** After the YouTube fixes the user asked whether JARVIS could use Claude Haiku, then local models, then OpenRouter, and finally to "build the router and insert multiple API keys instead of one", plus research the best platforms, make outputs consistent, and categorise models by size and ability.

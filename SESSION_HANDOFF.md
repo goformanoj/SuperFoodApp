@@ -1,5 +1,17 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-30 — router corrected (Cerebras is paid) + Cloudflare Workers AI added
+
+Branch `desktop-kmp`; code commit `7a02936`.
+
+- **Gotcha — "free tier" claims need the platform's OWN pricing page, not a summary article or my own earlier answer.** Cerebras was wrongly described as free in this project's own prior turn (and independently, in several third-party "2026 free LLM" guides — one GitHub issue is literally titled about this). It requires a card and grants a one-time $5/30-day trial credit, not a renewing allowance. Re-verify any "X is free" claim against `{platform}.com/pricing` before repeating it.
+- **Router priority now reflects cost, not just speed:** groq(10) → cloudflare(20) → openrouter(30) → gemini(50) → mistral(60) → cerebras(90, LAST — the only paid one here). `build.js` prints a warning every time a `requiresCard` platform is configured, so this can't silently regress.
+- **Cloudflare needs TWO secrets, not one:** `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` (both from the Workers AI dashboard page, "Use REST API"). The account id is substituted into `{account_id}` in the endpoint URL by `build.js` — missing either one skips the platform with a warning naming which is missing, never a silent no-op.
+- **Gemini key added by the user, still dormant on purpose:** it needs `ALLOW_TRAINING_TIERS=yes` (Gemini's free tier may train on prompts outside the EU/UK, and JARVIS sends emails/documents) AND `GEMINI_MODELS` (never hardcoded — read live via `scripts/list-models.mjs`). Awaiting the user's decision on the training tradeoff before either is set.
+- **Process note:** a scripted multi-line replace on `catalog.js` this session accidentally DELETED the whole `cerebras` platform entry (matched more than intended, replaced too much). Caught immediately by re-reading the file, not by the tests — a reminder that a broad `old_string` match needs the resulting file re-read, not just "no error thrown".
+
+---
+
 ## Current position — 2026-09-29 — the multi-platform router (backend) is merged; awaiting real keys
 
 Branch `desktop-kmp`; code commit `c71a90c`.
