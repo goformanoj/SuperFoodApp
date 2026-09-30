@@ -47,6 +47,9 @@ PRO_UIDS = "GHqijQCTduNHNFR9roqWF82v60v2"
 # to "off" to revert instantly.
 CONVO_TIER = "off"
 
+# TEMPORARY, for verifying the newly-added OpenRouter key actually works. REMOVE after.
+PROVIDER_ORDER = "openrouter"
+
 # Logs, so a failing deploy can be diagnosed from the dashboard rather than guessed at.
 [observability]
 enabled = true
