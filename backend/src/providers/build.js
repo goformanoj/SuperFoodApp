@@ -91,6 +91,9 @@ export function buildBackends(env, { scorecard = SCORECARD.models, fetchImpl, en
       warnings.push(`${name}: key present but skipped — its free tier may train on prompts. Set ALLOW_TRAINING_TIERS=yes to allow.`)
       continue
     }
+    // Not a block — a card-requiring platform is still fine to use — but silence here is
+    // how "Cerebras is free" turned into wrong advice once already; say it every time.
+    if (p.requiresCard) warnings.push(`${name}: this is a PAID platform (card required) — ${p.freeNote}.`)
     let models
     if (p.inheritModels) models = 'inherit'
     else if (p.discover === 'openrouter') models = openRouterDiscovery({ fetchImpl, scorecard })

@@ -138,6 +138,13 @@ export const PLATFORMS = {
     visionModels: ['qwen-3.8-27b'],
     caps: { tools: true, vision: true },
     trainsOnFreeTier: false,
+    // NOT a free tier, checked against Cerebras' own pricing page 2026-09-30: a card is
+    // required before the API works at all, and what it unlocks is a one-time $5 credit
+    // that expires 30 days after it's granted, not a renewing free allowance. It still
+    // works here as a paid fallback; build.js warns about this so nobody mistakes it for
+    // "another free platform" the way an earlier answer in this project wrongly did.
+    requiresCard: true,
+    freeNote: 'a one-time $5 credit, expires 30 days after signup — not a renewing free tier',
   },
   openrouter: {
     label: 'OpenRouter (free models)',

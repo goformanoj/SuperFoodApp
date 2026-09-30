@@ -8,8 +8,12 @@
 # NEVER put a real key in this example file.
 
 GROQ_API_KEY=
-CEREBRAS_API_KEY=
 OPENROUTER_API_KEY=
+
+# NOT free: a card is required before this key works at all, and it then unlocks a
+# one-time $5 credit that expires in 30 days, not a renewing free tier. Fine to use once
+# you know that; just don't expect it to behave like the two keys above.
+CEREBRAS_API_KEY=
 
 # Platforms whose FREE tier may train on your prompts (JARVIS sends emails/documents).
 # Off unless ALLOW_TRAINING_TIERS=yes. Model ids must come from `list-models.mjs`, not memory.

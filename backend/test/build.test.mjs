@@ -38,6 +38,13 @@ test('platforms that may train on free-tier prompts stay off unless the owner op
   assert.deepEqual(names({ ...env, ALLOW_TRAINING_TIERS: 'yes' }), ['groq', 'gemini', 'mistral'])
 })
 
+test('a card-required platform is never silently mistaken for a free one — it still runs, but warns every time', () => {
+  const r = buildBackends({ GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c' })
+  assert.deepEqual(r.backends.map((b) => b.name), ['groq', 'cerebras'])
+  assert.equal(r.warnings.length, 1)
+  assert.match(r.warnings[0], /cerebras.*PAID platform \(card required\)/)
+})
+
 test('a platform with no model list is skipped with a clear warning, never guessed', () => {
   const env = { GEMINI_API_KEY: 'k', ALLOW_TRAINING_TIERS: 'yes' }
   const r = buildBackends(env)

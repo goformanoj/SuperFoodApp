@@ -14,8 +14,8 @@ secret joins a router (`src/providers/`), tried in priority order:
 | Platform | Secret | Notes |
 |---|---|---|
 | Groq | `GROQ_API_KEY` | First, fastest. The only one with built-in web search, so `/search` is Groq-only. Also Whisper for voice. |
-| Cerebras | `CEREBRAS_API_KEY` | Models default to `gpt-oss-120b`, `qwen-3.8-27b` (its docs, 2026-09-29); override with `CEREBRAS_MODELS`. |
-| OpenRouter | `OPENROUTER_API_KEY` | **Free models only**, discovered live from OpenRouter's public list (best/biggest first), never a frozen list. |
+| OpenRouter | `OPENROUTER_API_KEY` | **Free, no card.** Free models only, discovered live from OpenRouter's public list (best/biggest first), never a frozen list. |
+| Cerebras | `CEREBRAS_API_KEY` | **Not free — a card is required before the key works at all.** What it unlocks is a one-time $5 credit that expires 30 days after signup, not a renewing allowance (checked against Cerebras' own pricing page 2026-09-30; several third-party "free tier" guides get this wrong). Models default to `gpt-oss-120b`, `qwen-3.8-27b`; override with `CEREBRAS_MODELS`. |
 | Gemini, Mistral | `GEMINI_API_KEY` / `MISTRAL_API_KEY` + `*_MODELS` | **Off unless `ALLOW_TRAINING_TIERS=yes`**: their free tiers may train on prompts. |
 
 **Why several.** Free tiers are small and per-minute: Groq's is 8,000 tokens/minute per model, and
