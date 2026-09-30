@@ -1,5 +1,17 @@
 # JARVIS OS — Build Memory
 
+## 2026-09-30 (continued) — proving a new platform works means isolating it, not just adding it
+
+**The setup went smoothly** — the user created a Workers AI API token (Read+Edit permissions, the dashboard's own template) and found the Account ID on the same page, added both as Worker secrets, and said "test and see."
+
+**First attempt undersold the problem.** Reordering the router to try Cloudflare first (`PROVIDER_ORDER=cloudflare`) still answered from Groq. The instinctive read — "Cloudflare must be broken" — would have been wrong to act on blindly, because a plain reorder can't tell "Cloudflare failed and Groq quietly caught it" apart from "the deploy hasn't propagated yet." **The fix was to isolate, not just reorder**: `DISABLED_PROVIDERS=groq` for exactly one diagnostic call, so any Cloudflare failure would surface as a real error in the response instead of vanishing into a successful fallback. That call answered `backend: "cloudflare"` cleanly — the account was fine all along; the first test's "groq" answer was ordinary deploy-propagation lag, confirmed by a plain retry afterward.
+
+**Both temporary settings were reverted within the same short window** — this briefly took Groq out of the live app's fallback chain entirely, a real (if small and monitored) production risk, done deliberately and undone immediately once the answer was in hand, not left for later.
+
+**A small, reusable pattern came out of this:** a standalone script that signs in anonymously via the real Firebase REST endpoint and hits the real deployed `/chat`, reading secrets from the laptop's own `gradle.properties` and never printing them — proves a platform end-to-end without editing any app code, and without ever displaying a credential in a tool call or a chat message.
+
+**Loose end, disclosed rather than quietly acted on:** once back to normal priority, Cloudflare answered again instead of Groq. Read as Groq being briefly rate-limited by this session's own volume of test calls, not a new bug — but written down rather than assumed, since "probably fine" is not the same as "checked."
+
 ## 2026-09-30 — the router's first real-world correction: "free" needs the platform's own word for it
 
 **What happened.** Right after shipping the multi-platform router, an action-list answer repeated "Cerebras: no card needed for the free trial" — wrong on both halves. The user pushed back ("cerebras is paid, what you talking about, research properly and tell me") instead of accepting it, which is exactly the CLAUDE.md Rule 7 behaviour they'd asked for the session before ("always correct me when I say something factually wrong") turned around onto me.

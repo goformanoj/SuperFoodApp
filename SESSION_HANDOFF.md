@@ -1,5 +1,17 @@
 # JARVIS OS — Session Handoff
 
+## Current position — 2026-09-30 — Cloudflare Workers AI is live-verified; router back to normal config
+
+Branch `desktop-kmp`; code commit `e651900` (config-only reverts since `7a02936`; no source changed).
+
+- **Cloudflare Workers AI works, confirmed live**, not just unit-tested: a real `/chat` call against the real deployed Worker answered `backend: "cloudflare"`. The verification method is reusable — `scratchpad/test-cloudflare.mjs` (this session's scratchpad) does a real Firebase anonymous sign-in with the local `FIREBASE_WEB_API_KEY`, then a real `/chat` call with `PROXY_SECRET`, both read from `~/.gradle/gradle.properties` and never printed — a pattern worth keeping for verifying any future platform without touching app code.
+- **Gotcha — a plain `PROVIDER_ORDER` reorder wasn't enough to prove a new platform works**, because a healthy Groq silently absorbs a failing Cloudflare and the caller never sees why. Proving a NEW platform actually works (vs. just "the router didn't crash") needs it ISOLATED (`DISABLED_PROVIDERS` on everything else) for at least one call, so a real failure surfaces in `detail` instead of being swallowed by the fallback chain that exists specifically to swallow it.
+- **Gotcha — a live `/chat` call right after a merge can still show the OLD deploy's routing for a bit**: the first post-merge test (plain reorder) answered from Groq, which turned out to be propagation delay, not a bug — confirmed by retrying a minute later. Don't conclude "it's broken" from one call right after a deploy.
+- **Observation, not yet acted on:** with normal priority restored (Groq first), Cloudflare still answered on the next call. Likely Groq's free per-minute/per-day cap was tight from this session's own repeated live testing; if this keeps happening once testing quiets down, it's worth a proper look (check `--whoami`-style usage, or Groq's dashboard) rather than assuming.
+- **Router priority, current:** groq(10) → cloudflare(20) → openrouter(30) → gemini(50, dormant) → mistral(60, dormant) → cerebras(90, paid, last). `wrangler.toml` `[vars]` has no `PROVIDER_ORDER`/`DISABLED_PROVIDERS` set — that's the clean/default state; if either shows up there again outside a deliberate test, it wasn't cleaned up properly.
+
+---
+
 ## Current position — 2026-09-30 — router corrected (Cerebras is paid) + Cloudflare Workers AI added
 
 Branch `desktop-kmp`; code commit `7a02936`.
