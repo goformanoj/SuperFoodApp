@@ -34,8 +34,16 @@ FIREBASE_PROJECT_ID = "jarvis-os-4efe3"
 # secret and NOT a credential: it only grants pro to whoever can already sign in as
 # that account (they need a signed Firebase token carrying that email/uid), so
 # listing it here gives nobody else anything. Comma-separated; empty means none.
+#
+# The second PRO_UIDS entry (2026-09-30) is the laptop JARVIS install's own anonymous
+# Firebase uid: desktop Google sign-in is still the deferred OAuth work, so until that
+# exists, this laptop can only ever present an anonymous uid, which PRO_EMAILS (email
+# only rides on a signed-in Google token) cannot match. Found via `:desktop:ping
+# --args=--whoami`, not guessed. An anonymous uid is stable per install, so this is
+# reliable until the app is reinstalled or its local identity file is reset — at which
+# point re-run --whoami and update this list, or finish desktop Google sign-in instead.
 PRO_EMAILS = "goforpranjal@gmail.com"
-PRO_UIDS = "GHqijQCTduNHNFR9roqWF82v60v2"
+PRO_UIDS = "GHqijQCTduNHNFR9roqWF82v60v2,ndged3mkrlgVwDiwjWW0zAW9cP13"
 
 # Two-tier prompt — token saving. "off" (this value, and anything that isn't "on")
 # sends the full ~1,900-token agent prompt on EVERY turn, exactly as before. "on"
