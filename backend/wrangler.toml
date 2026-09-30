@@ -47,17 +47,6 @@ PRO_UIDS = "GHqijQCTduNHNFR9roqWF82v60v2"
 # to "off" to revert instantly.
 CONVO_TIER = "off"
 
-# TEMPORARY, for verifying the newly-added Cloudflare secrets actually work: puts
-# Cloudflare first so a live /chat call proves it, while Groq still catches anything
-# Cloudflare gets wrong (this only reorders, nothing is disabled). Remove this line
-# once verified — see PROGRESS.md for the removal step.
-PROVIDER_ORDER = "cloudflare"
-# ALSO TEMPORARY: Cloudflare answered first with a plain reorder, but the reply still
-# came from Groq — meaning Cloudflare is failing and being silently caught by the
-# fallback. Taking Groq out of the picture too, just for one test call, so the real
-# error reaches the response instead of being swallowed. REMOVE WITH THE LINE ABOVE.
-DISABLED_PROVIDERS = "groq"
-
 # Logs, so a failing deploy can be diagnosed from the dashboard rather than guessed at.
 [observability]
 enabled = true
