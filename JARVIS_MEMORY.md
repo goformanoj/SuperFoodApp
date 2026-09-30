@@ -1,6 +1,14 @@
 # JARVIS OS — Build Memory
 
-## 2026-09-30 (continued) — proving a new platform works means isolating it, not just adding it
+## 2026-09-30 (continued, part 2) — the same platform-verification round, done twice, surfaced a real pattern
+
+**Right after Cloudflare was confirmed, the user added an OpenRouter key too** and asked for the same "test and see." The verification method from the Cloudflare round repeated cleanly — reorder, isolate if needed, confirm, revert — and OpenRouter passed: `backend: "openrouter"`, a real free model (`nemotron-3-ultra-550b`) answering a real request.
+
+**One difference this time sharpened the method.** With Cloudflare, a plain reorder that still answered from Groq turned out to be ordinary deploy-propagation lag — a retry a minute later fixed it. With OpenRouter, a retry did NOT fix it; two reorder-only attempts both still answered from Groq. That distinction — "does a plain retry change the answer?" — is now the signal for whether to bother with the more invasive isolate-and-diagnose step, instead of jumping to it (or skipping it) on a guess.
+
+**The real finding wasn't about either new platform — it was about Groq.** After BOTH reverts today (Cloudflare's and, separately, OpenRouter's), the very next normal-priority call answered from the fallback, not Groq. That happened twice, with two different platforms catching it. One coincidence is noise; two is a pattern worth writing down rather than shrugging off. The likely cause — Groq's free tier is 8,000 tokens/minute per model, and this session alone made dozens of test calls today across two separate verification rounds — was named honestly as a *theory*, not confirmed, and logged in SESSION_HANDOFF as something to actually check once testing quiets down, rather than quietly assumed and forgotten.
+
+**Evidence.** Groq, Cloudflare and OpenRouter — the three genuinely free platforms in the router — are now ALL proven live, each with a request that isolated it from every other platform for at least one call, not merely "the router didn't error out."
 
 **The setup went smoothly** — the user created a Workers AI API token (Read+Edit permissions, the dashboard's own template) and found the Account ID on the same page, added both as Worker secrets, and said "test and see."
 

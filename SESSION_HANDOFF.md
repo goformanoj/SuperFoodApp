@@ -1,6 +1,15 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-30 — Cloudflare Workers AI is live-verified; router back to normal config
+## Current position — 2026-09-30 — Groq, Cloudflare AND OpenRouter all live-verified; router back to normal config
+
+Branch `desktop-kmp`; code commit `e7471b3` (config-only reverts since `7a02936`; no source changed since the router itself shipped).
+
+- **All three free platforms now proven live**, not just unit-tested: Cloudflare (`backend: "cloudflare"`, `gpt-oss-120b`) and OpenRouter (`backend: "openrouter"`, `nemotron-3-ultra-550b`) both answered real `/chat` calls against the real deployed Worker, each isolated with `DISABLED_PROVIDERS` for at least one call so a real failure couldn't hide behind a healthy fallback (see the gotcha below — this is why isolation, not just reordering, was needed both times).
+- **Live-testing pattern, reusable:** `scratchpad/test-cloudflare.mjs` (this session's scratchpad, despite the name it's platform-agnostic) does a real Firebase anonymous sign-in with the local `FIREBASE_WEB_API_KEY`, then a real `/chat` call with `PROXY_SECRET`, both read from `~/.gradle/gradle.properties` and never printed. To verify a NEW platform: set `PROVIDER_ORDER=<name>` (commit, wait CI, merge to deploy), run the script; if it still answers from something else, add `DISABLED_PROVIDERS=<everything else>` for exactly one more round trip, then revert BOTH immediately.
+- **Real open question, not yet chased down:** twice today, restoring NORMAL priority (Groq first, no overrides) still answered from a fallback platform instead of Groq — first Cloudflare, then (a different diagnostic round later) OpenRouter. Two different platforms both winning over a supposedly-first Groq, right after two separate reverts, is a pattern, not noise. Leading theory: Groq's free 8,000-tokens/minute-per-model cap (see groq.js's own comments) got tight from this session's own repeated live testing, and the router is correctly and silently failing over — exactly what it exists to do. Worth confirming for real (check Groq's own dashboard, or `:desktop:ping --whoami`-style usage) once testing volume drops, rather than continuing to assume.
+- **Router priority, current (clean, no temp vars):** groq(10) → cloudflare(20) → openrouter(30) → gemini(50, dormant) → mistral(60, dormant) → cerebras(90, paid, last).
+
+---
 
 Branch `desktop-kmp`; code commit `e651900` (config-only reverts since `7a02936`; no source changed).
 
