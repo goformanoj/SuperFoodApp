@@ -49,6 +49,11 @@ CONVO_TIER = "off"
 
 # TEMPORARY, for verifying the newly-added OpenRouter key actually works. REMOVE after.
 PROVIDER_ORDER = "openrouter"
+# ALSO TEMPORARY: two calls with OpenRouter first still answered from Groq, not just
+# propagation lag this time (a retry didn't change it, unlike Cloudflare's case) —
+# isolating OpenRouter alone for one diagnostic call so a real error reaches the
+# response instead of being silently caught by the fallback. REMOVE WITH THE LINE ABOVE.
+DISABLED_PROVIDERS = "groq,cloudflare"
 
 # Logs, so a failing deploy can be diagnosed from the dashboard rather than guessed at.
 [observability]
