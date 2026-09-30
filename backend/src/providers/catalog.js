@@ -128,7 +128,7 @@ export const PLATFORMS = {
   },
   cerebras: {
     label: 'Cerebras',
-    priority: 20,
+    priority: 90, // tried LAST: not free (see requiresCard below), so exhaust the free options first
     endpoint: 'https://api.cerebras.ai/v1/chat/completions',
     keyEnv: 'CEREBRAS_API_KEY',
     modelsEnv: 'CEREBRAS_MODELS',
@@ -145,6 +145,22 @@ export const PLATFORMS = {
     // "another free platform" the way an earlier answer in this project wrongly did.
     requiresCard: true,
     freeNote: 'a one-time $5 credit, expires 30 days after signup — not a renewing free tier',
+  },
+  cloudflare: {
+    label: 'Cloudflare Workers AI',
+    priority: 20, // free, no card — tried early, alongside the other genuinely free platforms
+    // {account_id} is filled in by build.js from CLOUDFLARE_ACCOUNT_ID — this platform's
+    // address is per-account, unlike every other one here.
+    endpoint: 'https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions',
+    keyEnv: 'CLOUDFLARE_API_TOKEN',
+    accountIdEnv: 'CLOUDFLARE_ACCOUNT_ID',
+    modelsEnv: 'CLOUDFLARE_MODELS',
+    // Cloudflare's own model docs, read 2026-09-30. All on the free 10,000-Neurons/day
+    // allowance (every account, no card) as of that date; its newer models (Kimi, GLM-5.x)
+    // were moved behind the Workers PAID plan on 2026-07-28 and are deliberately left out.
+    defaultModels: ['@cf/openai/gpt-oss-120b', '@cf/openai/gpt-oss-20b', '@cf/zai-org/glm-4.7-flash'],
+    caps: { tools: true, vision: false },
+    trainsOnFreeTier: false,
   },
   openrouter: {
     label: 'OpenRouter (free models)',

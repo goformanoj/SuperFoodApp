@@ -25,7 +25,8 @@ test('no keys at all: nothing to route to', () => {
 
 test('one key works exactly as before; more keys just add platforms behind it', () => {
   assert.deepEqual(names({ GROQ_API_KEY: 'g' }), ['groq'])
-  assert.deepEqual(names({ GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c', OPENROUTER_API_KEY: 'o' }), ['groq', 'cerebras', 'openrouter'])
+  // cerebras is last by default: it is the paid one, so the free platforms are tried first.
+  assert.deepEqual(names({ GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c', OPENROUTER_API_KEY: 'o' }), ['groq', 'openrouter', 'cerebras'])
   assert.deepEqual(names({ CEREBRAS_API_KEY: 'c' }), ['cerebras'])
 })
 
@@ -57,7 +58,7 @@ test('a platform with no model list is skipped with a clear warning, never guess
 test('order and switching off are configurable without a code change', () => {
   const env = { GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c', OPENROUTER_API_KEY: 'o' }
   assert.deepEqual(names({ ...env, PROVIDER_ORDER: 'openrouter,cerebras' }), ['openrouter', 'cerebras', 'groq'])
-  assert.deepEqual(names({ ...env, DISABLED_PROVIDERS: 'groq' }), ['cerebras', 'openrouter'])
+  assert.deepEqual(names({ ...env, DISABLED_PROVIDERS: 'groq' }), ['openrouter', 'cerebras'])
 })
 
 test('the router is built once and reused while the keys stay the same', () => {
@@ -79,6 +80,32 @@ test('each platform is called at its own address with its own key and its own mo
     assert.match(net.calls[1].url, /api\.cerebras\.ai/)
     assert.equal(net.calls[1].auth, 'Bearer ckey')
     assert.equal(net.calls[1].body.model, 'gpt-oss-120b')
+  } finally { net.restore() }
+})
+
+test('Cloudflare needs BOTH the token and the account id — the id fills in its per-account address', () => {
+  const noId = buildBackends({ CLOUDFLARE_API_TOKEN: 't' })
+  assert.deepEqual(noId.backends, [])
+  assert.match(noId.warnings[0], /cloudflare.*CLOUDFLARE_ACCOUNT_ID/)
+
+  const withId = buildBackends({ CLOUDFLARE_API_TOKEN: 't', CLOUDFLARE_ACCOUNT_ID: 'acct123' })
+  assert.equal(withId.warnings.length, 0)
+  assert.deepEqual(withId.backends[0].models, ['@cf/openai/gpt-oss-120b', '@cf/openai/gpt-oss-20b', '@cf/zai-org/glm-4.7-flash'])
+})
+
+test('Cloudflare is tried before OpenRouter and Cerebras — free platforms first, paid last', () => {
+  assert.deepEqual(names({ GROQ_API_KEY: 'g', CEREBRAS_API_KEY: 'c', OPENROUTER_API_KEY: 'o', CLOUDFLARE_API_TOKEN: 't', CLOUDFLARE_ACCOUNT_ID: 'a' }),
+    ['groq', 'cloudflare', 'openrouter', 'cerebras'])
+})
+
+test("Cloudflare's account id actually reaches the URL, not just the config", async () => {
+  const net = fakeNet(() => okReply('from cloudflare'))
+  try {
+    const built = providerFor({ CLOUDFLARE_API_TOKEN: 'cftok', CLOUDFLARE_ACCOUNT_ID: 'acct-xyz' }, { fresh: true, quiet: true, onEvent() {} })
+    const out = await ask(built.provider)
+    assert.equal(out.backend, 'cloudflare')
+    assert.match(net.calls[0].url, /accounts\/acct-xyz\/ai\/v1\/chat\/completions/)
+    assert.equal(net.calls[0].auth, 'Bearer cftok')
   } finally { net.restore() }
 })
 

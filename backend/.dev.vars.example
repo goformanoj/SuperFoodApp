@@ -10,9 +10,15 @@
 GROQ_API_KEY=
 OPENROUTER_API_KEY=
 
+# Free, no card — 10,000 "Neurons"/day on every Cloudflare account. Needs BOTH values:
+# the token from Workers AI > Use REST API > Create a Workers AI API Token, and the
+# Account ID shown right next to it on that same page.
+CLOUDFLARE_API_TOKEN=
+CLOUDFLARE_ACCOUNT_ID=
+
 # NOT free: a card is required before this key works at all, and it then unlocks a
 # one-time $5 credit that expires in 30 days, not a renewing free tier. Fine to use once
-# you know that; just don't expect it to behave like the two keys above.
+# you know that; just don't expect it to behave like the keys above.
 CEREBRAS_API_KEY=
 
 # Platforms whose FREE tier may train on your prompts (JARVIS sends emails/documents).

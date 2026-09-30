@@ -9,14 +9,16 @@ Phone ──▶ this Worker ──(server-held key)──▶ Groq ──▶ back
 ## AI platforms — the router
 
 One key is enough; more keys add safety nets. Every platform whose key is set as a Worker
-secret joins a router (`src/providers/`), tried in priority order:
+secret joins a router (`src/providers/`), tried in priority order — free platforms first,
+the card-requiring one last:
 
-| Platform | Secret | Notes |
+| Platform | Secret(s) | Notes |
 |---|---|---|
 | Groq | `GROQ_API_KEY` | First, fastest. The only one with built-in web search, so `/search` is Groq-only. Also Whisper for voice. |
+| Cloudflare Workers AI | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | **Free, no card.** 10,000 "Neurons"/day on every account (checked 2026-09-30). Both secrets are required — the account id fills in this platform's per-account address. Ships `gpt-oss-120b`/`20b` and `GLM-4.7-Flash`; its newer models (Kimi, GLM-5.x) need the Workers Paid plan and are deliberately left out. |
 | OpenRouter | `OPENROUTER_API_KEY` | **Free, no card.** Free models only, discovered live from OpenRouter's public list (best/biggest first), never a frozen list. |
-| Cerebras | `CEREBRAS_API_KEY` | **Not free — a card is required before the key works at all.** What it unlocks is a one-time $5 credit that expires 30 days after signup, not a renewing allowance (checked against Cerebras' own pricing page 2026-09-30; several third-party "free tier" guides get this wrong). Models default to `gpt-oss-120b`, `qwen-3.8-27b`; override with `CEREBRAS_MODELS`. |
 | Gemini, Mistral | `GEMINI_API_KEY` / `MISTRAL_API_KEY` + `*_MODELS` | **Off unless `ALLOW_TRAINING_TIERS=yes`**: their free tiers may train on prompts. |
+| Cerebras | `CEREBRAS_API_KEY` | **Not free, and tried last on purpose — a card is required before the key works at all.** What it unlocks is a one-time $5 credit that expires 30 days after signup, not a renewing allowance (checked against Cerebras' own pricing page 2026-09-30; several third-party "free tier" guides get this wrong). Models default to `gpt-oss-120b`, `qwen-3.8-27b`; override with `CEREBRAS_MODELS`. |
 
 **Why several.** Free tiers are small and per-minute: Groq's is 8,000 tokens/minute per model, and
 one JARVIS call is ~4,000 tokens of instructions. One platform cannot carry the app; several can.

@@ -105,10 +105,21 @@ export function buildBackends(env, { scorecard = SCORECARD.models, fetchImpl, en
         continue
       }
     }
+    // A platform whose address is per-account (Cloudflare) needs that id filled in before
+    // it has a real endpoint at all; without it, the key alone is useless.
+    let endpoint = endpoints[name] ?? p.endpoint
+    if (p.accountIdEnv) {
+      const accountId = (env[p.accountIdEnv] ?? '').trim()
+      if (!accountId) {
+        warnings.push(`${name}: key present but no account id — set ${p.accountIdEnv} (found in the Cloudflare dashboard next to the API token).`)
+        continue
+      }
+      endpoint = endpoint.replace('{account_id}', accountId)
+    }
     backends.push({
       name,
       label: p.label,
-      provider: openAiCompatProvider(key, { endpoint: endpoints[name] ?? p.endpoint, headers: p.headers }),
+      provider: openAiCompatProvider(key, { endpoint, headers: p.headers }),
       models,
       visionModels: p.visionModels,
       caps: p.caps,
@@ -126,7 +137,7 @@ let memo = null
  */
 export function providerFor(env, options = {}) {
   const sig = JSON.stringify([
-    ...Object.values(PLATFORMS).flatMap((p) => [env[p.keyEnv], p.modelsEnv && env[p.modelsEnv]]),
+    ...Object.values(PLATFORMS).flatMap((p) => [env[p.keyEnv], p.modelsEnv && env[p.modelsEnv], p.accountIdEnv && env[p.accountIdEnv]]),
     env.ALLOW_TRAINING_TIERS, env.DISABLED_PROVIDERS, env.PROVIDER_ORDER,
   ])
   if (!options.fresh && memo?.sig === sig) return memo.value
