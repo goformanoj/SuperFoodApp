@@ -1,6 +1,18 @@
 # JARVIS OS — Build Memory
 
-## 2026-09-30 (continued, part 2) — the same platform-verification round, done twice, surfaced a real pattern
+## 2026-09-30 (continued, part 3) — the phone's action layer starts catching up to the laptop's
+
+**The ask, in the user's own words:** "i think the google oauth was left, keep that noted, begin with the next thing in line." SESSION_HANDOFF's last entry had named two open items — Google OAuth, or the phone side of Phase 7 — as "the user's call." OAuth got parked; Phase 7's phone side is now underway.
+
+**Before writing any Kotlin, an Explore agent surveyed what actually exists.** The honest answer was worse than "the phone needs sync": it needs sync of something that doesn't exist yet. No database — chat history is one JSON blob in SharedPreferences, memory is a raw string list, tasks/reminders go straight to Android's own Calendar/AlarmManager with nothing kept locally. And the phone still runs the OLD `<<MARKER>>` protocol (inline tokens like `<<REMEMBER|fact>>` parsed by regex across five separate files, with a `Markers.kt` catch-all for anything unclaimed) rather than the native tool calling the laptop moved to months ago. AGENT_PLAN's own §7 spec makes the dependency explicit: sync needs organised data, tool calling needs organised data, and the laptop itself was built data-layer-first (Phase 3), then tools (Phase 4), then sync (Phase 7) — so the phone follows the same order, not a shortcut.
+
+**This session's slice: just the data layer, ported faithfully but honestly scoped.** `Brain.kt`, modelled closely on the laptop's own (same entity shapes, same sync-outbox mechanism, same "measured beats guessed" spirit of "prove it, don't assume it") — but covering only the four things Phase 7 sync actually touches: tasks, reminders, notes, memory. Not a wholesale conversations/projects/documents/routines port, which would have been a much bigger, riskier change for no immediate payoff.
+
+**Two SQLite compatibility problems, both caught by testing before they became a foundation to build on.** A five-minute throwaway spike test proved FTS5 doesn't exist under Robolectric's SQLite build — before 700 lines got written assuming it did. The full port then hit a second gap live: the `ON CONFLICT ... DO UPDATE` upsert syntax isn't supported either. Both were real findings, not assumptions — the fix for the second one (manual update, then insert only if nothing changed) turned out to be MORE correct than the original upsert clause would have been on a real device anyway, since it makes explicit which fields survive a remote update (a reminder's `delivered` flag, a note's original `created` time) rather than leaning on SQL syntax to imply it.
+
+**Evidence.** 23 new tests, all passing (CRUD for each entity, sort order, sync-outbox queuing/collapsing/clearing, remote-row apply including the tombstone case, cursor round-trip). The rest of the app's existing test suite untouched and still green. Real CI build (`jarvis-debug-apk`), not just local `./gradlew`, is still the actual green signal per Rule 2.
+
+**Not done yet, on purpose:** this store isn't wired into `AssistantEngine.kt` at all — the marker-parsing pipeline runs exactly as before. That's the next milestone: native tool calling on top of this store, mirroring the laptop's `ToolBox`/`AgentLoop`. Sync itself (porting `SyncClient.kt`) comes after that.
 
 **Right after Cloudflare was confirmed, the user added an OpenRouter key too** and asked for the same "test and see." The verification method from the Cloudflare round repeated cleanly — reorder, isolate if needed, confirm, revert — and OpenRouter passed: `backend: "openrouter"`, a real free model (`nemotron-3-ultra-550b`) answering a real request.
 

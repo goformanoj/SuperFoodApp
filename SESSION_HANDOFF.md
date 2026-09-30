@@ -1,6 +1,17 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-30 — Groq, Cloudflare AND OpenRouter all live-verified; router back to normal config
+## Current position — 2026-09-30 — phone gets a real data store; router work done and verified
+
+Branch `desktop-kmp`; code commit `a494957` (backend router work merged earlier the same day, see below).
+
+- **Phase 7 phone side has STARTED, step 1 of (at least) 3: the local data store.** `app/src/main/java/com/jarvis/os/data/Brain.kt` — real SQLite, not SharedPreferences, for tasks/reminders/notes/memory. Google OAuth setup is explicitly DEFERRED (user's call, noted 2026-09-30) — do not start it without being asked.
+- **Gotcha — before touching the phone's action layer, survey what's actually there.** An Explore agent found the real gap was much bigger than "add sync": the phone has no database, no tool calling (still `<<MARKER>>` text parsing across 5+ regex parsers — see `AssistantEngine.kt` ~line 1240, `CalendarActions`/`AlarmActions`/`MemoryActions`/`ScreenActions`/`ArtifactActions`, with `Markers.kt` as a catch-all safety net for anything those miss), and zero sync code. This matches AGENT_PLAN §2's own description of "what's missing" almost word-for-word — it was written about the pre-Phase-3 laptop, but it's still true of the phone today.
+- **Gotcha — Robolectric's SQLite (`ShadowLegacySQLiteConnection`, backed by `com.almworks.sqlite4java`) is an OLD SQLite build**, missing two features the laptop's Brain relies on: FTS5 (`no such module: fts5`) and the `ON CONFLICT(...) DO UPDATE` upsert syntax (`near "ON": syntax error`). Spiked BEFORE writing the real port (a throwaway `Fts5SpikeTest`, deleted once it had answered the question) — cheap to check, expensive to discover after 700 lines were already written against it. Worked around with plain `LIKE` search and manual update-then-insert-if-absent (using SQLite's built-in `changes()` to detect whether the UPDATE hit anything), both fully portable. **If a future Android SQLite feature acts strangely under Robolectric, check whether Robolectric's SQLite build supports it at all before assuming the code is wrong.**
+- **Gotcha — Android's two SQLite APIs bind arguments differently.** `SQLiteDatabase.execSQL(sql, Object[])` accepts Long/Double/byte[]/String/null only (Int/Boolean must be coerced first). `SQLiteDatabase.rawQuery(sql, String[])` binds EVERY arg as text, relying on SQLite's column-affinity rules to compare correctly against INTEGER columns (including in a bound `LIMIT ?`) — this is normal, widely-used Android behavior, not a bug.
+- **Design choice, deliberate:** the new `Brain` is scoped to tasks/reminders/notes/memory only — NOT conversations/projects/documents/routines, matching exactly what the laptop's own `SyncRow` comment says Phase 7 sync covers. The phone's existing `ConversationStore.kt` (chat history) is untouched by this step.
+- **Router work from earlier the same day, still true:** Cerebras corrected (not a free tier — card + 30-day $5 trial credit, not a renewing allowance); Cloudflare Workers AI and OpenRouter both added and LIVE-VERIFIED against the real deployed Worker (each isolated with `DISABLED_PROVIDERS` for one call, since a plain reorder can silently hide behind a healthy fallback); router priority is now groq(10) → cloudflare(20) → openrouter(30) → gemini(50, dormant, needs `ALLOW_TRAINING_TIERS=yes`) → mistral(60, dormant) → cerebras(90, paid, last). Twice that day, Groq itself looked briefly rate-limited from the session's own heavy test traffic — noted, not chased further.
+
+---
 
 Branch `desktop-kmp`; code commit `e7471b3` (config-only reverts since `7a02936`; no source changed since the router itself shipped).
 
