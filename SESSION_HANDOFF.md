@@ -1,6 +1,16 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-09-30 — phone gets a real data store; router work done and verified
+## Current position — 2026-10-01 — phone has tool-calling machinery, not yet wired into live chat
+
+Branch `desktop-kmp`; code commit `dea5644` (step 2 of Phase 7 phone side).
+
+- **Phase 7 phone side is 2 of (at least) 3 steps in: data store (done) → tool calling (done, unwired) → wiring + sync.** The NEXT session should either (a) wire `AgentLoop`/`ToolBox` into `AssistantEngine.ask()` and verify live on a device/emulator, or (b) do Phase 7's actual sync step (porting `SyncClient.kt` to the phone) first and wire tool-calling in alongside it — the user's call, not a default pick.
+- **Gotcha — wiring tool-calling into `ask()` is NOT a drop-in swap.** The existing marker system (`CalendarActions`/`AlarmActions`/`ScreenActions`/`ArtifactActions`, `Markers.kt` catch-all) still owns calendar, alarms, screen control and file artifacts — none of those were ported to tools. Swapping the system prompt to a tool-calling one (e.g. reusing `DESKTOP_AGENT_PROMPT`, which teaches tool use, not markers) would silently stop the model from ever emitting those markers, breaking calendar/alarm/screen-control on any turn that goes through the new path. The two protocols cannot simply coexist on one request. Whoever wires this in needs to either (a) port calendar/alarm to tools too before swapping the prompt wholesale, or (b) keep BOTH systems live with a router deciding per-turn which protocol to use (more complex, more fragile), or (c) scope the wired-in tool loop to specific intents only. Decide this deliberately — don't just flip the prompt and ship it.
+- **Name collision, deliberate and documented, not a bug:** there are now TWO classes named `AgentLoop` — `com.jarvis.os.assistant.AgentLoop` (existing, narrow: screen-tap-recovery move parsing only) and `com.jarvis.os.agent.AgentLoop` (new, this step: general tool calling). Different packages, no actual conflict, but grep for "AgentLoop" carefully — each file's own doc comment cross-references the other.
+- **Live verification is genuinely blocked right now**: no phone or emulator connected to this laptop. Booting the emulator needs the user's explicit ask (stored memory) — don't do it unprompted even to unblock this.
+- Everything from 2026-09-30 (router: Cerebras correction, Cloudflare + OpenRouter added and live-verified; the owner-override fix for this laptop's 60k-token cap; startup/disk cleanup) still stands — see JARVIS_MEMORY.md for the detail, not repeated here.
+
+---
 
 Branch `desktop-kmp`; code commit `a494957` (backend router work merged earlier the same day, see below).
 

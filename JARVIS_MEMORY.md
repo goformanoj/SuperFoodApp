@@ -1,6 +1,16 @@
 # JARVIS OS — Build Memory
 
-## 2026-09-30 (continued, part 3) — the phone's action layer starts catching up to the laptop's
+## 2026-10-01 — tool calling ported to the phone, deliberately left unwired
+
+**Continuing Phase 7 phone side** (step 1, the data store, shipped 2026-09-30): the user said "whats next? continue", so this picked up exactly where the stated plan left off — native tool calling on top of the new `Brain`.
+
+**A faithful, scoped port, not a reinvention.** Read the laptop's own `agent/ToolBox.kt` (782 lines) and `agent/AgentLoop.kt` in full before writing anything, then ported the subset that matches what the phone's `Brain` actually holds: `add_task`/`add_tasks`/`list_tasks`/`complete_task`/`delete_task`/`set_reminder`/`list_reminders`/`save_note`/`search_my_stuff`/`remember`/`forget`. Same risk model (READ runs free, UNDOABLE runs with an Undo, IRREVERSIBLE waits for approval — Rule 6: this lives in code, never the prompt), same tool names, same JSON shapes — on purpose, so the two codebases don't quietly drift into incompatible dialects of the same idea.
+
+**A real naming collision, found and documented rather than silently left for someone to trip over later.** The phone already had an unrelated class also called `AgentLoop` (`com.jarvis.os.assistant.AgentLoop`) — a narrow state machine for recovering from a failed screen-tap step, nothing to do with general tool calling. Different package, so it compiles fine, but it's exactly the kind of thing that confuses a future reader (or a future Claude) grepping for "AgentLoop". Each file's doc comment now says so explicitly, cross-referencing the other.
+
+**Stopped short of wiring it in — and said exactly why, rather than quietly doing a smaller thing than asked.** The honest reason surfaced while writing `SESSION_HANDOFF.md`'s gotcha: swapping `AssistantEngine.ask()` over to tool-calling is not a drop-in change, because the OLD marker system still exclusively owns calendar, alarms, screen control and file artifacts. A tool-calling system prompt doesn't teach the model to emit markers, so flipping the switch naively would silently break every feature not yet ported to a tool — a regression a live user would feel immediately and a unit test would never catch, since no device is connected to see it happen. Building tested, working plumbing now and flagging the wiring as a separate, deliberate decision was judged better than either skipping the whole thing or rushing a half-correct wire-up with no way to verify it.
+
+**Evidence.** 27 new tests (11 ToolBox, 7 AgentLoop, 3 TaskDates, plus AgentClient's pure parsing), all passing; the rest of the app's existing suite untouched. Real CI build, not just local `./gradlew`, remains the actual green signal.
 
 **The ask, in the user's own words:** "i think the google oauth was left, keep that noted, begin with the next thing in line." SESSION_HANDOFF's last entry had named two open items — Google OAuth, or the phone side of Phase 7 — as "the user's call." OAuth got parked; Phase 7's phone side is now underway.
 
