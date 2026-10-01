@@ -40,17 +40,24 @@ class DesktopPrefs(private val file: File = AppDirs.file("prefs.properties")) {
         }
     }
 
-    fun loadGeometry(): Geometry {
+    fun loadGeometry(screens: () -> List<java.awt.Rectangle> = ::connectedScreenBounds): Geometry {
         val p = props()
         val w = p.getProperty(KEY_W)?.toFloatOrNull()
         val h = p.getProperty(KEY_H)?.toFloatOrNull()
         if (w == null || h == null) return Geometry.DEFAULT
+        var x = p.getProperty(KEY_X)?.toFloatOrNull()
+        var y = p.getProperty(KEY_Y)?.toFloatOrNull()
+        // A saved position goes stale when a monitor is unplugged or Windows reassigns the
+        // display layout: reopening there puts almost the whole window off the visible desktop
+        // and only the title bar (the one sliver still on-screen) shows. Trust the saved spot
+        // only if it still lands within the screens that are actually connected right now.
+        if (x != null && y != null && !fitsKnownScreens(x, y, screens())) { x = null; y = null }
         return Geometry(
             // Never restore something unusably small (the window's own minimum is 980×640 px).
             width = w.coerceAtLeast(900f),
             height = h.coerceAtLeast(600f),
-            x = p.getProperty(KEY_X)?.toFloatOrNull(),
-            y = p.getProperty(KEY_Y)?.toFloatOrNull(),
+            x = x,
+            y = y,
             maximized = p.getProperty(KEY_MAX) == "true",
         )
     }
@@ -127,5 +134,22 @@ class DesktopPrefs(private val file: File = AppDirs.file("prefs.properties")) {
         private const val KEY_Q_H = "quickbar.height"
         private const val KEY_Q_X = "quickbar.x"
         private const val KEY_Q_Y = "quickbar.y"
+
+        /** Generous slop (dp vs. physical px on a scaled display aren't the same units; this is a sanity check, not a pixel-perfect one). */
+        private const val SCREEN_FIT_MARGIN = 150f
+
+        /** True if [x],[y] lands within (or near) the combined area of [screens] — empty means "couldn't tell" (e.g. headless), which trusts the saved spot rather than fighting it. */
+        private fun fitsKnownScreens(x: Float, y: Float, screens: List<java.awt.Rectangle>): Boolean {
+            if (screens.isEmpty()) return true
+            val left = screens.minOf { it.x } - SCREEN_FIT_MARGIN
+            val top = screens.minOf { it.y } - SCREEN_FIT_MARGIN
+            val right = screens.maxOf { it.x + it.width } + SCREEN_FIT_MARGIN
+            val bottom = screens.maxOf { it.y + it.height } + SCREEN_FIT_MARGIN
+            return x in left..right && y in top..bottom
+        }
+
+        private fun connectedScreenBounds(): List<java.awt.Rectangle> = runCatching {
+            java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices.map { it.defaultConfiguration.bounds }
+        }.getOrDefault(emptyList())
     }
 }
