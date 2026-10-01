@@ -694,7 +694,11 @@ class ToolBox(
         val r = ref.trim().trim('"', '“', '”')
         val attached = sourceConversation?.let { brain.attachedDocuments(it) }.orEmpty()
         if (r.isEmpty()) return attached.lastOrNull()
-        if (filesAllowed() && (r.contains(":\\") || r.contains(":/") || r.startsWith("\\\\"))) {
+        // File.isAbsolute() is the OS's own notion of "looks like a real path" (a Windows
+        // drive letter or UNC root on Windows; a leading "/" on Linux/macOS) — simpler and
+        // more correct than hand-matching Windows syntax, and it's what lets a JUnit temp
+        // file's path (Linux-shaped on a Linux CI runner) be recognised in tests too.
+        if (filesAllowed() && File(r).isAbsolute) {
             val f = File(r)
             if (f.isFile) return Library.import(brain, f, sourceConversation)
         }

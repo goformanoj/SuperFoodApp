@@ -1,9 +1,10 @@
 # JARVIS OS — Session Handoff
 
-## Current position — 2026-10-01 — desktop off-screen-window bug fixed; Phase 7 phone side still unwired
+## Current position — 2026-10-01 — desktop CI's own Linux-only failures fixed; off-screen-window bug fixed; Phase 7 phone side still unwired
 
-Branch `desktop-kmp`; latest code is the `DesktopPrefs` off-screen-window fix (see PROGRESS.md), on top of commit `dea5644` (step 2 of Phase 7 phone side).
+Branch `desktop-kmp`; latest code is the desktop-CI path-handling fix (see PROGRESS.md), on top of the `DesktopPrefs` off-screen-window fix, on top of commit `dea5644` (step 2 of Phase 7 phone side).
 
+- **Fixed, this round: "Desktop build + tests" CI had been red since before this session, unnoticed.** Found while verifying the window-position fix below — `automerge.sh` only gates on the Android APK artifact, never the desktop job, so a broken desktop suite kept merging silently. Root cause and fix (two OS-path-resolution bugs, real only under Linux CI) are in PROGRESS.md's entry. **If a desktop test fails ONLY in CI and not locally on this Windows laptop again, check for this exact class of bug first** — something assuming Windows path syntax (drive letters, backslashes) that a Linux runner's own genuinely-absolute paths don't match.
 - **Fixed, this round: the JARVIS desktop window could reopen showing only its title bar.** User-reported with a screenshot. Root cause and fix are in PROGRESS.md's own entry — not repeated here. Tests live in `DesktopPrefsTest.kt`.
 - Also this round, **evaluated `qwen2.5-coder:7b-instruct` via Ollama** as a possible local coding model (prompted by the window bug investigation, not part of JARVIS itself): correct output on a real algorithm task, but ~3.5 tok/s on this CPU-only hardware — too slow for live chat, fine for "write this and I'll wait." Pulled to `D:\ollama\models`, alongside the already-present `llama3.2:3b` and `qwen3:4b`.
 - **Phase 7 phone side is 2 of (at least) 3 steps in: data store (done) → tool calling (done, unwired) → wiring + sync.** The NEXT session should either (a) wire `AgentLoop`/`ToolBox` into `AssistantEngine.ask()` and verify live on a device/emulator, or (b) do Phase 7's actual sync step (porting `SyncClient.kt` to the phone) first and wire tool-calling in alongside it — the user's call, not a default pick.

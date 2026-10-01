@@ -23,8 +23,13 @@ object StartWithWindows {
 
     val available: Boolean get() = exe() != null
 
-    /** What goes in the registry: the exe, quoted, starting hidden in the tray. Pure; tested. */
-    fun command(exe: File): String = "\"${exe.absolutePath}\" $BACKGROUND_FLAG"
+    /** What goes in the registry: the exe, quoted, starting hidden in the tray. Pure; tested.
+     * [File.path], not [File.absolutePath]: the latter re-resolves against the CURRENT
+     * process's working directory whenever the OS running it doesn't recognise the string
+     * as already absolute (e.g. a Windows "C:\…" path, tested on a Linux CI runner) — [exe]
+     * is always already absolute in real use ([exe] below only ever returns one), so this is
+     * a no-op there and avoids that OS-dependent surprise in tests. */
+    fun command(exe: File): String = "\"${exe.path}\" $BACKGROUND_FLAG"
 
     const val BACKGROUND_FLAG = "--background"
 
