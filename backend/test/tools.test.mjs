@@ -76,7 +76,8 @@ test('an explicit system override still wins with tools', async () => {
 
 test('malformed tool lists are refused before any spend', async () => {
   const { worker, store, provider } = build()
-  for (const tools of [[], 'nope', [{ type: 'function', function: { name: 'bad name!' } }], [{ type: 'other' }]]) {
+  // [] is NOT malformed (see below) — it's a deliberate "no tools this turn" signal.
+  for (const tools of ['nope', [{ type: 'function', function: { name: 'bad name!' } }], [{ type: 'other' }]]) {
     const res = await worker.fetch(chat({ messages: [{ role: 'user', content: 'x' }], tools }))
     assert.equal(res.status, 400, JSON.stringify(tools))
   }
@@ -84,8 +85,24 @@ test('malformed tool lists are refused before any spend', async () => {
   assert.equal(await store.usedToday('u1', dayKey(NOW)), 0)
 })
 
-test('validTools: null when absent, the list when good, capped in size', () => {
+test('an empty tool list stays on the desktop agent prompt but offers nothing — forces a text reply', async () => {
+  // How the desktop agent (AgentLoop.kt) guarantees its LAST step answers in words:
+  // it sends tools:[] rather than the real schemas, so there's nothing to call.
+  const { worker, provider } = build({ script: [{ text: "Here's what I found so far." }] })
+  const res = await worker.fetch(chat({ messages: [{ role: 'user', content: 'x' }], tools: [] }))
+  assert.equal(res.status, 200)
+  const body = await res.json()
+  assert.equal(body.reply, "Here's what I found so far.")
+  assert.ok(!('tool_calls' in body))
+  // Still the AGENT prompt (the conversation already has tool_call/tool-shaped messages
+  // in it) — NOT the phone's marker prompt, which wouldn't understand that shape.
+  assert.ok(provider.calls[0].system.startsWith(DESKTOP_AGENT_PROMPT))
+  assert.deepEqual(provider.calls[0].tools, [])
+})
+
+test('validTools: null when absent, [] when deliberately empty, the list when good, capped in size', () => {
   assert.equal(validTools(undefined), null)
+  assert.deepEqual(validTools([]), [])
   assert.deepEqual(validTools(TOOLS), TOOLS)
   const many = Array.from({ length: MAX_TOOLS + 1 }, (_, i) => ({ type: 'function', function: { name: `t${i}` } }))
   assert.notEqual(validTools(many), many)

@@ -444,10 +444,19 @@ export const MAX_TOOLS = 36
  * OpenAI-shaped function with a sane name and an object schema. Anything malformed is
  * refused whole rather than half-forwarded — a broken schema would only surface later
  * as a confusing provider error.
+ *
+ * An EMPTY array is deliberately valid and distinct from absent: it means "stay on the
+ * desktop agent prompt, but offer no tools this turn" — how the desktop agent forces its
+ * last step to answer in words instead of attempting one more action (AgentLoop.kt), a
+ * real guarantee against ending a turn in a stall message instead of a soft prompt nudge.
+ * The provider layer already treats an empty/absent tools list as "don't offer any" (every
+ * platform shares one OpenAI-compatible adapter — see groq.js's `once()`), so this needed
+ * no provider-side change, only widening what the gate here accepts.
  */
 export function validTools(tools) {
   if (tools === undefined || tools === null) return null
-  if (!Array.isArray(tools) || tools.length === 0 || tools.length > MAX_TOOLS) return INVALID
+  if (!Array.isArray(tools) || tools.length > MAX_TOOLS) return INVALID
+  if (tools.length === 0) return tools
   const ok = tools.every((t) =>
     t?.type === 'function' &&
     typeof t.function?.name === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(t.function.name) &&

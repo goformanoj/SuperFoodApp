@@ -31,8 +31,9 @@ class AgentLoopTest {
     private class Script(vararg replies: AgentClient.Reply) {
         val queue = ArrayDeque(replies.toList())
         val sent = mutableListOf<JSONArray>()
+        val toolsSent = mutableListOf<JSONArray>()
         suspend fun step(m: JSONArray, c: String, t: JSONArray): AgentClient.Reply {
-            sent += JSONArray(m.toString()); return queue.removeFirst()
+            sent += JSONArray(m.toString()); toolsSent += t; return queue.removeFirst()
         }
     }
 
@@ -95,13 +96,47 @@ class AgentLoopTest {
     }
 
     @Test
-    fun theStepBudgetStopsARunawayModel() = runBlocking {
-        val forever = AgentClient.Reply("", listOf(call("x", "list_tasks", """{"which":"open"}""")))
+    fun theStepBudgetStopsARunawayModelThatMadeNoRealProgress() = runBlocking {
+        // An empty brain, so "complete_task" genuinely fails every time — no step here ever
+        // succeeds, so the fallback has nothing to report and stays the plain apology.
+        val forever = AgentClient.Reply("", listOf(call("x", "complete_task", """{"task":"ghost"}""")))
         var calls = 0
         val loop = AgentLoop(tools, { _, _, _ -> calls++; forever }, approve = { true }, onStep = { _, _ -> }, maxSteps = 3)
         val answer = loop.run(listOf(ChatTurn(ChatTurn.USER, "x")), "", null)
         assertEquals(3, calls)
         assertTrue(answer.startsWith("I stopped there"))
+    }
+
+    @Test
+    fun theLastStepOffersNoToolsAtAllAHardGuaranteeNotJustANudge() = runBlocking {
+        // Found live (2026-10-01 eval): the softer "wrap up" nudges above measurably help but
+        // a sufficiently persistent model can still ignore them (a web_search loop ran 6
+        // times before stalling). The LAST step removes the option entirely: no tools are
+        // sent, so there is nothing left to call — this script's second reply tries one
+        // anyway (a stubborn model), and it must never actually run.
+        val script = Script(
+            AgentClient.Reply("", listOf(call("a", "add_task", """{"title":"Buy milk"}"""))),
+            AgentClient.Reply("", listOf(call("b", "add_task", """{"title":"Should never run"}"""))),
+        )
+        val loop = AgentLoop(tools, script::step, approve = { true }, onStep = { _, _ -> }, maxSteps = 2)
+        val answer = loop.run(listOf(ChatTurn(ChatTurn.USER, "x")), "", null)
+        assertTrue("the first (non-last) step should still get the real tool schemas", script.toolsSent[0].length() > 0)
+        assertEquals("the LAST step must get NO tools at all", 0, script.toolsSent[1].length())
+        assertEquals(listOf("Buy milk"), brain.openTasks().map { it.title })   // the second call never actually ran
+        assertTrue(answer, answer.startsWith("I ran out of steps before finishing"))
+        assertTrue(answer, answer.contains("Buy milk"))   // real progress is reported, not just an apology
+    }
+
+    @Test
+    fun theLastStepStillAnswersNormallyWhenTheModelJustAnswers() = runBlocking {
+        val script = Script(
+            AgentClient.Reply("", listOf(call("a", "list_tasks", """{"which":"open"}"""))),
+            AgentClient.Reply("All done, nothing pending.", emptyList()),
+        )
+        val loop = AgentLoop(tools, script::step, approve = { true }, onStep = { _, _ -> }, maxSteps = 2)
+        val answer = loop.run(listOf(ChatTurn(ChatTurn.USER, "x")), "", null)
+        assertEquals(0, script.toolsSent[1].length())           // still offered no tools...
+        assertEquals("All done, nothing pending.", answer)      // ...but a normal text answer works exactly as before
     }
 
     @Test

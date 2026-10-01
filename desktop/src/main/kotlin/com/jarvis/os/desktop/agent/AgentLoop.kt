@@ -26,6 +26,7 @@ class AgentLoop(
         val messages = JSONArray()
         history.forEach { messages.put(JSONObject().put("role", it.role).put("content", it.content)) }
         val schemas = tools.schemas()
+        val noTools = JSONArray()
         // A call that already failed once THIS turn, repeated with the identical arguments,
         // is never going to succeed the second time — it just burns the step budget until
         // the turn stalls (found live: a failed open_file on a path that doesn't exist got
@@ -43,9 +44,21 @@ class AgentLoop(
         // ones, never triggers either.
         var failureCount = 0
         val callCounts = mutableMapOf<String, Int>()
-        repeat(maxSteps) {
-            val reply = step(messages, context, schemas)
-            if (reply.toolCalls.isEmpty()) return reply.text
+        // What actually got DONE this turn, for a real fallback if the budget runs out —
+        // "I stopped there" with nothing else told the user literally nothing useful, even
+        // when three tasks had already been added before the model kept hunting for a fourth.
+        val doneSoFar = mutableListOf<String>()
+        repeat(maxSteps) { i ->
+            val lastStep = i == maxSteps - 1
+            // The nudges above measurably help but are still just a prompt asking nicely —
+            // found live: a sufficiently persistent model ignored them and called web_search
+            // six times before stalling anyway (JARVIS_MEMORY.md, 2026-10-01). The LAST step
+            // is the real, code-level guarantee (Rule 6): send NO tools at all, so there is
+            // nothing left to call and the model MUST answer in words, using whatever the
+            // turn already learned, instead of ending in the generic stall message.
+            val reply = step(messages, context, if (lastStep) noTools else schemas)
+            if (reply.toolCalls.isEmpty()) return reply.text.ifBlank { fallback(doneSoFar) }
+            if (lastStep) return fallback(doneSoFar)   // nothing was offered — never trust a stray tool call blindly
             messages.put(AgentClient.assistantToolMessage(reply.text, reply.toolCalls))
             for (call in reply.toolCalls) {
                 val key = call.name to call.arguments
@@ -61,7 +74,7 @@ class AgentLoop(
                 } else {
                     runOne(call, sourceConversation)
                 }
-                if (!result.ok) { failedBefore += key; failureCount++ }
+                if (result.ok) doneSoFar += result.summary else { failedBefore += key; failureCount++ }
                 val timesThisTool = callCounts.merge(call.name, 1, Int::plus)!!
                 onStep(call, result)
                 val nudge = when {
@@ -76,7 +89,14 @@ class AgentLoop(
                 messages.put(AgentClient.toolResultMessage(call.id, forModel))
             }
         }
-        return "I stopped there — that was taking more steps than I allow myself in one go. Tell me if you want me to carry on."
+        return fallback(doneSoFar)
+    }
+
+    /** A real answer when the budget runs out, not just an apology — says what actually happened, if anything did. */
+    private fun fallback(doneSoFar: List<String>): String = if (doneSoFar.isEmpty()) {
+        "I stopped there — that was taking more steps than I allow myself in one go. Tell me if you want me to carry on."
+    } else {
+        "I ran out of steps before finishing, but here's what I did: " + doneSoFar.joinToString("; ") + ". Let me know if you'd like me to carry on."
     }
 
     private suspend fun runOne(call: AgentClient.ToolCall, sourceConversation: String?): ToolBox.Result {
