@@ -26,14 +26,54 @@ class AgentLoop(
         val messages = JSONArray()
         history.forEach { messages.put(JSONObject().put("role", it.role).put("content", it.content)) }
         val schemas = tools.schemas()
+        // A call that already failed once THIS turn, repeated with the identical arguments,
+        // is never going to succeed the second time — it just burns the step budget until
+        // the turn stalls (found live: a failed open_file on a path that doesn't exist got
+        // retried twice before giving up). Caught in code (Rule 6), not left to the prompt:
+        // the retry is short-circuited with a message telling the model plainly why, so it
+        // spends its remaining steps trying something else or just reporting what it has.
+        val failedBefore = mutableSetOf<Pair<String, String>>()
+        // Not every unproductive loop repeats the SAME call OR even fails — found live: after
+        // one open_file failure, the model called search_files several MORE times (each one
+        // succeeding — it's a READ tool, there's always something to return) hoping for a
+        // better result it was never going to get, instead of trusting what it already had and
+        // reporting. So two signals both earn a nudge to wrap up, success or failure: several
+        // real failures this turn (not merely repeats of one — see above), or the same tool
+        // called repeatedly regardless of outcome. A turn with few calls, or varied successful
+        // ones, never triggers either.
+        var failureCount = 0
+        val callCounts = mutableMapOf<String, Int>()
         repeat(maxSteps) {
             val reply = step(messages, context, schemas)
             if (reply.toolCalls.isEmpty()) return reply.text
             messages.put(AgentClient.assistantToolMessage(reply.text, reply.toolCalls))
             for (call in reply.toolCalls) {
-                val result = runOne(call, sourceConversation)
+                val key = call.name to call.arguments
+                val result = if (key in failedBefore) {
+                    ToolBox.Result(
+                        false,
+                        JSONObject().put("ok", false).put(
+                            "error",
+                            "This exact action already failed earlier in this turn with the same arguments — repeating it will fail the same way again. Try something different, or tell the user what happened instead of retrying.",
+                        ).toString(),
+                        "Skipped repeating a failing step: ${call.name}",
+                    )
+                } else {
+                    runOne(call, sourceConversation)
+                }
+                if (!result.ok) { failedBefore += key; failureCount++ }
+                val timesThisTool = callCounts.merge(call.name, 1, Int::plus)!!
                 onStep(call, result)
-                messages.put(AgentClient.toolResultMessage(call.id, result.forModel))
+                val nudge = when {
+                    failureCount >= WRAP_UP_AFTER_FAILURES ->
+                        "Several actions have failed this turn. If a genuinely different approach won't help, stop here and tell the user what you found and what went wrong, rather than trying more variations."
+                    timesThisTool >= WRAP_UP_AFTER_REPEATS ->
+                        "“${call.name}” has now been called $timesThisTool times this turn. If you already have enough to answer, do that now instead of calling it again."
+                    else -> null
+                }
+                val forModel = if (nudge == null) result.forModel else
+                    runCatching { JSONObject(result.forModel) }.getOrNull()?.put("note", nudge)?.toString() ?: result.forModel
+                messages.put(AgentClient.toolResultMessage(call.id, forModel))
             }
         }
         return "I stopped there — that was taking more steps than I allow myself in one go. Tell me if you want me to carry on."
@@ -61,6 +101,10 @@ class AgentLoop(
 
     companion object {
         const val MAX_STEPS = 6
+        /** How many real failures in one turn before every further failure also says "stop probing, report instead". */
+        const val WRAP_UP_AFTER_FAILURES = 2
+        /** How many times the SAME tool can be called in one turn before it starts saying "you may already have enough". */
+        const val WRAP_UP_AFTER_REPEATS = 3
     }
 }
 

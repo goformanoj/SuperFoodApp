@@ -736,7 +736,26 @@ class ToolBox(
     private fun findTasks(q: String, includeDone: Boolean): List<Brain.Task> {
         if (q.isBlank()) return emptyList()
         val pool = brain.openTasks() + if (includeDone) brain.doneTasks(50) else emptyList()
-        return pool.filter { it.title.contains(q, ignoreCase = true) || q.contains(it.title, ignoreCase = true) }
+        val bySubstring = pool.filter { it.title.contains(q, ignoreCase = true) || q.contains(it.title, ignoreCase = true) }
+        if (bySubstring.isNotEmpty()) return bySubstring
+        // Found live (2026-10-01 eval): a plain substring check is brittle to an ordinary
+        // paraphrase — "sending the deck to Priya" doesn't contain "Send the deck to Priya"
+        // (nor the reverse), so a real, existing task went unfound just because the model
+        // said "sending" instead of "Send". Falls back to matching on SIGNIFICANT WORDS
+        // (stopwords dropped, a crude 4-character-prefix stem so send/sending/sent all
+        // count as the same word) — every word in the query must still match something in
+        // the title, so this stays conservative rather than widening into false matches.
+        val qWords = significantWords(q)
+        if (qWords.isEmpty()) return emptyList()
+        return pool.filter { t -> val tWords = significantWords(t.title); tWords.isNotEmpty() && qWords.all { qw -> tWords.any { sameStem(qw, it) } } }
+    }
+
+    private val TASK_MATCH_STOPWORDS = setOf("a", "an", "the", "to", "of", "and", "or", "for", "in", "on", "at", "my", "this", "that", "it", "about")
+    private fun significantWords(s: String): List<String> =
+        s.lowercase().split(Regex("""[^\p{L}\p{N}]+""")).filter { it.isNotBlank() && it !in TASK_MATCH_STOPWORDS }
+    private fun sameStem(a: String, b: String): Boolean {
+        val n = minOf(a.length, b.length, 4)
+        return n > 0 && a.take(n) == b.take(n)
     }
 
     /** "2026-09-29T17:00", "2026-09-29 17:00", "2026-09-29T17:00:00" or a bare date (→ 09:00). */

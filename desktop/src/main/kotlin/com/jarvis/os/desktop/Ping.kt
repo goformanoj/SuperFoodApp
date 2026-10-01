@@ -95,6 +95,11 @@ fun main(args: Array<String>) {
             println("  OK: the live Worker's sync round trip works.")
         } }) 0 else 1)
     }
+    // `:desktop:ping --args="--eval"` runs the repeatable trust check (Eval.kt) against the
+    // live Worker: a fixed set of realistic requests through the real agent loop, scored for
+    // correctness, safety, and not stalling/flailing. Exit code reflects the 90% trust bar.
+    if (joined == "--eval") exitProcess(if (runBlocking { com.jarvis.os.desktop.Eval.run() }) 0 else 1)
+
     // `:desktop:ping --args="--agent|<request>"` runs the REAL agent against the live Worker,
     // on a throwaway in-memory brain with a host that opens nothing — the user's data and
     // screen are never touched. Prints every step and the answer. Steps that need approval

@@ -105,6 +105,71 @@ class AgentLoopTest {
     }
 
     @Test
+    fun repeatingTheExactSameFailingCallIsShortCircuitedNotRerun() = runBlocking {
+        // Found live (2026-10-01 eval): a failed open_file got retried identically, burning
+        // the whole step budget before stalling. The second identical attempt must never
+        // actually touch the filesystem again — it's caught in code before that.
+        val badPath = """{"path":"C:\\nonexistent\\ghost.pdf"}"""
+        val script = Script(
+            AgentClient.Reply("", listOf(call("a", "open_file", badPath))),
+            AgentClient.Reply("", listOf(call("b", "open_file", badPath))),   // retries the identical call
+            AgentClient.Reply("I couldn't open that file — it doesn't seem to exist.", emptyList()),
+        )
+        val steps = mutableListOf<ToolBox.Result>()
+        val loop = AgentLoop(tools, script::step, approve = { true }, onStep = { _, r -> steps += r })
+        val answer = loop.run(listOf(ChatTurn(ChatTurn.USER, "open ghost.pdf")), "", null)
+        assertEquals(2, steps.size)
+        assertFalse(steps[0].ok)
+        assertFalse(steps[1].ok)
+        // The first call genuinely ran (ToolBox's own "no such file" message); the second
+        // was intercepted before ToolBox ran at all — a different, code-level message.
+        assertTrue(steps[0].summary, steps[0].summary.contains("no file"))
+        assertTrue(steps[1].summary, steps[1].summary.contains("Skipped repeating"))
+        assertTrue(script.sent[2].getJSONObject(4).getString("content").contains("already failed earlier in this turn"))
+        assertFalse("the model should have stopped retrying and answered instead of stalling", answer.startsWith("I stopped there"))
+    }
+
+    @Test
+    fun aDifferentFailingCallIsNotTreatedAsARepeat() = runBlocking {
+        // Different arguments (or a different tool) must run for real even after an
+        // unrelated failure — the guard is about repeating the SAME call, not "a failure happened".
+        val script = Script(
+            AgentClient.Reply("", listOf(call("a", "open_file", """{"path":"C:\\nonexistent\\one.pdf"}"""))),
+            AgentClient.Reply("", listOf(call("b", "open_file", """{"path":"C:\\nonexistent\\two.pdf"}"""))),
+            AgentClient.Reply("Neither file exists.", emptyList()),
+        )
+        val steps = mutableListOf<ToolBox.Result>()
+        AgentLoop(tools, script::step, approve = { true }, onStep = { _, r -> steps += r }).run(listOf(ChatTurn(ChatTurn.USER, "x")), "", null)
+        assertEquals(2, steps.size)
+        steps.forEach { assertTrue(it.summary, it.summary.contains("no file")) }   // both ran for real
+    }
+
+    @Test
+    fun severalGenuinelyDifferentFailuresGetToldToWrapUp() = runBlocking {
+        // Found live (2026-10-01 eval): after one failure the model kept trying DIFFERENT
+        // variations (never repeating one identical call, so the guard above never caught
+        // it) until it ran out of steps. These two calls are different tasks, so the
+        // exact-repeat guard must NOT be what fires here — the nudge is about accumulated
+        // failures, not repetition.
+        val script = Script(
+            AgentClient.Reply("", listOf(call("a", "complete_task", """{"task":"ghost one"}"""))),
+            AgentClient.Reply("", listOf(call("b", "complete_task", """{"task":"ghost two"}"""))),
+            AgentClient.Reply("Neither task exists.", emptyList()),
+        )
+        val steps = mutableListOf<ToolBox.Result>()
+        AgentLoop(tools, script::step, approve = { true }, onStep = { _, r -> steps += r })
+            .run(listOf(ChatTurn(ChatTurn.USER, "x")), "", null)
+        assertEquals(2, steps.size)
+        assertFalse(steps[0].ok); assertFalse(steps[1].ok)
+        // First failure: no nudge yet (only one failure so far).
+        assertFalse(script.sent[1].getJSONObject(2).getString("content").contains("Several actions have failed"))
+        // Second failure crosses the threshold: the MODEL-FACING message carries the nudge...
+        assertTrue(script.sent[2].getJSONObject(4).getString("content").contains("Several actions have failed"))
+        // ...but the step card shown to the user is untouched (still just the real reason it failed).
+        assertFalse(steps[1].forModel.contains("Several actions have failed"))
+    }
+
+    @Test
     fun unknownToolsAreReportedNotRun() = runBlocking {
         val script = Script(
             AgentClient.Reply("", listOf(call("z", "format_disk", "{}"))),

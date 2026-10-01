@@ -90,6 +90,25 @@ class ToolBoxTest {
     }
 
     @Test
+    fun completeMatchesAParaphraseNotJustAnExactSubstring() {
+        // Found live (2026-10-01 eval): "sending the deck to Priya" doesn't literally
+        // contain (or get contained by) "Send the deck to Priya" — a plain substring
+        // check missed a real, existing task over one word's verb form.
+        run("add_task", """{"title":"Send the deck to Priya"}""")
+        val r = run("complete_task", """{"task":"sending the deck to priya"}""")
+        assertTrue(r.forModel, r.ok)
+        assertTrue(brain.openTasks().isEmpty())
+    }
+
+    @Test
+    fun theParaphraseFallbackStaysConservative() {
+        // A genuinely different task must NOT match just because it shares one word.
+        run("add_task", """{"title":"Send the deck to Priya"}""")
+        val r = run("complete_task", """{"task":"send an email to the landlord"}""")
+        assertFalse(r.ok)
+    }
+
+    @Test
     fun ambiguousMatchesAskInsteadOfGuessing() {
         run("add_task", """{"title":"Call the bank"}""")
         run("add_task", """{"title":"Call mom"}""")
