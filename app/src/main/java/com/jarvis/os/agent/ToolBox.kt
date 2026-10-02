@@ -26,6 +26,16 @@ class ToolBox(
     private val brain: Brain,
     private val clock: () -> Long = System::currentTimeMillis,
     private val zone: ZoneId = ZoneId.systemDefault(),
+    /**
+     * Off for now (AGENT_PLAN §7 phone step 3 — wiring): the OLD `<<REMEMBER>>`/
+     * `<<FORGET>>` marker path writes to a different store (`UserPreferences`)
+     * than these tools would (`data.Brain`). Turning this on before those two
+     * stores are reconciled would split a user's remembered facts across two
+     * places invisibly. Defaults to on so every existing test, which exercises
+     * the granted behaviour, needs no change for this to exist — mirrors the
+     * laptop's own `filesAllowed` pattern in `desktop/.../agent/ToolBox.kt`.
+     */
+    private val memoryAllowed: () -> Boolean = { true },
 ) {
     enum class Risk {
         READ, UNDOABLE, IRREVERSIBLE;
@@ -46,7 +56,11 @@ class ToolBox(
 
     class Spec(val name: String, val description: String, val params: JSONObject, val risk: Risk)
 
-    val specs: List<Spec> = listOf(
+    /** Every tool the model is offered right now: the memory ones only while [memoryAllowed]. */
+    val specs: List<Spec>
+        get() = baseSpecs.filter { it.name !in MEMORY_TOOLS || memoryAllowed() }
+
+    private val baseSpecs: List<Spec> = listOf(
         Spec(
             "add_task", "Add a to-do for the user. Use due for a deadline or when they say when.",
             obj(
@@ -233,6 +247,7 @@ class ToolBox(
                 ok(JSONObject().put("results", arr), "Searched your things for “${args.optString("query")}” (${hits.size} found)")
             }
             "remember" -> {
+                if (!memoryAllowed()) return fail("Memory isn't available through this path yet.")
                 val fact = args.optString("fact").trim()
                 if (looksSecret(fact)) return fail("That looks like a secret (a code, PIN, password or card number) — I won't store it.")
                 val kind = runCatching { Brain.MemoryKind.valueOf(args.optString("kind", "fact").uppercase()) }.getOrDefault(Brain.MemoryKind.FACT)
@@ -240,6 +255,7 @@ class ToolBox(
                 ok(JSONObject().put("remembered", m.text), "Remembered “${m.text}”", Undo("memory", m.id))
             }
             "forget" -> {
+                if (!memoryAllowed()) return fail("Memory isn't available through this path yet.")
                 val about = args.optString("about").trim()
                 val n = brain.forget(about)
                 ok(JSONObject().put("forgotten", n), if (n > 0) "Forgot $n item(s) about “$about”" else "Nothing remembered about “$about”")
@@ -284,6 +300,7 @@ class ToolBox(
     companion object {
         /** Most tasks one add_tasks call may create. */
         const val MAX_BATCH = 25
+        private val MEMORY_TOOLS = setOf("remember", "forget")
         private val SECRET = Regex("""(?i)\b(pin|otp|password|passcode|cvv)\b|\b\d{6}\b|\b(?:\d[ -]?){13,19}\b""")
         fun looksSecret(text: String) = SECRET.containsMatchIn(text)
 

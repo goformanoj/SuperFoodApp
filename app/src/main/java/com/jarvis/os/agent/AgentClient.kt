@@ -26,7 +26,9 @@ object AgentClient {
     data class Reply(val text: String, val toolCalls: List<ToolCall>, val backend: String? = null, val model: String? = null)
 
     suspend fun step(messages: JSONArray, tools: JSONArray): Reply {
-        val payload = JSONObject().put("messages", messages).put("tools", tools).toString()
+        // "platform": "phone" picks the Worker's phone-scoped agent prompt (PHONE_AGENT_PROMPT,
+        // not the laptop's DESKTOP_AGENT_PROMPT) — see backend/src/index.js and systemPrompt.js.
+        val payload = JSONObject().put("messages", messages).put("tools", tools).put("platform", "phone").toString()
         return parse(post(payload))
     }
 

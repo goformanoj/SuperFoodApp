@@ -4,7 +4,7 @@ import { createWorker, validTools, MAX_TOOLS } from '../src/index.js'
 import { memoryStore } from '../src/db.js'
 import { fakeProvider } from '../src/providers/fake.js'
 import { groqProvider, toolCallsOf } from '../src/providers/groq.js'
-import { DESKTOP_AGENT_PROMPT, SYSTEM_PROMPT } from '../src/systemPrompt.js'
+import { DESKTOP_AGENT_PROMPT, PHONE_AGENT_PROMPT, SYSTEM_PROMPT } from '../src/systemPrompt.js'
 import { dayKey } from '../src/quota.js'
 
 const NOW = Date.parse('2026-09-28T12:00:00Z')
@@ -66,6 +66,18 @@ test('without tools the response has no tool_calls and the phone prompt is used 
   assert.ok(!('tool_calls' in body))
   assert.equal(provider.calls[0].tools, undefined)
   assert.equal(provider.calls[0].system, SYSTEM_PROMPT)
+})
+
+test('platform:"phone" with tools gets the phone agent prompt, not the laptop one', async () => {
+  const { worker, provider } = build({ script: [{ text: 'Added it.' }] })
+  await worker.fetch(chat({ messages: [{ role: 'user', content: 'add a task' }], tools: TOOLS, platform: 'phone' }))
+  assert.ok(provider.calls[0].system.startsWith(PHONE_AGENT_PROMPT))
+})
+
+test('tools with no platform field still gets the laptop prompt (the laptop sends none)', async () => {
+  const { worker, provider } = build({ script: [{ text: 'Added it.' }] })
+  await worker.fetch(chat({ messages: [{ role: 'user', content: 'add a task' }], tools: TOOLS }))
+  assert.ok(provider.calls[0].system.startsWith(DESKTOP_AGENT_PROMPT))
 })
 
 test('an explicit system override still wins with tools', async () => {

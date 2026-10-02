@@ -9,6 +9,13 @@ import android.provider.Settings
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import com.jarvis.os.agent.AgentClient
+// Aliased: this file's own package already has an unrelated AgentLoop (the
+// screen-recovery state machine, referenced unqualified throughout below without
+// an import) — see both classes' own doc comments for why they share a name.
+import com.jarvis.os.agent.AgentLoop as ToolAgentLoop
+import com.jarvis.os.agent.ToolBox
+import com.jarvis.os.agent.TurnRouter
 import com.jarvis.os.ai.Brain
 import com.jarvis.os.ai.agentStep
 import com.jarvis.os.ai.AGENT_PROMPT
@@ -29,6 +36,7 @@ import com.jarvis.os.control.ScreenActions
 import com.jarvis.os.control.ScreenControlService
 import com.jarvis.os.control.ScreenStep
 import com.jarvis.os.control.WorkSessionService
+import com.jarvis.os.data.Brain as TaskBrain
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.ConversationStore
 import com.jarvis.os.data.MemoryAction
@@ -85,6 +93,15 @@ class AssistantEngine(context: Context) {
     private val userPrefs = UserPreferences(appContext)
     private val artifacts = ArtifactStore(appContext)
     private val playbook = PlaybookStore(appContext)
+    /**
+     * Tasks/reminders/notes/memory, for the native tool-calling path (AGENT_PLAN §7
+     * phone step 3). Separate from everything above — [TurnRouter] decides, before
+     * the model is ever called, which turns reach [ToolBox] through this at all.
+     */
+    private val taskBrain = TaskBrain.open(appContext)
+    // Memory tools stay off until the old <<REMEMBER>>/<<FORGET>> store and this one
+    // are reconciled — see ToolBox.kt's own doc and TurnRouter's.
+    private val toolBox = ToolBox(taskBrain, memoryAllowed = { false })
     /** What the user asked for, kept so a sequence that works can be remembered. */
     private var pendingGoal: String = ""
 
@@ -719,6 +736,7 @@ class AssistantEngine(context: Context) {
         bargeIn.close()
         voice.destroy()
         speaker.shutdown()
+        taskBrain.close()
         scope.cancel()
     }
 
@@ -1229,6 +1247,17 @@ class AssistantEngine(context: Context) {
             return
         }
 
+        // AGENT_PLAN §7 phone step 3: a turn squarely about tasks/reminders/notes/
+        // recall goes through the new native tool-calling loop instead of the
+        // marker pipeline below. Decided in CODE (Rule 6), before the model is
+        // ever called — see TurnRouter's own doc for why, and what it deliberately
+        // still leaves on the old path (calendar, alarms, screen, files, memory).
+        if (TurnRouter.useNativeTools(userText)) {
+            val history = conversation.takeLast(MAX_CONTEXT_TURNS)
+            scope.launch { runToolTurn(history) }
+            return
+        }
+
         val history = conversation.takeLast(MAX_CONTEXT_TURNS)
         scope.launch {
             try {
@@ -1411,6 +1440,46 @@ class AssistantEngine(context: Context) {
                     onSpokenDone()
                 }, 3000L)
             }
+        }
+    }
+
+    /**
+     * The native tool-calling path (AGENT_PLAN §7 phone step 3): tasks, reminders,
+     * notes and recall, via [AgentLoop]/[toolBox]. [TurnRouter] decides whether a
+     * turn reaches here at all — see its own doc for what still stays on [ask]'s
+     * marker pipeline. Mirrors [ask]'s own finishing moves (store the turn, update
+     * the orb, speak) so the two paths feel identical to the user; the only
+     * difference should be which requests each one handles.
+     */
+    private suspend fun runToolTurn(history: List<ChatTurn>) {
+        try {
+            val answer = ToolAgentLoop(
+                toolBox,
+                step = AgentClient::step,
+                // No approval UI exists on this path yet — an irreversible step
+                // (only delete_task today) is always declined; PHONE_AGENT_PROMPT
+                // already tells the model to point the user at the Tasks screen
+                // instead of attempting one.
+                approve = { ask ->
+                    DebugLog.log(DebugLog.Stage.THINK, "declined (no approval UI on this path yet): ${ask.description}")
+                    false
+                },
+                onStep = { call, result -> DebugLog.log(DebugLog.Stage.THINK, "${call.name} -> ${if (result.ok) "OK" else "FAILED"}: ${result.summary}") },
+            ).run(history)
+            val spoken = answer.ifBlank { "Done." }
+            addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
+            DebugLog.log(DebugLog.Stage.SPOKE, spoken)
+            set { it.copy(orb = OrbState.Speaking, status = "Speaking…", reply = spoken) }
+            speakTurn(spoken)
+        } catch (e: Exception) {
+            val detail = e.message ?: e.javaClass.simpleName
+            DebugLog.log(DebugLog.Stage.ERROR, "Tool-calling turn error: $detail")
+            val shown = if (detail.length > 120) detail.take(117) + "…" else detail
+            set { it.copy(orb = OrbState.Error, status = "Brain error", reply = shown) }
+            main.postDelayed({
+                turn.reconcile(engineIsSpeaking = false)
+                onSpokenDone()
+            }, 3000L)
         }
     }
 

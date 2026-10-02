@@ -16,7 +16,7 @@ import { capFor, dayKey, isOverCap, overCapBody, remaining } from './quota.js'
 import { modelsFor } from './models.js'
 import { d1Store } from './db.js'
 import { MIGRATIONS } from './schema.js'
-import { SYSTEM_PROMPT, CONVERSATION_PROMPT, DESKTOP_AGENT_PROMPT } from './systemPrompt.js'
+import { SYSTEM_PROMPT, CONVERSATION_PROMPT, DESKTOP_AGENT_PROMPT, PHONE_AGENT_PROMPT } from './systemPrompt.js'
 import { lastUserText, looksActiony, shouldEscalate } from './promptTier.js'
 import { dropSecretMemories } from './guards.js'
 import { packFor } from './packs.js'
@@ -383,16 +383,22 @@ export function createWorker({
         return { text: full.text, model: full.model, usage: sumUsage(slim.usage, full.usage) }
       }
 
-      // The desktop agent (AGENT_PLAN §4): a client that runs tools sends their
-      // schemas; the model may answer with tool calls, which go back to the client to
-      // execute. Absent (the phone, the eval) ⇒ every path below is unchanged.
+      // The agent (AGENT_PLAN §4 desktop, §7 phone step 3): a client that runs tools
+      // sends their schemas; the model may answer with tool calls, which go back to
+      // the client to execute. Absent (the eval's own non-agent calls) ⇒ every path
+      // below is unchanged. `platform: "phone"` picks the phone's narrower prompt —
+      // its tool set is only tasks/reminders/notes/search (see TurnRouter.kt on the
+      // client, which decides which requests even reach this path); anything else
+      // with tools (today: only the laptop) still gets DESKTOP_AGENT_PROMPT, exactly
+      // as before this field existed, so the laptop needed zero changes.
       const tools = validTools(body.tools)
       if (tools === INVALID) return Response.json({ error: 'bad_tools' }, { status: 400 })
+      const agentPrompt = body.platform === 'phone' ? PHONE_AGENT_PROMPT : DESKTOP_AGENT_PROMPT
 
       let result
       try {
         if (tools) {
-          result = await provider.complete({ models, messages, system: withContext(body.system ?? DESKTOP_AGENT_PROMPT), tools })
+          result = await provider.complete({ models, messages, system: withContext(body.system ?? agentPrompt), tools })
         } else if (body.system) {
           // An explicit system override (the app's PICK "chooser") is never tiered —
           // the caller has already decided exactly what the model should see.

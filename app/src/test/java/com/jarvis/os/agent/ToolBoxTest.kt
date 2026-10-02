@@ -200,4 +200,25 @@ class ToolBoxTest {
         assertEquals(at("2026-09-29T09:00"), tools.parseLocal("2026-09-29"))
         assertNull(tools.parseLocal("tomorrow"))
     }
+
+    // ── memory tools are off until the old and new memory stores are reconciled ──
+
+    @Test
+    fun memoryToolsAreHiddenAndRefusedWhenNotAllowed() {
+        val gated = ToolBox(brain, clock = { now }, zone = zone, memoryAllowed = { false })
+        assertFalse("remember" in gated.specs.map { it.name })
+        assertFalse("forget" in gated.specs.map { it.name })
+        assertFalse(gated.execute("remember", """{"fact":"Likes tea"}""").ok)
+        assertFalse(gated.execute("forget", """{"about":"tea"}""").ok)
+        assertTrue(brain.memories().isEmpty())
+        // Everything else is unaffected.
+        assertTrue("add_task" in gated.specs.map { it.name })
+        assertTrue(gated.execute("add_task", """{"title":"x"}""").ok)
+    }
+
+    @Test
+    fun memoryToolsAreOnByDefault() {
+        assertTrue("remember" in tools.specs.map { it.name })
+        assertTrue("forget" in tools.specs.map { it.name })
+    }
 }
