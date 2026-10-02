@@ -1,5 +1,15 @@
 # JARVIS OS — Build Memory
 
+## 2026-10-02 — two requests with different risk profiles, handled differently
+
+**"Cluttered — use Claude Design."** The sidebar had eleven things competing: logo, New chat, Search, six nav items, a project folder, a Recent list, an icon row of four unlabeled buttons, a "This laptop" chip, an account card and a sign-in button. The design groups by how often each is used: five places to go, chats under day headings (capped), and everything occasional behind one labeled menu on the account card. After "this is trash" earlier in the session about an unseen redesign, the rule is: show the design first, build second — so the canvas is published and the app is untouched.
+
+**"Make a website for the waitlist."** The code is easy; the risk is that merging to `main` auto-deploys the Worker, which would put a public page collecting strangers' email addresses live. So it lives on its own branch and does not merge until the owner has supplied the things only they can: a public contact address, a secret salt, approval of the privacy wording. Built to need as little trust as possible: no cookies, no analytics, no external requests (tested), the IP kept only as a salted hash used for rate limiting, an identical response for new and repeat signups (so the form can't be used to discover who is on the list), and a hidden honeypot field for bots.
+
+**Small fix from the user's screenshot:** the sidebar still said "Free" for a Pro account right after my /usage fix. A single launch-time call can lose a race with the network, so it now retries with widening gaps. Lesson: a fix verified once on one run is not a fix for a race.
+
+**Gotchas:** (1) The Write tool resolves "/tmp/..." on the current drive (D:	mp), while the shell's /tmp is the user's Temp folder — files written one way are invisible to the other; put work in the scratchpad. (2) Headless Chrome won't go narrower than ~500 px, so a 390 px screenshot looks cropped; it is not a layout bug. (3) Heredocs containing apostrophes inside quoted JS strings repeatedly broke the shell here; write such files with the Write tool.
+
 ## 2026-10-02 — showing the sign-in end to end found a bug nobody had reported
 
 Told to "sign in again and show me", I drove the whole thing on the real laptop: Settings → Sign out → Sign in with Google → the Google page in the user's Chrome (outside my tool's tab group, so I read it with screen captures and clicked with real mouse events) → account chooser, now titled "continue to JARVIS" → "You're signing back in to JARVIS" → Continue → our branded page → back in the app. The Google-side fix (Testing mode, app name, test user) worked: the placeholder project number is gone.

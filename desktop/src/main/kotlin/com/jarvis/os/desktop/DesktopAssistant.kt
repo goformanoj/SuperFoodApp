@@ -595,9 +595,15 @@ class DesktopAssistant(
      */
     fun refreshPlan() {
         scope.launch {
-            if (UsageClient.refresh() != null) {
-                account = Identity.account()
-                usage = UsageStats.today()
+            // At launch the network, or the sign-in token, may not be ready yet: try again a few times, widening the gap,
+            // so a Pro account is never left reading "Free" just because the first call lost a race.
+            for (waitMs in REFRESH_RETRY_MS) {
+                if (waitMs > 0) kotlinx.coroutines.delay(waitMs)
+                if (UsageClient.refresh() != null) {
+                    account = Identity.account()
+                    usage = UsageStats.today()
+                    return@launch
+                }
             }
         }
     }
@@ -808,6 +814,9 @@ class DesktopAssistant(
     }
 
     companion object {
+        /** Gaps before each try at asking the Worker for the plan: now, then 4 s, 15 s, 60 s. */
+        private val REFRESH_RETRY_MS = listOf(0L, 4_000L, 15_000L, 60_000L)
+
         /** Rides on Quick bar questions: the answer lands in a small box and is often pasted somewhere. */
         const val QUICK_NOTE = "The user asked from the Quick bar (a small box over whatever they are doing). Keep the answer short. " +
             "When they ask you to rewrite, translate, fix or draft text, reply with ONLY the finished text, no preamble, so it can be copied straight into place. " +
