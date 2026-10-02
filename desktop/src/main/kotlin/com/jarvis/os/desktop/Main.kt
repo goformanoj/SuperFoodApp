@@ -81,7 +81,7 @@ import java.awt.Dimension
  *   --background      start hidden in the tray (what "Start with Windows" launches)
  */
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
-fun main(args: Array<String>) = application {
+private fun runApp(args: Array<String>) = application {
     val scope = rememberCoroutineScope()
     val assistant = remember { DesktopAssistant(scope).also { if ("--home" in args) it.newChat() } }
     val telemetry = remember { Telemetry(scope).also { it.start() } }
@@ -130,6 +130,12 @@ fun main(args: Array<String>) = application {
     // pop up. Quit from the tray menu. The first hide explains this once.
     val trayState = rememberTrayState()
     var windowVisible by remember { mutableStateOf(StartWithWindows.BACKGROUND_FLAG !in args) }
+
+    // A second launch of JARVIS asked this copy to show itself. Done HERE, not inside the window: a hidden
+    // (tray) window composes no content, so nothing inside it could ever wake it up.
+    LaunchedEffect(surfaceRequests.value) {
+        if (surfaceRequests.value > 0) { windowVisible = true; windowState.isMinimized = false }
+    }
 
     // ── The Quick bar (AGENT_PLAN §6): one key anywhere in Windows ─────────────
     var quickOpen by remember { mutableStateOf("--quickbar" in args) }
@@ -270,6 +276,17 @@ fun main(args: Array<String>) = application {
             // Compose creates the surface it draws into (a child window) a moment after the frame shows.
             repeat(60) { WindowChrome.attachChildren(handle); delay(250) }
         }
+        // A second launch of JARVIS (shortcut, Start menu, .exe) lands here instead of starting another copy:
+        // it asked this one to show itself. Hidden in the tray, minimised or behind other windows — bring it up.
+        LaunchedEffect(surfaceRequests.value) {
+            if (surfaceRequests.value == 0) return@LaunchedEffect
+            delay(80)
+            // Windows only lets the foreground process take focus; the second launch granted it (see claimSingleInstance).
+            window.isAlwaysOnTop = true
+            window.toFront()
+            window.requestFocus()
+            window.isAlwaysOnTop = false
+        }
         // The window's hairline border takes the theme's colour instead of the system accent.
         LaunchedEffect(appearance.palette) {
             WindowChrome.setBorderColor(window.windowHandle, lerp(appearance.palette.background, appearance.palette.accent, 0.28f).toArgb() and 0xFFFFFF)
@@ -368,6 +385,43 @@ fun main(args: Array<String>) = application {
             }
         }
     }
+}
+
+/** Bumped (from a helper thread) each time a later launch asks the running JARVIS to show itself. */
+private val surfaceRequests = mutableStateOf(0)
+
+/** Held for the life of the process: letting it be garbage-collected would release the lock. */
+private var singleInstance: SingleInstance? = null
+
+/**
+ * One JARVIS at a time (see [SingleInstance]). True = this process is THE JARVIS and should start the app;
+ * false = a copy was already running, it has been asked to show itself, and this process should just exit.
+ *
+ * Only the installed `JARVIS.exe` is guarded: a development run (`:desktop:run`, a java.exe) has no stable
+ * program to point at and must keep working beside an installed copy. `--new-instance` or
+ * `JARVIS_SINGLE_INSTANCE=0` opts out explicitly; `JARVIS_SINGLE_INSTANCE=1` opts a dev run in (testing).
+ */
+private fun claimSingleInstance(args: Array<String>): Boolean {
+    val force = System.getenv("JARVIS_SINGLE_INSTANCE")
+    val guarded = force == "1" || (force != "0" && StartWithWindows.exe() != null)
+    if (!guarded || "--new-instance" in args) return true
+    val guard = SingleInstance(AppDirs.root)
+    if (runCatching { guard.claim { surfaceRequests.value++ } }.getOrDefault(true).also { if (it) singleInstance = guard }) return true
+    // Someone else is JARVIS. We are the process the user just launched, so Windows lets us hand them the
+    // foreground; without this their window would only flash in the taskbar.
+    runCatching { com.sun.jna.Native.load("user32", UserForeground::class.java).AllowSetForegroundWindow(-1) }
+    val answered = SingleInstance.signal(AppDirs.root, show = StartWithWindows.BACKGROUND_FLAG !in args)
+    // If the running copy never answers (hung?), starting anyway beats a launch that silently does nothing.
+    return !answered
+}
+
+private interface UserForeground : com.sun.jna.Library {
+    fun AllowSetForegroundWindow(processId: Int): Boolean
+}
+
+fun main(args: Array<String>) {
+    if (!claimSingleInstance(args)) return
+    runApp(args)
 }
 
 private const val PREF_WAKE = "voice.wakeword"
