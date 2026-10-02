@@ -72,8 +72,14 @@ enum class Screen(val label: String, val icon: ImageVector, val primary: Boolean
 fun Sidebar(a: DesktopAssistant, screen: Screen, onHome: () -> Unit, onSearch: () -> Unit, onScreen: (Screen) -> Unit) {
     Column(Modifier.width(264.dp).fillMaxHeight().background(J.Glass)) {
         // The wordmark is the way home, as a logo is on any desktop app.
-        Box(Modifier.fillMaxWidth().padding(top = 22.dp, bottom = 16.dp), contentAlignment = Alignment.Center) {
-            Hint("Home") { JarvisWordmark(modifier = Modifier.clicky(onClick = onHome).padding(horizontal = 8.dp), scale = 0.62f, showSubtitle = true) }
+        Column(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Hint("Home") {
+                Column(Modifier.clicky(onClick = onHome).padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    JarvisLogo(54.dp)
+                    Spacer(Modifier.height(4.dp))
+                    JarvisWordmark(scale = 0.5f, showSubtitle = true)
+                }
+            }
         }
 
         Row(

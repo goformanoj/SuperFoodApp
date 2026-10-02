@@ -141,59 +141,7 @@ private fun WorldCard(selected: Boolean, onClick: () -> Unit, title: String, sub
 }
 
 @Composable
-fun SettingsScreen(a: DesktopAssistant) {
-    Page("Settings", "How this laptop connects to JARVIS.") {
-        Column(Modifier.widthIn(max = 780.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            SettingRow("Server", if (ProxyClient.isConfigured()) "Connected · ${BuildConfig.WORKER_URL.removePrefix("https://")}" else "Not configured")
-            val acct = a.account
-            SettingRow(
-                "Account",
-                when {
-                    acct.isSignedIn -> "${acct.email ?: acct.label()} (Google) · ${a.plan} plan"
-                    GoogleSignIn.isConfigured() -> "Guest · ${a.plan} plan · sign in from the sidebar to use your Google account"
-                    else -> "Guest · ${a.plan} plan · Google sign-in needs a Desktop OAuth client (see desktop/README.md)"
-                },
-            )
-            if (acct.isSignedIn) {
-                Text(
-                    "Sign out of this laptop", color = Color(0xFFFF8A8A), fontSize = 13.sp,
-                    modifier = Modifier.clip(HudShapeSmall).clicky { a.signOut() }.padding(8.dp),
-                )
-            }
-            GoogleRow(a)
-            SyncRow(a)
-            ToggleRow(
-                "Quick bar",
-                when {
-                    !a.quickBarOn -> "Off"
-                    a.quickKey != null -> "Press ${a.quickKey} anywhere to ask JARVIS"
-                    else -> "Couldn't get a key: Alt+Space and Ctrl+Alt+J are both taken by other apps"
-                },
-                a.quickBarOn,
-            ) { a.quickBarOn = it }
-            var startOn by remember { mutableStateOf(StartWithWindows.available && StartWithWindows.isOn()) }
-            ToggleRow(
-                "Start with Windows",
-                when {
-                    !StartWithWindows.available -> "Available in the installed JARVIS app (this is a development run)"
-                    startOn -> "JARVIS starts in the tray when you sign in to Windows, so routines and reminders keep working"
-                    else -> "Off. Turn on so routines and reminders keep working after a restart"
-                },
-                startOn, enabled = StartWithWindows.available,
-            ) { on -> if (StartWithWindows.set(on)) startOn = StartWithWindows.isOn() }
-            SettingRow("Build secrets", "%USERPROFILE%\\.gradle\\gradle.properties — PROXY_SECRET, FIREBASE_WEB_API_KEY. Rebuild after changing.")
-            SettingRow("Your data", AppDirs.root.absolutePath + " — conversations, memory, identity, appearance")
-            SettingRow("Version", "Desktop ${BuildConfig.VERSION_NAME}")
-        }
-    }
-}
-
-/**
- * Google Calendar + Gmail (Phase 6): connect / disconnect, and exactly what it allows. Honest
- * when the build has no Desktop OAuth client yet (the owner's one-time console step).
- */
-@Composable
-private fun GoogleRow(a: DesktopAssistant) {
+internal fun GoogleRow(a: DesktopAssistant) {
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Calendar & Gmail", color = J.TextMuted, fontSize = 14.sp, modifier = Modifier.width(150.dp))
@@ -233,7 +181,7 @@ private fun GoogleRow(a: DesktopAssistant) {
  * and laptop together — an anonymous laptop has no "other device" to share with.
  */
 @Composable
-private fun SyncRow(a: DesktopAssistant) {
+internal fun SyncRow(a: DesktopAssistant) {
     val enabled = a.account.isSignedIn
     val status = when {
         !enabled -> "Needs Google sign-in above — an account is what ties your phone and laptop together"

@@ -221,6 +221,8 @@ compose.desktop {
             vendor = "JARVIS OS"
             windows {
                 menuGroup = "JARVIS"
+                // The phone logo, so the installer, the exe, shortcuts and the taskbar all wear the JARVIS mark.
+                iconFile.set(project.file("src/main/resources/logo/jarvis.ico"))
                 shortcut = true
                 // Stable id so an upgrade replaces the install instead of adding a second one.
                 upgradeUuid = "6f3c1f2e-8a4b-4c7e-9d2a-5b1e0c9a7d41"

@@ -110,6 +110,11 @@ class DesktopPrefs(private val file: File = AppDirs.file("prefs.properties")) {
         }
     }
 
+    /** How dark the see-through Holo tint is, 0 (clear) .. 1 (dense). Default is the middle. */
+    fun glassLevel(): Float = (props().getProperty(KEY_GLASS)?.toFloatOrNull() ?: DEFAULT_GLASS).coerceIn(0f, 1f)
+
+    fun setGlassLevel(v: Float) = edit { it.setProperty(KEY_GLASS, v.coerceIn(0f, 1f).toString()) }
+
     /** A simple on/off preference (e.g. the wake word). */
     fun flag(key: String, default: Boolean = false): Boolean =
         props().getProperty(key)?.let { it == "true" } ?: default
@@ -129,6 +134,8 @@ class DesktopPrefs(private val file: File = AppDirs.file("prefs.properties")) {
     companion object {
         private const val KEY_THEME = "theme"
         private const val KEY_BACKDROP = "backdrop"
+        private const val KEY_GLASS = "glass.level"
+        const val DEFAULT_GLASS = 0.5f
         private const val KEY_W = "window.width"
         private const val KEY_H = "window.height"
         private const val KEY_X = "window.x"

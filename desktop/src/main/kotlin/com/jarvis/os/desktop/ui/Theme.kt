@@ -43,6 +43,9 @@ import com.jarvis.os.voice.OrbState
  * theme's colour reads the active [JarvisPalette] — so choosing Forge turns the
  * whole app gold, exactly as it does on the phone.
  */
+/** How dense the Holo glass is, 0..1 (the Settings slider). Only the translucent theme reads it. */
+val LocalGlassLevel = androidx.compose.runtime.compositionLocalOf { 0.5f }
+
 object J {
     val Hairline = Color(0x14FFFFFF)
     val Border = Color(0x1FFFFFFF)
@@ -71,14 +74,18 @@ object J {
     val translucent: Boolean @Composable @ReadOnlyComposable get() = LocalPalette.current == JarvisPalette.Holo
 
     /** Glass over the live world: the backdrop shows through, text still reads. */
-    val Glass: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = if (translucent) 0.40f else 0.72f)
-    val Card: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.surface.copy(alpha = if (translucent) 0.44f else 0.88f)
+    val Glass: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = if (translucent) glassAlpha(0.22f, 0.62f) else 0.72f)
+    val Card: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.surface.copy(alpha = if (translucent) glassAlpha(0.26f, 0.66f) else 0.88f)
     val CardBorder: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.accent.copy(alpha = if (translucent) 0.45f else 0.20f)
-    val Veil: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = if (translucent) 0.58f else 0.80f)
+    val Veil: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = if (translucent) glassAlpha(0.40f, 0.78f) else 0.80f)
+
+    /** [lo] at a clear pane, [hi] at the densest, in between as the slider moves. */
+    @Composable @ReadOnlyComposable
+    fun glassAlpha(lo: Float, hi: Float): Float = lo + (hi - lo) * LocalGlassLevel.current
 }
 
 @Composable
-fun DesktopTheme(palette: JarvisPalette, content: @Composable () -> Unit) {
+fun DesktopTheme(palette: JarvisPalette, glass: Float = 0.5f, content: @Composable () -> Unit) {
     val scheme = remember(palette) {
         darkColorScheme(
             primary = palette.accent,
@@ -95,7 +102,7 @@ fun DesktopTheme(palette: JarvisPalette, content: @Composable () -> Unit) {
             error = J.Red,
         )
     }
-    CompositionLocalProvider(LocalPalette provides palette) {
+    CompositionLocalProvider(LocalPalette provides palette, LocalGlassLevel provides glass) {
         MaterialTheme(colorScheme = scheme, typography = DesktopTypography, content = content)
     }
 }

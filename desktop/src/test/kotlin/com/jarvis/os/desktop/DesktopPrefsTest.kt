@@ -79,6 +79,22 @@ class DesktopPrefsTest {
     }
 
     @Test
+    fun glassLevelDefaultsToTheMiddleRoundTripsAndStaysInRange() {
+        val prefs = DesktopPrefs(tmp.root.resolve("p.properties"))
+        assertEquals(DesktopPrefs.DEFAULT_GLASS, prefs.glassLevel(), 0f)
+        prefs.setGlassLevel(0.2f)
+        assertEquals(0.2f, prefs.glassLevel(), 0.001f)
+        prefs.setGlassLevel(7f)      // a slider can never exceed 1, but a hand-edited file can
+        assertEquals(1f, prefs.glassLevel(), 0f)
+        prefs.setGlassLevel(-3f)
+        assertEquals(0f, prefs.glassLevel(), 0f)
+        // And it does not disturb the theme stored beside it.
+        prefs.save(DesktopPrefs.Appearance(JarvisPalette.Holo, ""))
+        prefs.setGlassLevel(0.7f)
+        assertEquals(JarvisPalette.Holo, prefs.load().palette)
+    }
+
+    @Test
     fun theStarkThemeSurvivesARoundTrip() {
         val prefs = DesktopPrefs(tmp.root.resolve("p.properties"))
         prefs.save(DesktopPrefs.Appearance(JarvisPalette.Stark, DesktopWorld.Foundry.id))

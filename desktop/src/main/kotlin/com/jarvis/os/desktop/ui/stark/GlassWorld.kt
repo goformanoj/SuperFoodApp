@@ -29,6 +29,7 @@ import kotlin.math.min
 @Composable
 fun GlassWorld(palette: JarvisPalette, modifier: Modifier = Modifier, live: Boolean = true, thumbnail: Boolean = false) {
     val clock = rememberWorldTime(live, thumbnail)
+    val glass = com.jarvis.os.desktop.ui.LocalGlassLevel.current
     Canvas(modifier.fillMaxSize()) {
         val t = clock.floatValue
         val w = size.width
@@ -42,7 +43,9 @@ fun GlassWorld(palette: JarvisPalette, modifier: Modifier = Modifier, live: Bool
         if (thumbnail) standInWallpaper(palette, w, h)
 
         // The tint: enough to keep light text legible over a bright desktop, light enough to stay see-through.
-        drawRect(Brush.verticalGradient(listOf(palette.background.copy(alpha = 0.44f), palette.background.copy(alpha = 0.56f), palette.background.copy(alpha = 0.68f))))
+        val k = glass
+        fun tint(lo: Float, hi: Float) = palette.background.copy(alpha = lo + (hi - lo) * k)
+        drawRect(Brush.verticalGradient(listOf(tint(0.26f, 0.60f), tint(0.34f, 0.72f), tint(0.42f, 0.84f))))
         // A cool sheen across the top, as on a pane of glass.
         drawRect(Brush.verticalGradient(listOf(accent.copy(alpha = 0.10f), Color.Transparent), 0f, h * 0.35f), size = Size(w, h * 0.35f))
 

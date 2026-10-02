@@ -1,5 +1,13 @@
 # JARVIS OS — Build Memory
 
+## 2026-10-02 — Settings for a user, not for the builder; one logo, many colours
+
+The user's screenshot of Settings: "how are these relevant to the user?" They were right — the page listed a Server URL, "Build secrets: %USERPROFILE%.gradlegradle.properties…" and "Google sign-in needs a Desktop OAuth client (see desktop/README.md)". Those are notes the developer wrote to themselves. A setting belongs on this page only if a person using the app would want to change it, so I regrouped by what someone looks for (account, voice, shortcuts and startup, appearance, privacy, about) and wrote each description as what it does for them. What a user can't act on is hidden, not explained: the Google group is simply absent when sign-in isn't configured. The few developer facts that are still useful (server, folder path) sit behind "Advanced".
+
+**Logo.** The phone's icon is a bitmap badge with a blue glow. To colour it per theme without keeping five artworks, `LogoTint` shifts every pixel's HUE by (theme accent hue − the artwork's glow hue ≈ 207°) and leaves saturation, brightness and alpha alone. That is the whole trick: greys have no hue to shift, so the white "J" and the dark metal stay exactly as they are, while the blue glow becomes amber under Forge. Tested on greys, alpha, wrap-around and a full image. The same bitmap feeds the window and tray icon, and a generated multi-size .ico (16–256 px, PNG-compressed) makes the installer, exe and shortcuts wear it too.
+
+**Glass opacity** (promised after the see-through work): one stored number (`glass.level`), a composition local, and `J.glassAlpha(lo, hi)` so every translucent surface moves together; the slider only appears when the see-through world is active, because it does nothing otherwise.
+
 ## 2026-10-02 — see-through for real: a transparent window, tested before trusting it
 
 The user answered the fork: they meant the actual Windows desktop. That needs a transparent window, which is fixed when a window is created — so Main wraps the Window in `key(seeThrough)` and the Glass world sets the flag; every piece of state (assistant, prefs, window state) already lived above the Window, so recreating it on a theme switch loses nothing.

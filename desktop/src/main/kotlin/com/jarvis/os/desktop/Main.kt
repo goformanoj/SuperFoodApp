@@ -68,6 +68,7 @@ import com.jarvis.os.desktop.ui.TodayRail
 import com.jarvis.os.desktop.ui.WindowControls
 import kotlinx.coroutines.delay
 import com.jarvis.os.desktop.ui.hasConversation
+import com.jarvis.os.desktop.ui.LogoPainter
 import com.jarvis.os.desktop.ui.stark.DesktopWorldView
 import com.jarvis.os.ui.theme.JarvisPalette
 import java.awt.Dimension
@@ -87,6 +88,7 @@ private fun runApp(args: Array<String>) = application {
     val assistant = remember { DesktopAssistant(scope).also { if ("--home" in args) it.newChat() } }
     val telemetry = remember { Telemetry(scope).also { it.start() } }
     val prefs = remember { DesktopPrefs() }
+    var glass by remember { mutableStateOf(prefs.glassLevel()) }
     var appearance by remember {
         val saved = prefs.load()
         val preview = args.firstOrNull { it.startsWith("--theme=") }?.substringAfter("=")
@@ -160,7 +162,7 @@ private fun runApp(args: Array<String>) = application {
     )
     var toldAboutTray by remember { mutableStateOf(prefs.flag(PREF_TOLD_TRAY)) }
     Tray(
-        icon = remember(appearance.palette) { ReactorIcon(appearance.palette) },
+        icon = remember(appearance.palette) { LogoPainter(appearance.palette) },
         state = trayState,
         tooltip = "JARVIS",
         onAction = { windowVisible = true },
@@ -259,7 +261,7 @@ private fun runApp(args: Array<String>) = application {
         // still handles dragging, edge-resizing and snapping — see WindowChrome.
         undecorated = true,
         transparent = seeThrough,
-        icon = remember(appearance.palette) { ReactorIcon(appearance.palette) },
+        icon = remember(appearance.palette) { LogoPainter(appearance.palette) },
         state = windowState,
         onPreviewKeyEvent = { e ->
             when {
@@ -297,7 +299,7 @@ private fun runApp(args: Array<String>) = application {
         LaunchedEffect(appearance.palette) {
             WindowChrome.setBorderColor(window.windowHandle, lerp(appearance.palette.background, appearance.palette.accent, 0.28f).toArgb() and 0xFFFFFF)
         }
-        DesktopTheme(appearance.palette) {
+        DesktopTheme(appearance.palette, glass) {
             val home = screen == Screen.Chat && !hasConversation(assistant)
 
             // Drop files anywhere on the window: JARVIS reads them in and puts them in the composer.
@@ -356,7 +358,13 @@ private fun runApp(args: Array<String>) = application {
                             Screen.Activity -> ActivityScreen(assistant)
                             Screen.Permissions -> PermissionsScreen(assistant)
                             Screen.Appearance -> AppearanceScreen(appearance) { appearance = it; prefs.save(it) }
-                            Screen.Settings -> SettingsScreen(assistant)
+                            Screen.Settings -> SettingsScreen(
+                                assistant, appearance, glass,
+                                onGlass = { glass = it; prefs.setGlassLevel(it) },
+                                onThemes = { screen = Screen.Appearance },
+                                onPermissions = { screen = Screen.Permissions },
+                                onMemory = { screen = Screen.Memory },
+                            )
                             Screen.Tasks -> TasksScreen(assistant, ::openConversation)
                             Screen.Scheduled -> ScheduledScreen(assistant, onOpenChat = { screen = Screen.Chat })
                             Screen.Files -> FilesScreen(assistant, onAsk = { screen = Screen.Chat }, onOpenConversation = ::openConversation)
@@ -444,14 +452,3 @@ private fun Divider() {
 }
 
 /** The taskbar/title-bar icon: a small reactor in the theme's colours, not Java's default cup. */
-private class ReactorIcon(private val p: JarvisPalette) : Painter() {
-    override val intrinsicSize = Size(64f, 64f)
-    override fun DrawScope.onDraw() {
-        val r = size.minDimension / 2f
-        drawCircle(p.background, r)
-        drawCircle(Brush.radialGradient(listOf(Color.White, p.accent, Color.Transparent), center, r * 0.55f), r * 0.55f)
-        drawCircle(p.accent, r * 0.78f, style = Stroke(r * 0.09f))
-        drawArc(p.highlight, -60f, 120f, false, topLeft = center.copy(x = center.x - r * 0.93f, y = center.y - r * 0.93f), size = Size(r * 1.86f, r * 1.86f), style = Stroke(r * 0.1f))
-        drawArc(p.highlight, 120f, 120f, false, topLeft = center.copy(x = center.x - r * 0.93f, y = center.y - r * 0.93f), size = Size(r * 1.86f, r * 1.86f), style = Stroke(r * 0.1f))
-    }
-}
