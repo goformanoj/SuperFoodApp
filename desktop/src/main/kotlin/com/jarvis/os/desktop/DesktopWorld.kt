@@ -18,6 +18,7 @@ enum class DesktopWorld(val id: String, val displayName: String, val blurb: Stri
     Foundry("foundry", "Foundry", "Embers rising off a molten grate under heat haze."),
     DeepSpace("deepspace", "Deep Space", "A spiral galaxy turning slowly in drifting violet gas."),
     Orbital("orbital", "Orbital", "A planet's lit edge, satellites on their tracks, a station in the dark."),
+    Skyline("skyline", "Skyline", "A city at night under a heavy sky, its lights mirrored in the river."),
     ;
 
     companion object {
@@ -31,6 +32,7 @@ enum class DesktopWorld(val id: String, val displayName: String, val blurb: Stri
             JarvisPalette.Nebula -> DeepSpace
             JarvisPalette.Orbit -> Orbital
             JarvisPalette.Stark -> Deck
+            JarvisPalette.Holo -> Skyline
         }
 
         fun fromId(id: String?): DesktopWorld? = entries.firstOrNull { it.id == id }

@@ -36,7 +36,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-private fun rememberNow() = produceState(LocalDateTime.now()) {
+internal fun rememberNow() = produceState(LocalDateTime.now()) {
     while (true) { value = LocalDateTime.now(); delay(1000) }
 }
 

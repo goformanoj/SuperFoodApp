@@ -1,6 +1,5 @@
 package com.jarvis.os.desktop
 
-import com.jarvis.os.ui.theme.BackdropStyle
 import com.jarvis.os.ui.theme.JarvisPalette
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,24 +18,24 @@ class DesktopPrefsTest {
     fun noFileMeansTheDefaultThemeAndItsOwnWorld() {
         val a = DesktopPrefs(tmp.root.resolve("p.properties")).load()
         assertEquals(JarvisPalette.Default, a.palette)
-        assertEquals(BackdropStyle.defaultFor(JarvisPalette.Default.orbStyle), a.backdrop)
+        assertEquals(DesktopWorld.ownFor(JarvisPalette.Default), a.desktopWorld)
     }
 
     @Test
     fun roundTripsThemeAndBackdrop() {
         val prefs = DesktopPrefs(tmp.root.resolve("p.properties"))
-        val chosen = BackdropStyle.entries.last()
+        val chosen = DesktopWorld.entries.last()
         prefs.save(DesktopPrefs.Appearance(JarvisPalette.Forge, chosen.id))
         val back = prefs.load()
         assertEquals(JarvisPalette.Forge, back.palette)
-        assertEquals(chosen, back.backdrop)
+        assertEquals(chosen, back.desktopWorld)
     }
 
     @Test
     fun blankBackdropFollowsTheTheme() {
         val prefs = DesktopPrefs(tmp.root.resolve("p.properties"))
         prefs.save(DesktopPrefs.Appearance(JarvisPalette.Orbit, ""))
-        assertEquals(BackdropStyle.defaultFor(JarvisPalette.Orbit.orbStyle), prefs.load().backdrop)
+        assertEquals(DesktopWorld.Orbital, prefs.load().desktopWorld)
     }
 
     @Test
@@ -44,23 +43,22 @@ class DesktopPrefsTest {
         assertEquals(DesktopWorld.Deck, DesktopPrefs.Appearance(JarvisPalette.Stark, "").desktopWorld)
         assertEquals(DesktopWorld.ReactorHall, DesktopPrefs.Appearance(JarvisPalette.Arc, "").desktopWorld)
         assertEquals(DesktopWorld.Foundry, DesktopPrefs.Appearance(JarvisPalette.Forge, "").desktopWorld)
+        assertEquals(DesktopWorld.Skyline, DesktopPrefs.Appearance(JarvisPalette.Holo, "").desktopWorld)
         // Picked on purpose under another theme.
         assertEquals(DesktopWorld.Orbital, DesktopPrefs.Appearance(JarvisPalette.Forge, DesktopWorld.Orbital.id).desktopWorld)
     }
 
     @Test
-    fun aPhoneBackdropChoiceMeansNoLaptopWorld() {
-        assertNull(DesktopPrefs.Appearance(JarvisPalette.Stark, BackdropStyle.Canyon.id).desktopWorld)
-        // An id from some future or removed build also falls out to the phone path rather than a blank screen.
-        assertNull(DesktopPrefs.Appearance(JarvisPalette.Arc, "no-such-world").desktopWorld)
+    fun anUnrecognisedStoredWorldFallsBackToTheThemesOwnNeverABlankScreen() {
+        // The ids of the phone's old backdrops (still in a prefs file written by an earlier build), and junk.
+        assertEquals(DesktopWorld.Deck, DesktopPrefs.Appearance(JarvisPalette.Stark, "canyon").desktopWorld)
+        assertEquals(DesktopWorld.ReactorHall, DesktopPrefs.Appearance(JarvisPalette.Arc, "no-such-world").desktopWorld)
     }
 
     @Test
-    fun worldIdsAreUniqueAndNeverCollideWithThePhonesBackdrops() {
+    fun worldIdsAreUniqueAndRoundTrip() {
         val ids = DesktopWorld.entries.map { it.id }
         assertEquals(ids.size, ids.toSet().size)
-        val phone = BackdropStyle.entries.map { it.id }.toSet()
-        assertTrue("a shared id would make a saved choice ambiguous", ids.none { it in phone })
         DesktopWorld.entries.forEach { assertEquals(it, DesktopWorld.fromId(it.id)) }
     }
 
@@ -157,7 +155,7 @@ class DesktopPrefsTest {
         val f = tmp.root.resolve("p.properties").apply { writeText("theme=gone\nbackdrop=also-gone\n") }
         val a = DesktopPrefs(f).load()
         assertEquals(JarvisPalette.Default, a.palette)
-        assertEquals(BackdropStyle.defaultFor(JarvisPalette.Default.orbStyle), a.backdrop)
+        assertEquals(DesktopWorld.ownFor(JarvisPalette.Default), a.desktopWorld)
     }
     @Test
     fun theQuickBarReopensWhereAndHowBigItWasLeftWithinSaneBounds() {

@@ -68,7 +68,6 @@ import com.jarvis.os.desktop.ui.WindowControls
 import kotlinx.coroutines.delay
 import com.jarvis.os.desktop.ui.hasConversation
 import com.jarvis.os.desktop.ui.stark.DesktopWorldView
-import com.jarvis.os.ui.components.ThemeBackdrop
 import com.jarvis.os.ui.theme.JarvisPalette
 import java.awt.Dimension
 
@@ -323,9 +322,7 @@ private fun runApp(args: Array<String>) = application {
                 // The theme's world, behind EVERY screen — as on the phone. Live only on
                 // Home, where nothing scrolls: behind a list its redraws would compete
                 // with the scroll for the same frame budget.
-                val world = appearance.desktopWorld
-                if (world != null) DesktopWorldView(world, appearance.palette, live = home)
-                else ThemeBackdrop(palette = appearance.palette, backdrop = appearance.backdrop, live = home)
+                DesktopWorldView(appearance.desktopWorld, appearance.palette, live = home)
                 // The veil: Home IS the backdrop; screens with text need a surface to read on.
                 if (!home) Box(Modifier.fillMaxSize().background(J.Veil))
                 // The instrument grid and vignette over everything: the HUD's glass.

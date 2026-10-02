@@ -64,11 +64,17 @@ object J {
     val Secondary: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.secondary
     val OnAccent: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background
 
+    /**
+     * True for the Holo theme: its panels are a thin layer of tinted glass over the world, not solid cards,
+     * so the city shows through everything. Every other theme keeps the denser glass below.
+     */
+    val translucent: Boolean @Composable @ReadOnlyComposable get() = LocalPalette.current == JarvisPalette.Holo
+
     /** Glass over the live world: the backdrop shows through, text still reads. */
-    val Glass: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = 0.72f)
-    val Card: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.surface.copy(alpha = 0.88f)
-    val CardBorder: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.accent.copy(alpha = 0.20f)
-    val Veil: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = 0.80f)
+    val Glass: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = if (translucent) 0.30f else 0.72f)
+    val Card: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.surface.copy(alpha = if (translucent) 0.34f else 0.88f)
+    val CardBorder: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.accent.copy(alpha = if (translucent) 0.45f else 0.20f)
+    val Veil: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = if (translucent) 0.38f else 0.80f)
 }
 
 @Composable

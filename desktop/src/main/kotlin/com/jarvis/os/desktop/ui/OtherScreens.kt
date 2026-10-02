@@ -55,8 +55,6 @@ import com.jarvis.os.desktop.DesktopWorld
 import com.jarvis.os.desktop.ui.stark.DesktopWorldView
 import com.jarvis.os.ui.theme.LocalPalette
 import com.jarvis.os.voice.OrbState
-import com.jarvis.os.ui.components.ThemeBackdrop
-import com.jarvis.os.ui.theme.BackdropStyle
 import com.jarvis.os.ui.theme.JarvisPalette
 
 @Composable
@@ -114,7 +112,7 @@ fun AppearanceScreen(appearance: DesktopPrefs.Appearance, onChange: (DesktopPref
         Spacer(Modifier.height(34.dp))
         Text("WORLD", color = J.Text, fontSize = 14.sp, fontFamily = J.Display, letterSpacing = 2.sp)
         Spacer(Modifier.height(6.dp))
-        Text("What JARVIS sits in. The five on the first row are drawn for the laptop; the rest are the phone's. \"Theme's own\" follows the theme you pick.", color = J.TextDim, fontSize = 13.sp)
+        Text("What JARVIS sits in. \"Theme's own\" follows the theme you pick; any world works under any theme.", color = J.TextDim, fontSize = 13.sp)
         Spacer(Modifier.height(16.dp))
         val current = appearance.desktopWorld
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -123,14 +121,6 @@ fun AppearanceScreen(appearance: DesktopPrefs.Appearance, onChange: (DesktopPref
                 val own = dw == DesktopWorld.ownFor(appearance.palette)
                 WorldCard(selected, onClick = { onChange(appearance.copy(backdropId = if (own) "" else dw.id)) }, title = dw.displayName, subtitle = if (own) "Theme's own" else dw.blurb) {
                     DesktopWorldView(dw, appearance.palette, live = false, thumbnail = true)
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            BackdropStyle.entries.forEach { b ->
-                WorldCard(current == null && b == appearance.backdrop, onClick = { onChange(appearance.copy(backdropId = b.id)) }, title = b.displayName, subtitle = b.blurb) {
-                    ThemeBackdrop(palette = appearance.palette, backdrop = b, thumbnail = true, live = false)
                 }
             }
         }

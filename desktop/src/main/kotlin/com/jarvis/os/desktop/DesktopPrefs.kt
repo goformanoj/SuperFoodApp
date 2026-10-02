@@ -1,6 +1,5 @@
 package com.jarvis.os.desktop
 
-import com.jarvis.os.ui.theme.BackdropStyle
 import com.jarvis.os.ui.theme.JarvisPalette
 import java.io.File
 import java.util.Properties
@@ -8,7 +7,7 @@ import java.util.Properties
 /**
  * The desktop's appearance choices — the same two the phone offers: a theme (which
  * decides the orb) and a world behind it. Stored by the same permanent ids the phone
- * uses ([JarvisPalette.id], [BackdropStyle.id]), in a properties file under [AppDirs].
+ * uses ([JarvisPalette.id], plus the laptop's [DesktopWorld.id]), in a properties file under [AppDirs].
  *
  * An empty backdrop id means "the theme's own world", exactly as on the phone, so a
  * theme change carries its world with it until the user picks one on purpose.
@@ -16,13 +15,12 @@ import java.util.Properties
 class DesktopPrefs(private val file: File = AppDirs.file("prefs.properties")) {
 
     data class Appearance(val palette: JarvisPalette, val backdropId: String) {
-        val backdrop: BackdropStyle get() = BackdropStyle.resolve(backdropId, palette.orbStyle)
-
         /**
-         * The laptop-drawn world behind everything, or null when the user chose one of the phone's
-         * ten backdrops. A blank id is "the theme's own", which is always a laptop-drawn world.
+         * The world behind everything. A stored id that names one of the laptop's worlds wins; a blank id, or
+         * one nothing recognises (the phone's old backdrop ids from an earlier build), falls back to the theme's
+         * own — never a blank screen.
          */
-        val desktopWorld: DesktopWorld? get() = DesktopWorld.fromId(backdropId) ?: if (backdropId.isEmpty()) DesktopWorld.ownFor(palette) else null
+        val desktopWorld: DesktopWorld get() = DesktopWorld.fromId(backdropId) ?: DesktopWorld.ownFor(palette)
     }
 
     fun load(): Appearance {

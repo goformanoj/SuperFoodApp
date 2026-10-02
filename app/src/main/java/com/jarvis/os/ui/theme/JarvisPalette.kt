@@ -119,6 +119,24 @@ enum class JarvisPalette(
         orbStyle = OrbStyle.Reactor,
         desktopOnly = true,
     ),
+    /**
+     * Desktop only. JARVIS as an interface rather than a scene: translucent line-art panels floating over
+     * a night city, in the teal-cyan of a holographic overlay with amber for anything that wants attention.
+     * Its panels let the world show through (see the desktop's `J.translucent`), and it carries the densest Home.
+     */
+    Holo(
+        id = "holo",
+        displayName = "Holo",
+        blurb = "A translucent interface over a night city: line-art panels, live readouts, a system log.",
+        accent = Color(0xFF3DE8E0),
+        secondary = Color(0xFF2A8FD0),
+        highlight = Color(0xFFFFC857),
+        wordmark = Color(0xFFD8FFFB),
+        background = Color(0xFF040A12),
+        surface = Color(0xFF0A1722),
+        orbStyle = OrbStyle.Reactor,
+        desktopOnly = true,
+    ),
     ;
 
     companion object {

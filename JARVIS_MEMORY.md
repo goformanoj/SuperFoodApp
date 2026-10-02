@@ -1,5 +1,17 @@
 # JARVIS OS — Build Memory
 
+## 2026-10-02 — Holo: designing from reference images, and keeping 'sci-fi text' honest
+
+The user sent three references: a golden holographic sphere, a blue instrument-panel wallpaper, and a cyan line-art HUD floating over a night city. Their read: "more JARVIS-centred… translucent panel, more information… proper sci-fi/hacker writing". I took the third as the target: not a scene with cards on it, but an interface laid over a scene.
+
+**Design decisions and why.** (1) The world is a painted city, but rendered ONCE into a cached bitmap per window size (`drawWithCache` + an offscreen `ImageBitmap`): thousands of lit windows redrawn every frame would be the most expensive thing in the app, while a cached image plus a few animated extras is nearly free. The river is the same bitmap flipped about the horizon and faded — a reflection for the price of one extra draw. (2) Translucency is a token (`J.translucent`), not a new set of panels: every screen's existing glass, cards and veil read one flag, so the whole theme goes see-through at once. (3) Holo gets its own, denser Home rather than restyling the shared one, and falls back to the shared one when the window is narrow.
+
+**'Hacker writing' vs the project's own rule.** Telemetry's doc says nothing on a panel may be decorative data. A fake boot log ("neural link… OK") would break that. So `JarvisVoice.logLines` builds each line from a value the app really has, and an unknown value is said to be unknown ("awaiting first reply", "sampling"). The style is sci-fi; the content is true. Tested: a snapshot with no numbers produces no percent signs.
+
+**Removed:** the phone's ten backdrops from the desktop (the user called them old). Stored ids from earlier builds fall back to the theme's own world.
+
+**Unresolved ambiguity worth remembering:** "a translucent layer above the home screen" could mean over the app's own Home (built) or over the Windows desktop itself. The second needs a transparent or acrylic window, which fights the custom frameless chrome in WindowChrome.kt. Not attempted; ask first.
+
 ## 2026-10-02 — themes redesigned: the weak part was the world, not the orb (and one over-busy background)
 
 The user's screenshots were the Themes and World pickers, both drawn by the phone's code: 4 themes with phone-sized previews and 10 phone backdrops. Their verdict: "too basic, only good enough for the phone". The desktop already had its own, richer HUD orb (`ReactorOrb`), so the gap was the backdrops and the picker, not the centrepiece.

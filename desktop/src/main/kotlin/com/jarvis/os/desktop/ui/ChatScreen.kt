@@ -1,5 +1,7 @@
 package com.jarvis.os.desktop.ui
 
+import com.jarvis.os.desktop.JarvisVoice
+
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -100,14 +102,14 @@ private fun orbStateOf(a: DesktopAssistant): OrbState = when {
 }
 
 private fun statusOf(a: DesktopAssistant): String = when {
-    !a.configured -> "Not connected"
-    a.voice == DesktopAssistant.Voice.Listening -> "Listening"
-    a.voice == DesktopAssistant.Voice.Transcribing -> "Transcribing"
-    a.voice == DesktopAssistant.Voice.Speaking -> "Speaking · click the mic to interrupt"
-    a.thinkingHere -> "Thinking"
-    a.error != null -> "Something went wrong"
-    else -> "Online · ready"
-}
+    !a.configured -> JarvisVoice.Status.Offline
+    a.voice == DesktopAssistant.Voice.Listening -> JarvisVoice.Status.Listening
+    a.voice == DesktopAssistant.Voice.Transcribing -> JarvisVoice.Status.Transcribing
+    a.voice == DesktopAssistant.Voice.Speaking -> JarvisVoice.Status.Speaking
+    a.thinkingHere -> JarvisVoice.Status.Thinking
+    a.error != null -> JarvisVoice.Status.Fault
+    else -> JarvisVoice.Status.Ready
+}.line
 
 /** Home: the orb is the hero, exactly as on the phone. */
 fun hasConversation(a: DesktopAssistant) = a.turns.isNotEmpty() || a.thinkingHere
@@ -147,17 +149,17 @@ private fun Cockpit(
     onMemory: () -> Unit,
     onTasks: () -> Unit,
 ) {
-    val hour = LocalTime.now().hour
-    val greeting = when (hour) {
-        in 5..11 -> "Good morning"
-        in 12..16 -> "Good afternoon"
-        else -> "Good evening"
-    }
+    val greeting = JarvisVoice.greeting(LocalTime.now().hour)
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val wide = maxWidth >= 960.dp
-        val orbSize = (minOf(maxWidth - if (wide) 520.dp else 40.dp, maxHeight - 250.dp)).coerceIn(240.dp, 460.dp)
-        Row(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp)) {
-            if (wide) Column(Modifier.width(236.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        // The Holo theme has its own, denser Home — flanks of live readouts and a status bar — but only with room for them.
+        val holo = J.translucent && maxWidth >= 1000.dp
+        val orbSize = (minOf(maxWidth - if (wide) 520.dp else 40.dp, maxHeight - if (holo) 330.dp else 250.dp)).coerceIn(240.dp, 460.dp)
+        Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp)) {
+        if (holo) HoloStatusBar(a, telemetry)
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            if (holo) HoloLeft(a, telemetry, Modifier.width(268.dp).fillMaxHeight())
+            else if (wide) Column(Modifier.width(236.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 ChronoPanel(telemetry, Modifier.fillMaxWidth())
                 SystemPanel(telemetry, Modifier.fillMaxWidth())
                 LinkPanel(a, Modifier.fillMaxWidth())
@@ -169,29 +171,25 @@ private fun Cockpit(
             ) {
                 Text(greeting.uppercase(), color = J.Text, fontSize = 22.sp, fontFamily = J.Display, letterSpacing = 4.sp, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(4.dp))
-                Text("How can I help you today?", color = J.TextMuted, fontSize = 14.sp)
+                Text(JarvisVoice.TAGLINE, color = J.TextMuted, fontSize = 14.sp)
                 ReactorOrb(size = orbSize, state = orbStateOf(a))
                 StatusLine(a)
                 Spacer(Modifier.height(10.dp))
                 WakeChip(a)
                 Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("Plan my day", "Explain it simply", "Remember something").forEach { s -> Suggestion(s) { text.value = suggestionText(s) } }
+                    JarvisVoice.QUICK.forEach { q -> Suggestion(q.label) { text.value = q.prompt } }
                 }
             }
-            if (wide) Column(Modifier.width(236.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (holo) HoloRight(a, telemetry, onMemory, onTasks, Modifier.width(268.dp).fillMaxHeight())
+            else if (wide) Column(Modifier.width(236.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 TodayPanel(a, onTasks, Modifier.fillMaxWidth())
                 MemoryPanel(a, onMemory, Modifier.fillMaxWidth())
                 ModulesPanel(Modifier.fillMaxWidth())
             }
         }
+        }
     }
-}
-
-private fun suggestionText(s: String) = when (s) {
-    "Plan my day" -> "Plan my day around my priorities: "
-    "Explain it simply" -> "Explain this in plain words: "
-    else -> "Remember that "
 }
 
 @Composable
@@ -521,11 +519,11 @@ private fun Composer(a: DesktopAssistant, textState: MutableState<String>, focus
             Box {
                 if (text.isEmpty()) Text(
                     when {
-                        a.voice == DesktopAssistant.Voice.Listening -> "Listening… speak now — I'll stop when you pause"
-                        a.voice == DesktopAssistant.Voice.Transcribing -> "Transcribing…"
+                        a.voice == DesktopAssistant.Voice.Listening -> "Audio input active — speak now, I'll stop when you pause"
+                        a.voice == DesktopAssistant.Voice.Transcribing -> "Decoding audio…"
                         a.pendingShot != null -> "Ask about your screen… (Enter sends it with the screenshot)"
                         a.pendingDocs.isNotEmpty() -> "Ask about ${if (a.pendingDocs.size == 1) a.pendingDocs[0].name else "these files"}, or press Enter for a summary"
-                        else -> "Ask anything, or tell JARVIS what to do… (Ctrl+Space to talk)"
+                        else -> JarvisVoice.COMPOSER_HINT
                     },
                     color = if (a.voice == DesktopAssistant.Voice.Listening) J.Accent else J.TextFaint, fontSize = 15.sp,
                 )
