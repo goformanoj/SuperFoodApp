@@ -64,12 +64,14 @@ fun SettingsScreen(
                     Column(Modifier.weight(1f)) {
                         Text(if (acct.isSignedIn) (acct.email ?: acct.label()) else "Guest", color = J.Text, fontSize = 15.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                         Text(
-                            if (acct.isSignedIn) "Signed in with Google" else if (GoogleSignIn.isConfigured()) "Sign in from the sidebar to keep your chats across devices" else "Using JARVIS without an account",
+                            if (acct.isSignedIn) "Signed in with Google" else if (GoogleSignIn.isConfigured()) "Sign in to track your usage and use the same plan as your phone" else "Using JARVIS without an account",
                             color = J.TextDim, fontSize = 12.5.sp,
                         )
                     }
                     Chip(a.plan.replaceFirstChar { it.uppercase() } + " plan", J.Accent)
-                    if (acct.isSignedIn) { Spacer(Modifier.width(10.dp)); Action("Sign out", destructive = true) { a.signOut() } }
+                    Spacer(Modifier.width(10.dp))
+                    if (acct.isSignedIn) Action("Sign out", destructive = true) { a.signOut() }
+                    else if (GoogleSignIn.isConfigured()) Action(if (a.signingIn) "Waiting for Google…" else "Sign in with Google") { if (!a.signingIn) a.signInWithGoogle() }
                 }
                 a.usage?.let { u ->
                     Divider()

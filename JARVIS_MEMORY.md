@@ -1,5 +1,13 @@
 # JARVIS OS — Build Memory
 
+## 2026-10-02 — "the bug" was an anonymous account hitting a free cap; the real fix is in Google Cloud
+
+The user's screenshots showed FAULT DETECTED, "That's today's AI allowance used up. It resets in about 9 hours.", "743 tokens left today", and a 46-second reply. Reading the screens as a chain rather than four bugs: the laptop was signed in as nobody (Guest, free plan, 60k tokens a day — the same identity every live test shares), the day's allowance ran out, and the error showed twice because two layers each reported it (the tool step card and the banner). The cure is not code: sign in as the owner. The code exists (GoogleSignIn: browser, loopback server, PKCE, then Firebase links it to the phone's account); it was dormant because the Desktop-app OAuth client was never created, so its two build values are empty. The Worker already lists the owner's email as Pro.
+
+**Why I couldn't just do it:** creating a credential in the user's Google Cloud project is a change to their account, so I asked first (they chose "do it in my Chrome"), then found the Chrome extension not connected. I did not fall back to the isolated browser, which has no Google session and would have meant handling their login. Lesson: when a step needs the user's logged-in browser, check the connection early and say what the blocker is.
+
+**Side fix from the same screenshots:** the see-through theme made chat text unreadable over a busy web page — the user was running Chrome behind it. Panels and the veil on non-Home screens are now denser by default (the glass slider still lets them go clearer).
+
 ## 2026-10-02 — Settings for a user, not for the builder; one logo, many colours
 
 The user's screenshot of Settings: "how are these relevant to the user?" They were right — the page listed a Server URL, "Build secrets: %USERPROFILE%.gradlegradle.properties…" and "Google sign-in needs a Desktop OAuth client (see desktop/README.md)". Those are notes the developer wrote to themselves. A setting belongs on this page only if a person using the app would want to change it, so I regrouped by what someone looks for (account, voice, shortcuts and startup, appearance, privacy, about) and wrote each description as what it does for them. What a user can't act on is hidden, not explained: the Google group is simply absent when sign-in isn't configured. The few developer facts that are still useful (server, folder path) sit behind "Advanced".
