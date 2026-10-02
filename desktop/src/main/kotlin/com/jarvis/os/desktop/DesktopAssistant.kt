@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import com.jarvis.os.ai.GroqClient
 import com.jarvis.os.ai.Identity
 import com.jarvis.os.ai.ProxyClient
+import com.jarvis.os.ai.UsageClient
 import com.jarvis.os.ai.UsageStats
 import com.jarvis.os.data.ChatTurn
 import com.jarvis.os.data.formatMemory
@@ -571,6 +572,7 @@ class DesktopAssistant(
                 val googleToken = GoogleSignIn.signIn()
                 account = Identity.linkGoogle(googleToken)
                 usage = null
+                refreshPlan()
             } catch (e: Exception) {
                 DebugLog.log(DebugLog.Stage.ERROR, "desktop sign-in failed: ${e.javaClass.simpleName}")
                 signInError = e.message ?: "Sign-in failed — try again."
@@ -584,6 +586,20 @@ class DesktopAssistant(
         Identity.signOut()
         account = Identity.account()
         usage = null
+        refreshPlan()
+    }
+
+    /**
+     * Asks the Worker for this account's plan and today's allowance (no tokens spent — see UsageClient), so the
+     * sidebar is right straight after launch or sign-in instead of after the first reply. A failed call changes nothing.
+     */
+    fun refreshPlan() {
+        scope.launch {
+            if (UsageClient.refresh() != null) {
+                account = Identity.account()
+                usage = UsageStats.today()
+            }
+        }
     }
 
     // ── Sync (Phase 7, AGENT_PLAN §7) ────────────────────────────────────────

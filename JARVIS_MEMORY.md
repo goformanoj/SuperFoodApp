@@ -1,5 +1,15 @@
 # JARVIS OS — Build Memory
 
+## 2026-10-02 — showing the sign-in end to end found a bug nobody had reported
+
+Told to "sign in again and show me", I drove the whole thing on the real laptop: Settings → Sign out → Sign in with Google → the Google page in the user's Chrome (outside my tool's tab group, so I read it with screen captures and clicked with real mouse events) → account chooser, now titled "continue to JARVIS" → "You're signing back in to JARVIS" → Continue → our branded page → back in the app. The Google-side fix (Testing mode, app name, test user) worked: the placeholder project number is gone.
+
+**The bug it surfaced:** back in the app the account was right (goforpranjal@gmail.com, "Signed in with Google") but the plan chip and sidebar said **Free** and "usage shows after a reply". The plan was never wrong on the server; the client simply had no way to ask. It learned the plan only from the reply to a message, so a Pro account looked Free until the first spend. A label that is wrong until you act is a bug even though no data is wrong. Fix: a tiny server endpoint (`GET /usage`: plan, cap, remaining; same auth and plan logic as /chat, so the two can never disagree; no model call) and a client that asks at launch and right after sign-in/out.
+
+**Why a new endpoint rather than reusing /chat:** /chat spends tokens and needs a prompt; a status check that costs the user money is the wrong shape. The pure parse is tested, including the rule that a malformed reply returns null so a failed refresh never overwrites good state with a guess.
+
+**Process notes:** Google's Testing-mode apps cap test users at 100 and expire Calendar/Gmail grants weekly — acceptable now, to be revisited with a real privacy policy before a public launch. Windows' UAC prompt expires in about a minute: ask the user to be at the machine before launching an elevated install, not after.
+
 ## 2026-10-02 — sign-in worked; polishing it hit a Google policy wall, so I stopped instead of faking pages
 
 With the Desktop OAuth client created (in the user's own logged-in Chrome, as agreed) and its values in local build settings, the user signed in: Pro, ~2M tokens, usage tracked to their account. They then asked for two refinements: a nicer web page after sign-in, and an explanation of why Google's screen says "project-367552839244".

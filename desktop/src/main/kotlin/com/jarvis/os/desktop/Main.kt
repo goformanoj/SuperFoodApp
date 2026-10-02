@@ -219,6 +219,7 @@ private fun runApp(args: Array<String>) = application {
 
     // Voice choices persist; the wake listener follows state (see DesktopAssistant.syncWake).
     LaunchedEffect(Unit) {
+        assistant.refreshPlan()
         assistant.wakeWordOn = prefs.flag(PREF_WAKE)
         assistant.quickBarOn = !prefs.flag(PREF_QUICKBAR_OFF)
         assistant.speakAllReplies = prefs.flag(PREF_SPEAK_ALL)

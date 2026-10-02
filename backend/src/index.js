@@ -216,6 +216,19 @@ export function createWorker({
         return Response.json({ rows: rows.slice(0, limit), hasMore: rows.length > limit, serverTime: nowMs })
       }
 
+      // Who am I, and what's left today — no model call, no charge. A client that only learns its plan from
+      // the first /chat reply shows "Free" for a Pro account until the user spends tokens on a message;
+      // this lets it ask right after signing in (or at launch). Same auth and same plan rules as /chat.
+      if (request.method === 'GET' && url.pathname === '/usage') {
+        const auth = await authenticate()
+        if (auth.error) return auth.error
+        const nowMs = now()
+        const plan = await planFor(auth, nowMs)
+        const cap = capFor(plan)
+        const used = await store.usedToday(auth.uid, dayKey(nowMs))
+        return Response.json({ plan, cap, remaining: remaining(used, cap) })
+      }
+
       // Speech-to-text (Phase 2): a short WAV in, text out, metered in tokens against
       // the same daily allowance as /chat, checked BEFORE the provider is paid.
       if (request.method === 'POST' && url.pathname === '/transcribe') {
