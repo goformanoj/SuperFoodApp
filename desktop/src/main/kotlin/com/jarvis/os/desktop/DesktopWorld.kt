@@ -19,7 +19,11 @@ enum class DesktopWorld(val id: String, val displayName: String, val blurb: Stri
     DeepSpace("deepspace", "Deep Space", "A spiral galaxy turning slowly in drifting violet gas."),
     Orbital("orbital", "Orbital", "A planet's lit edge, satellites on their tracks, a station in the dark."),
     Skyline("skyline", "Skyline", "A city at night under a heavy sky, its lights mirrored in the river."),
+    Glass("glass", "Glass pane", "See-through: your actual Windows desktop shows behind the JARVIS interface."),
     ;
+
+    /** Whether the window itself must be transparent for this world (the desktop shows through it). */
+    val seeThrough: Boolean get() = this == Glass
 
     companion object {
         /**
@@ -32,7 +36,7 @@ enum class DesktopWorld(val id: String, val displayName: String, val blurb: Stri
             JarvisPalette.Nebula -> DeepSpace
             JarvisPalette.Orbit -> Orbital
             JarvisPalette.Stark -> Deck
-            JarvisPalette.Holo -> Skyline
+            JarvisPalette.Holo -> Glass
         }
 
         fun fromId(id: String?): DesktopWorld? = entries.firstOrNull { it.id == id }

@@ -43,7 +43,7 @@ class DesktopPrefsTest {
         assertEquals(DesktopWorld.Deck, DesktopPrefs.Appearance(JarvisPalette.Stark, "").desktopWorld)
         assertEquals(DesktopWorld.ReactorHall, DesktopPrefs.Appearance(JarvisPalette.Arc, "").desktopWorld)
         assertEquals(DesktopWorld.Foundry, DesktopPrefs.Appearance(JarvisPalette.Forge, "").desktopWorld)
-        assertEquals(DesktopWorld.Skyline, DesktopPrefs.Appearance(JarvisPalette.Holo, "").desktopWorld)
+        assertEquals(DesktopWorld.Glass, DesktopPrefs.Appearance(JarvisPalette.Holo, "").desktopWorld)
         // Picked on purpose under another theme.
         assertEquals(DesktopWorld.Orbital, DesktopPrefs.Appearance(JarvisPalette.Forge, DesktopWorld.Orbital.id).desktopWorld)
     }
@@ -60,6 +60,16 @@ class DesktopPrefsTest {
         val ids = DesktopWorld.entries.map { it.id }
         assertEquals(ids.size, ids.toSet().size)
         DesktopWorld.entries.forEach { assertEquals(it, DesktopWorld.fromId(it.id)) }
+    }
+
+    @Test
+    fun onlyTheGlassWorldNeedsATransparentWindow() {
+        // A window's transparency is fixed at creation, so this decides when Main recreates it: see-through only for Glass.
+        assertTrue(DesktopWorld.Glass.seeThrough)
+        assertTrue(DesktopPrefs.Appearance(JarvisPalette.Holo, "").desktopWorld.seeThrough)
+        assertFalse(DesktopPrefs.Appearance(JarvisPalette.Holo, DesktopWorld.Skyline.id).desktopWorld.seeThrough)
+        assertTrue(DesktopWorld.entries.filter { it != DesktopWorld.Glass }.none { it.seeThrough })
+        assertTrue(DesktopPrefs.Appearance(JarvisPalette.Forge, DesktopWorld.Glass.id).desktopWorld.seeThrough)
     }
 
     @Test

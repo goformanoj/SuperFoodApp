@@ -1,5 +1,15 @@
 # JARVIS OS — Build Memory
 
+## 2026-10-02 — see-through for real: a transparent window, tested before trusting it
+
+The user answered the fork: they meant the actual Windows desktop. That needs a transparent window, which is fixed when a window is created — so Main wraps the Window in `key(seeThrough)` and the Glass world sets the flag; every piece of state (assistant, prefs, window state) already lived above the Window, so recreating it on a theme switch loses nothing.
+
+**Why test first:** it was a real risk — the window already runs custom Win32 frame hooks (WindowChrome), and per-pixel transparency makes Windows treat it as a layered window, which can break hit-testing and resizing. Three checks, all on the packaged exe: (1) does the desktop actually show through — yes, the app behind it was readable through the glass (a deliberately hard test); (2) can it still be dragged and edge-resized with real mouse input — yes; (3) what does it cost — about 69% of a core against 46% for an opaque theme, so transparency is not free (Windows blits a layered window whole each frame). Recorded as a follow-up rather than waved through.
+
+**Design:** a see-through window needs the opposite of a scene: the Glass world draws a light tint (so light text survives a bright wallpaper), faint instrument lines and a bright pane edge (without an edge a transparent window has no visible boundary). Holo's panels are tinted glass via `J.translucent`, so it works on every screen. The picker is not see-through, so its Holo card paints a stand-in wallpaper first.
+
+**Limits to remember:** over a busy desktop the text can fight what is behind it; the fix is a user-adjustable glass level, not yet built.
+
 ## 2026-10-02 — Holo: designing from reference images, and keeping 'sci-fi text' honest
 
 The user sent three references: a golden holographic sphere, a blue instrument-panel wallpaper, and a cyan line-art HUD floating over a night city. Their read: "more JARVIS-centred… translucent panel, more information… proper sci-fi/hacker writing". I took the third as the target: not a scene with cards on it, but an interface laid over a scene.

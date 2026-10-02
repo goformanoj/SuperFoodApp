@@ -15,5 +15,6 @@ fun DesktopWorldView(world: DesktopWorld, palette: JarvisPalette, modifier: Modi
         DesktopWorld.DeepSpace -> DeepSpaceWorld(palette, modifier, live, thumbnail)
         DesktopWorld.Orbital -> OrbitalWorld(palette, modifier, live, thumbnail)
         DesktopWorld.Skyline -> SkylineWorld(palette, modifier, live, thumbnail)
+        DesktopWorld.Glass -> GlassWorld(palette, modifier, live, thumbnail)
     }
 }

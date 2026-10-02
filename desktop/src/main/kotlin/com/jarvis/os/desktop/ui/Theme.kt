@@ -71,10 +71,10 @@ object J {
     val translucent: Boolean @Composable @ReadOnlyComposable get() = LocalPalette.current == JarvisPalette.Holo
 
     /** Glass over the live world: the backdrop shows through, text still reads. */
-    val Glass: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = if (translucent) 0.30f else 0.72f)
-    val Card: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.surface.copy(alpha = if (translucent) 0.34f else 0.88f)
+    val Glass: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = if (translucent) 0.40f else 0.72f)
+    val Card: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.surface.copy(alpha = if (translucent) 0.44f else 0.88f)
     val CardBorder: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.accent.copy(alpha = if (translucent) 0.45f else 0.20f)
-    val Veil: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = if (translucent) 0.38f else 0.80f)
+    val Veil: Color @Composable @ReadOnlyComposable get() = LocalPalette.current.background.copy(alpha = if (translucent) 0.58f else 0.80f)
 }
 
 @Composable

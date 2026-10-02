@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -246,6 +247,10 @@ private fun runApp(args: Array<String>) = application {
         }
     }
 
+    // A see-through world needs a transparent window, and a window's transparency is fixed when it is created —
+    // so switching to or from one recreates the window. Nothing is lost: every piece of state lives above this.
+    val seeThrough = appearance.desktopWorld.seeThrough
+    key(seeThrough) {
     Window(
         onCloseRequest = ::hideToTray,
         visible = windowVisible,
@@ -253,6 +258,7 @@ private fun runApp(args: Array<String>) = application {
         // No native title bar (the blue one): JARVIS draws its own window controls and the OS
         // still handles dragging, edge-resizing and snapping — see WindowChrome.
         undecorated = true,
+        transparent = seeThrough,
         icon = remember(appearance.palette) { ReactorIcon(appearance.palette) },
         state = windowState,
         onPreviewKeyEvent = { e ->
@@ -314,7 +320,7 @@ private fun runApp(args: Array<String>) = application {
                 }
             }
             BoxWithConstraints(
-                Modifier.fillMaxSize().background(appearance.palette.background)
+                Modifier.fillMaxSize().then(if (seeThrough) Modifier else Modifier.background(appearance.palette.background))
                     .dragAndDropTarget(shouldStartDragAndDrop = { true }, target = dropTarget),
             ) {
                 val wide = maxWidth >= 1200.dp
@@ -326,7 +332,7 @@ private fun runApp(args: Array<String>) = application {
                 // The veil: Home IS the backdrop; screens with text need a surface to read on.
                 if (!home) Box(Modifier.fillMaxSize().background(J.Veil))
                 // The instrument grid and vignette over everything: the HUD's glass.
-                HudGrid(Modifier.fillMaxSize())
+                if (!seeThrough) HudGrid(Modifier.fillMaxSize())
 
                 // The strip the native title bar used to occupy: empty (the world shows through it), with the
                 // window's own controls at the right. The content starts below it.
@@ -385,6 +391,7 @@ private fun runApp(args: Array<String>) = application {
             }
         }
     }
+    }   // key(seeThrough)
 }
 
 /** Bumped (from a helper thread) each time a later launch asks the running JARVIS to show itself. */
