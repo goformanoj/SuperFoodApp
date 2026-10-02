@@ -21,7 +21,14 @@ import java.net.URL
 object AgentClient {
 
     data class ToolCall(val id: String, val name: String, val arguments: String)
-    data class Reply(val text: String, val toolCalls: List<ToolCall>)
+    /**
+     * [backend]/[model]: which platform and model actually answered (the Worker's router
+     * fails over across several — see `backend/src/providers/`), present whenever the
+     * Worker reports them. Tracked so a quality problem (e.g. degenerate/garbled text) can
+     * be correlated to a specific backend instead of blamed on "the model" in general —
+     * see [AgentLoop]'s `onReply` and `Eval.kt`'s degenerate-output check.
+     */
+    data class Reply(val text: String, val toolCalls: List<ToolCall>, val backend: String? = null, val model: String? = null)
 
     suspend fun step(messages: JSONArray, context: String, tools: JSONArray): Reply {
         val payload = JSONObject().put("messages", messages).put("tools", tools).apply {
@@ -66,7 +73,7 @@ object AgentClient {
                 ToolCall(c.optString("id"), c.optString("name"), c.optString("arguments", "{}")).takeIf { it.name.isNotBlank() }
             }
         }.orEmpty()
-        return Reply(o.optString("reply").trim(), calls)
+        return Reply(o.optString("reply").trim(), calls, o.optString("backend").ifBlank { null }, o.optString("model").ifBlank { null })
     }
 
     /** The assistant message that records the model's tool calls (OpenAI shape), for the next step. */

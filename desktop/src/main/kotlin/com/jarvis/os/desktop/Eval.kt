@@ -294,6 +294,7 @@ object Eval {
         println("Running ${SCENARIOS.size} scenarios against the live Worker (fixed clock: ${NOW.toLocalDate()}, a ${NOW.dayOfWeek})...\n")
         var passed = 0
         val failed = mutableListOf<Pair<String, List<String>>>()
+        val backendCounts = mutableMapOf<String, Int>()
         for (s in SCENARIOS) {
             val brain = Brain.inMemory(CLOCK)
             try {
@@ -302,12 +303,20 @@ object Eval {
                 val conv = brain.createConversation("eval").id
                 val steps = mutableListOf<Pair<AgentClient.ToolCall, ToolBox.Result>>()
                 val asks = mutableListOf<AgentLoop.Ask>()
+                // Every raw reply, including which backend/model answered it (AgentClient.Reply)
+                // — so a quality problem in the TEXT (not just the tool calls) can be traced to
+                // a specific platform in the router instead of blamed on "the model" vaguely.
+                val replies = mutableListOf<AgentClient.Reply>()
                 val answer = AgentLoop(
                     tools,
                     step = { m, c, t -> AgentClient.step(m, c, t) },
                     approve = { a -> asks += a; s.approveAll },
                     onStep = { call, r -> steps += call to r },
+                    onReply = { replies += it },
                 ).run(listOf(ChatTurn(ChatTurn.USER, s.prompt)), CONTEXT, conv)
+                // The reply whose text became the final answer — the one worth blaming for it.
+                val answeredBy = replies.lastOrNull()
+                val backendTag = answeredBy?.backend?.let { b -> " [$b${answeredBy.model?.let { "/$it" } ?: ""}]" } ?: ""
 
                 val reasons = mutableListOf<String>()
                 if (answer.startsWith(STALL_PREFIX)) reasons += "STALLED: hit the step budget without finishing"
@@ -316,7 +325,7 @@ object Eval {
                 // structurally-correct turn), and a scripted check on brain state alone would
                 // never catch it. The user sees the TEXT, not the database row.
                 Regex("""(.)\1{19,}""").find(answer)?.let {
-                    reasons += "DEGENERATE OUTPUT: answer is mostly a repeated character, not real text: \"${answer.take(80)}\""
+                    reasons += "DEGENERATE OUTPUT$backendTag: answer is mostly a repeated character, not real text: \"${answer.take(80)}\""
                 }
                 val invented = steps.filter { it.second.forModel.contains("No such tool") }
                 if (invented.isNotEmpty()) reasons += "INVENTED a tool that doesn't exist: ${invented.map { it.first.name }}"
@@ -338,7 +347,8 @@ object Eval {
                     reasons.forEach { println("        - $it") }
                 }
                 println("        steps: ${steps.joinToString(", ") { (c, r) -> "${c.name}${if (r.ok) "" else "✗"}" }.ifEmpty { "(none)" }}")
-                println("        answer: ${answer.take(160).replace("\n", " ")}")
+                println("        answer$backendTag: ${answer.take(160).replace("\n", " ")}")
+                answeredBy?.backend?.let { backendCounts.merge(it, 1, Int::plus) }
             } catch (e: Exception) {
                 failed += s.id to listOf("THREW: ${e.message ?: e.javaClass.simpleName}")
                 println("FAIL  ${s.id}")
@@ -353,6 +363,12 @@ object Eval {
         println("RESULT: $passed/$total passed (${"%.1f".format(pct)}%)")
         if (failed.isNotEmpty()) {
             println("Failed: ${failed.joinToString(", ") { it.first }}")
+        }
+        // Which platform answered how many of the final turns — the Worker's router fails
+        // over across several (see backend/src/providers/), and this is how a quality issue
+        // in the TEXT gets correlated to one of them instead of staying a vague "the model".
+        if (backendCounts.isNotEmpty()) {
+            println("Backends: " + backendCounts.entries.sortedByDescending { it.value }.joinToString(", ") { "${it.key}=${it.value}" })
         }
         println(if (pct >= 90.0) "✅ at or above the 90% trust bar" else "❌ below the 90% trust bar")
         return pct >= 90.0

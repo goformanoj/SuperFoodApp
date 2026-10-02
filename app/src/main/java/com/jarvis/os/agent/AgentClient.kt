@@ -22,7 +22,8 @@ import java.net.URL
 object AgentClient {
 
     data class ToolCall(val id: String, val name: String, val arguments: String)
-    data class Reply(val text: String, val toolCalls: List<ToolCall>)
+    /** [backend]/[model]: which platform actually answered — see the laptop's own AgentClient.kt for why this is tracked. */
+    data class Reply(val text: String, val toolCalls: List<ToolCall>, val backend: String? = null, val model: String? = null)
 
     suspend fun step(messages: JSONArray, tools: JSONArray): Reply {
         val payload = JSONObject().put("messages", messages).put("tools", tools).toString()
@@ -47,7 +48,7 @@ object AgentClient {
                 ToolCall(c.optString("id"), c.optString("name"), c.optString("arguments", "{}")).takeIf { it.name.isNotBlank() }
             }
         }.orEmpty()
-        return Reply(o.optString("reply").trim(), calls)
+        return Reply(o.optString("reply").trim(), calls, o.optString("backend").ifBlank { null }, o.optString("model").ifBlank { null })
     }
 
     /** The assistant message that records the model's tool calls (OpenAI shape), for the next step. */

@@ -156,4 +156,27 @@ class AgentLoopTest {
         assertEquals("Hi.", AgentClient.parse("""{"reply":" Hi. "}""").text)
         assertTrue(AgentClient.parse("""{"reply":"x"}""").toolCalls.isEmpty())
     }
+
+    @Test
+    fun agentClientParsesWhichBackendAndModelAnswered() {
+        val r = AgentClient.parse("""{"reply":"hi","model":"llama-3.3-70b","backend":"groq"}""")
+        assertEquals("groq", r.backend)
+        assertEquals("llama-3.3-70b", r.model)
+        val none = AgentClient.parse("""{"reply":"hi"}""")
+        assertEquals(null, none.backend)
+        assertEquals(null, none.model)
+    }
+
+    @Test
+    fun onReplyFiresForEveryStepWithTheRawReply() = runBlocking {
+        val script = Script(
+            AgentClient.Reply("", listOf(call("a", "add_task", """{"title":"Buy milk"}""")), backend = "cloudflare", model = "gpt-oss-120b"),
+            AgentClient.Reply("Added.", emptyList(), backend = "groq", model = "llama-3.3-70b"),
+        )
+        val seen = mutableListOf<AgentClient.Reply>()
+        AgentLoop(tools, script::step, approve = { true }, onStep = { _, _ -> }, onReply = { seen += it })
+            .run(listOf(ChatTurn(ChatTurn.USER, "x")))
+        assertEquals(listOf("cloudflare", "groq"), seen.map { it.backend })
+        assertEquals(listOf("gpt-oss-120b", "llama-3.3-70b"), seen.map { it.model })
+    }
 }

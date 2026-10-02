@@ -27,6 +27,8 @@ class AgentLoop(
     private val approve: suspend (Ask) -> Boolean,
     /** Reports each executed (or refused) step, for the chat's step cards. */
     private val onStep: (AgentClient.ToolCall, ToolBox.Result) -> Unit,
+    /** Every raw model reply, including its backend/model — for diagnostics, never required for the turn to work. */
+    private val onReply: (AgentClient.Reply) -> Unit = {},
     private val maxSteps: Int = MAX_STEPS,
 ) {
     suspend fun run(history: List<ChatTurn>): String {
@@ -50,6 +52,7 @@ class AgentLoop(
             // tools are offered, so there's nothing left to call and the model MUST answer
             // in words using whatever the turn already learned.
             val reply = step(messages, if (lastStep) noTools else schemas)
+            onReply(reply)
             if (reply.toolCalls.isEmpty()) return reply.text.ifBlank { fallback(doneSoFar) }
             if (lastStep) return fallback(doneSoFar)   // nothing was offered — never trust a stray tool call blindly
             messages.put(AgentClient.assistantToolMessage(reply.text, reply.toolCalls))

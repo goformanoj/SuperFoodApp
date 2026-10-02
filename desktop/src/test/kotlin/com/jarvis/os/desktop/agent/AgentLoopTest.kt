@@ -232,6 +232,32 @@ class AgentLoopTest {
     }
 
     @Test
+    fun agentClientParsesWhichBackendAndModelAnswered() {
+        // Tracked so a quality problem in the TEXT (e.g. degenerate output) can be traced to
+        // a specific platform in the router's failover chain, not blamed on "the model" vaguely.
+        val r = AgentClient.parse("""{"reply":"hi","model":"llama-3.3-70b","backend":"groq"}""")
+        assertEquals("groq", r.backend)
+        assertEquals("llama-3.3-70b", r.model)
+        // Absent entirely (e.g. a non-agent path, or an older server) — never crashes, just null.
+        val none = AgentClient.parse("""{"reply":"hi"}""")
+        assertEquals(null, none.backend)
+        assertEquals(null, none.model)
+    }
+
+    @Test
+    fun onReplyFiresForEveryStepWithTheRawReply() = runBlocking {
+        val script = Script(
+            AgentClient.Reply("", listOf(call("a", "add_task", """{"title":"Buy milk"}""")), backend = "cloudflare", model = "gpt-oss-120b"),
+            AgentClient.Reply("Added.", emptyList(), backend = "groq", model = "llama-3.3-70b"),
+        )
+        val seen = mutableListOf<AgentClient.Reply>()
+        AgentLoop(tools, script::step, approve = { true }, onStep = { _, _ -> }, onReply = { seen += it })
+            .run(listOf(ChatTurn(ChatTurn.USER, "x")), "", null)
+        assertEquals(listOf("cloudflare", "groq"), seen.map { it.backend })
+        assertEquals(listOf("gpt-oss-120b", "llama-3.3-70b"), seen.map { it.model })
+    }
+
+    @Test
     fun shortcutMatching() {
         val names = listOf("Google Chrome", "Microsoft Word", "Word Pad Helper", "Notepad++", "Calculator")
         assertEquals("Google Chrome", ShortcutMatch.best("chrome", names))
