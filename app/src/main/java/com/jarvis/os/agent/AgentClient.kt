@@ -25,10 +25,11 @@ object AgentClient {
     /** [backend]/[model]: which platform actually answered — see the laptop's own AgentClient.kt for why this is tracked. */
     data class Reply(val text: String, val toolCalls: List<ToolCall>, val backend: String? = null, val model: String? = null)
 
-    suspend fun step(messages: JSONArray, tools: JSONArray): Reply {
+    suspend fun step(messages: JSONArray, tools: JSONArray, context: String = ""): Reply {
         // "platform": "phone" picks the Worker's phone-scoped agent prompt (PHONE_AGENT_PROMPT,
         // not the laptop's DESKTOP_AGENT_PROMPT) — see backend/src/index.js and systemPrompt.js.
-        val payload = JSONObject().put("messages", messages).put("tools", tools).put("platform", "phone").toString()
+        val payload = JSONObject().put("messages", messages).put("tools", tools).put("platform", "phone")
+            .apply { if (context.isNotBlank()) put("context", context) }.toString()
         return parse(post(payload))
     }
 
@@ -79,6 +80,7 @@ object AgentClient {
             val code = conn.responseCode
             code to ((if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty())
         } catch (e: Exception) {
+            android.util.Log.w("AgentClient", "request failed: ${e.javaClass.simpleName}: ${e.message}")
             0 to ""
         } finally {
             conn.disconnect()

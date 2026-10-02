@@ -1,5 +1,19 @@
 # JARVIS OS — Build Memory
 
+## 2026-10-02 — the emulator run found two bugs that 40+ unit tests could not
+
+The phone's native tool-calling was merged with unit tests only and flagged "NOT live-verified". Booting the emulator and typing "add a task to buy milk tomorrow" into the real chat screen failed straight away with "I couldn't reach my server", though the network was fine (the older Test AI button worked, and the phone could reach the Worker).
+
+**Why it failed:** `AgentClient.call` caught every exception and returned a generic code 0, hiding the real one. One added log line showed it: `NetworkOnMainThreadException`. The engine's coroutine scope is Main, so the new tool turn did network and database work on the UI thread, which Android forbids. Fix: run the loop inside `withContext(Dispatchers.IO)`. Lesson: a catch-all that turns every failure into one friendly message makes bugs undiagnosable — log the cause before you flatten it.
+
+**Second bug, only visible once the first was fixed:** the model replied "could you tell me what today's date is?". The laptop sends a "Current date/time" context line with each request; the phone path sent none, though PHONE_AGENT_PROMPT tells the model to use the date "given below". New `TurnContext.now()` (pure, tested) supplies date, zone and the next seven days.
+
+**Evidence after both fixes (Pixel_7 emulator, typed into the real chat):** add_task → "Added task Buy milk · Tomorrow 09:00", spoken reply; list_tasks → "one open task"; "delete the buy milk task" → declined with a pointer to the Tasks screen. Trace lines are in the app's debug-trace.log.
+
+**Caveats:** the delete refusal was the model obeying the prompt, not the in-code gate firing — no phone approval UI exists yet, so the code-level guarantee is still only unit-tested. Raw `**bold**` appears in reply text. Reminders/notes not yet driven live.
+
+**Also today (desktop install):** reinstalling the same-version MSI over a folder left behind by an uninstall silently kept the OLD jars (the new jar has a different hash filename, so the installer never knew to add it), which is why the blue bar "came back". Fix was uninstall, delete the folder, install into D:JARVIS. If an install ever looks stale, compare the jar timestamp in the install folder's app directory to the build output before debugging the code.
+
 ## 2026-10-02 — one JARVIS at a time: a problem found by accident while testing something else
 
 While driving the new frameless window with real input, listing JARVIS processes turned up something nobody had asked about: three copies of the installed app running at once, launched hours apart. Not a leak — the app doing exactly what it was built to do: closing the window hides it to the tray (so reminders keep working), and launching it again — shortcut, Start menu, even Start-with-Windows — has no way to know a copy already exists, so it starts another. Each copy loads the wake-word model and tries to own the microphone and the Alt+Space hotkey. Part of the user's earlier "why is my RAM always 6-8 GB" mystery, sitting there the whole time.

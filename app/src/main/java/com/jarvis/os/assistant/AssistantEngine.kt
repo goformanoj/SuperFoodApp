@@ -15,6 +15,7 @@ import com.jarvis.os.agent.AgentClient
 // an import) — see both classes' own doc comments for why they share a name.
 import com.jarvis.os.agent.AgentLoop as ToolAgentLoop
 import com.jarvis.os.agent.ToolBox
+import com.jarvis.os.agent.TurnContext
 import com.jarvis.os.agent.TurnRouter
 import com.jarvis.os.ai.Brain
 import com.jarvis.os.ai.agentStep
@@ -1453,9 +1454,11 @@ class AssistantEngine(context: Context) {
      */
     private suspend fun runToolTurn(history: List<ChatTurn>) {
         try {
-            val answer = ToolAgentLoop(
+            // IO, not the engine scope's Main: the loop does network calls and database reads, and Android
+            // throws NetworkOnMainThreadException for those on Main (found on the emulator, 2026-10-02).
+            val answer = withContext(Dispatchers.IO) { ToolAgentLoop(
                 toolBox,
-                step = AgentClient::step,
+                step = { m, t -> AgentClient.step(m, t, TurnContext.now()) },
                 // No approval UI exists on this path yet — an irreversible step
                 // (only delete_task today) is always declined; PHONE_AGENT_PROMPT
                 // already tells the model to point the user at the Tasks screen
@@ -1465,7 +1468,7 @@ class AssistantEngine(context: Context) {
                     false
                 },
                 onStep = { call, result -> DebugLog.log(DebugLog.Stage.THINK, "${call.name} -> ${if (result.ok) "OK" else "FAILED"}: ${result.summary}") },
-            ).run(history)
+            ).run(history) }
             val spoken = answer.ifBlank { "Done." }
             addTurn(ChatTurn(ChatTurn.ASSISTANT, spoken))
             DebugLog.log(DebugLog.Stage.SPOKE, spoken)
