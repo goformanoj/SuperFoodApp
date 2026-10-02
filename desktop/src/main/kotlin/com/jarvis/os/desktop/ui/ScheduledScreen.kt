@@ -49,7 +49,7 @@ fun ScheduledScreen(a: DesktopAssistant, onOpenChat: () -> Unit) {
     val now = System.currentTimeMillis()
     val zone = ZoneId.systemDefault()
     Page(
-        "Scheduled",
+        "Routines",
         "What JARVIS does by itself. Ask in chat — “every weekday at 8, brief me on my day”, “remind me at 6 to call Mom” — and it appears here. Routines run while JARVIS is in the tray; results pop up as notifications.",
     ) {
         LazyColumn(Modifier.widthIn(max = 820.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

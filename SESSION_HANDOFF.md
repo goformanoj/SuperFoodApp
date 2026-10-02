@@ -2,6 +2,8 @@
 
 ## Current position — 2026-10-01 — Phase 7 phone step 3: native tool-calling is wired into live chat for tasks/reminders/notes/recall — LIVE-VERIFIED on the emulator 2026-10-02 (found + fixed two bugs: main-thread networking, missing date context; delete refusal still model-driven, no phone approval UI yet); backend/model tracked per reply; today's own testing volume briefly exhausted the free router's shared capacity (watch for this before assuming a code regression); the step-budget stall has a REAL hard stop; a real trust eval exists; desktop CI's Linux-only failures fixed; off-screen-window bug fixed
 
+> **Redesign built (2026-10-02):** sidebar/chat per the Design canvas; see PROGRESS. Waitlist site was rejected as 'horrible' — to be redone before anything is published (branch `waitlist-site`, not on main).
+
 > **Pending the user (2026-10-02):** (a) approve the Design canvas (artifact `2DrGtn8ZSkPiyRchXpiUiA`) before the sidebar/chat redesign is built; (b) the waitlist site is on branch `waitlist-site`, NOT on main — publishing needs their contact email, a WAITLIST_SALT secret and an OK on the privacy text; then deploy and POST /admin/migrate.
 
 > **Sign-in (2026-10-02, later):** verified end to end on the laptop; Google consent app is Testing-mode, named JARVIS. New Worker `GET /usage` + desktop `UsageClient`/`refreshPlan()` fix the plan reading "Free" until the first reply — needs the Worker deploy to go live.

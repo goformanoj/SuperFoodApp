@@ -3,6 +3,8 @@ package com.jarvis.os.desktop.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -151,6 +153,54 @@ fun ModulesPanel(modifier: Modifier = Modifier) {
                 Text(name.uppercase(), color = if (on) J.Text else J.TextDim, fontSize = 10.sp, fontFamily = J.Display, letterSpacing = 1.2.sp, modifier = Modifier.weight(1f))
                 Text(if (on) "ONLINE" else "STANDBY", color = if (on) J.Green else J.TextFaint, fontSize = 10.sp, fontFamily = J.Mono)
             }
+        }
+    }
+}
+
+/** Home's one side rail for the standard themes: what is due, what is left today, how the laptop is doing. */
+@Composable
+fun LeanRail(a: DesktopAssistant, telemetry: Telemetry, onTasks: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        TodayPanel(a, onTasks, Modifier.fillMaxWidth())
+        AllowancePanel(a, Modifier.fillMaxWidth())
+        LaptopPanel(telemetry, Modifier.fillMaxWidth())
+    }
+}
+
+/** The token allowance for today: the number that matters, and a bar. Same figures as the account card. */
+@Composable
+fun AllowancePanel(a: DesktopAssistant, modifier: Modifier = Modifier) {
+    HudPanel("Allowance", modifier) {
+        val u = a.usage
+        if (u != null) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(compactTokens(u.remaining), color = J.Text, fontSize = 24.sp, fontFamily = J.Display)
+                Spacer(Modifier.width(8.dp))
+                Text("of ${compactTokens(u.cap)} tokens left", color = J.TextDim, fontSize = 12.sp, modifier = Modifier.padding(bottom = 3.dp))
+            }
+            Spacer(Modifier.height(10.dp))
+            Meter(u.remaining.toFloat() / u.cap.coerceAtLeast(1), Modifier.fillMaxWidth())
+            Spacer(Modifier.height(6.dp))
+            Text("${a.plan.replaceFirstChar { it.uppercase() }} plan · refills daily", color = J.TextDim, fontSize = 11.sp)
+        } else {
+            Text("Checking your allowance…", color = J.TextDim, fontSize = 12.sp)
+        }
+    }
+}
+
+/** This laptop, briefly: processor and memory as two bars. */
+@Composable
+fun LaptopPanel(telemetry: Telemetry, modifier: Modifier = Modifier) {
+    HudPanel("This laptop", modifier) {
+        val s = telemetry.latest
+        if (s != null) {
+            Readout("CPU", Telemetry.percent(s.cpu))
+            Meter(s.cpu, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            Readout("Memory", Telemetry.gb(s.memUsedBytes, s.memTotalBytes))
+            Meter(s.memUsedBytes.toFloat() / s.memTotalBytes.coerceAtLeast(1), Modifier.fillMaxWidth(), color = LocalHighlight())
+        } else {
+            Text("Sampling…", color = J.TextDim, fontSize = 12.sp)
         }
     }
 }

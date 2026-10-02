@@ -1,6 +1,7 @@
 package com.jarvis.os.desktop.ui
 
 import com.jarvis.os.desktop.JarvisVoice
+import com.jarvis.os.desktop.brain.Brain
 
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +41,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Monitor
@@ -78,6 +82,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -154,16 +159,12 @@ private fun Cockpit(
         val wide = maxWidth >= 960.dp
         // The Holo theme has its own, denser Home — flanks of live readouts and a status bar — but only with room for them.
         val holo = J.translucent && maxWidth >= 1000.dp
-        val orbSize = (minOf(maxWidth - if (wide) 520.dp else 40.dp, maxHeight - if (holo) 330.dp else 250.dp)).coerceIn(240.dp, 460.dp)
+        val orbSize = (minOf(maxWidth - if (holo) 560.dp else if (wide) 340.dp else 40.dp, maxHeight - if (holo) 330.dp else 250.dp)).coerceIn(240.dp, 460.dp)
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 18.dp)) {
         if (holo) HoloStatusBar(a, telemetry)
         Row(Modifier.weight(1f).fillMaxWidth()) {
+            // Holo keeps its dense two-sided Home; every other theme gets one calm rail on the right.
             if (holo) HoloLeft(a, telemetry, Modifier.width(268.dp).fillMaxHeight())
-            else if (wide) Column(Modifier.width(236.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                ChronoPanel(telemetry, Modifier.fillMaxWidth())
-                SystemPanel(telemetry, Modifier.fillMaxWidth())
-                LinkPanel(a, Modifier.fillMaxWidth())
-            }
             Column(
                 Modifier.weight(1f).fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -182,11 +183,7 @@ private fun Cockpit(
                 }
             }
             if (holo) HoloRight(a, telemetry, onMemory, onTasks, Modifier.width(268.dp).fillMaxHeight())
-            else if (wide) Column(Modifier.width(236.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                TodayPanel(a, onTasks, Modifier.fillMaxWidth())
-                MemoryPanel(a, onMemory, Modifier.fillMaxWidth())
-                ModulesPanel(Modifier.fillMaxWidth())
-            }
+            else if (wide) LeanRail(a, telemetry, onTasks, Modifier.width(280.dp).fillMaxHeight())
         }
         }
     }
@@ -254,18 +251,16 @@ private fun EditableTitle(a: DesktopAssistant) {
 @Composable
 private fun ChatHeader(a: DesktopAssistant) {
     Row(
-        Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 24.dp),
+        Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ReactorOrb(size = 64.dp, state = orbStateOf(a), labels = false)
+        ReactorOrb(size = 46.dp, state = orbStateOf(a), labels = false)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             EditableTitle(a)
             Spacer(Modifier.height(3.dp))
             StatusLine(a)
         }
-        WakeChip(a)
-        Spacer(Modifier.width(10.dp))
         Hint(if (a.speakAllReplies) "JARVIS reads every reply aloud — click to stop" else "Spoken questions get spoken answers — click to read every reply aloud") {
             Row(
                 Modifier.height(36.dp).clip(HudShapeSmall)
@@ -298,12 +293,21 @@ private fun Conversation(a: DesktopAssistant) {
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             item { Spacer(Modifier.height(6.dp)) }
-            itemsIndexed(a.turns) { _, turn ->
+            items(
+                ChatGrouping.items(a.turns),
+                key = { if (it is ChatGrouping.Item.Steps) "steps-" + it.turns.first().id else "msg-" + (it as ChatGrouping.Item.Message).turn.id },
+            ) { item ->
                 Box(Modifier.widthIn(max = 780.dp).fillMaxWidth().padding(horizontal = 40.dp)) {
-                    when (turn.role) {
-                        ChatTurn.USER -> UserMessage(turn.content)
-                        ActionCard.ROLE -> ActionCard.decode(turn.content)?.let { StepCard(it) { a.undoAction(turn.id) } }
-                        else -> AssistantMessage(turn.content, accent)
+                    when (item) {
+                        is ChatGrouping.Item.Steps -> StepsLine(item.turns, a)
+                        is ChatGrouping.Item.Message -> {
+                            val turn = item.turn
+                            when (turn.role) {
+                                ChatTurn.USER -> UserMessage(turn.content)
+                                ActionCard.ROLE -> {}     // an unreadable step record: nothing to show
+                                else -> AssistantMessage(turn.content, accent)
+                            }
+                        }
                     }
                 }
             }
@@ -554,15 +558,6 @@ private fun Composer(a: DesktopAssistant, textState: MutableState<String>, focus
                         modifier = Modifier.size(36.dp).clip(CircleShape).clicky { a.captureForQuestion() }.padding(8.dp),
                     )
                 }
-                Spacer(Modifier.width(4.dp))
-                Row(
-                    Modifier.height(30.dp).clip(RoundedCornerShape(999.dp)).border(1.dp, J.Border, RoundedCornerShape(999.dp)).padding(horizontal = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Outlined.Computer, null, tint = J.TextMuted, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("This laptop", color = J.TextMuted, fontSize = 12.sp)
-                }
                 Spacer(Modifier.weight(1f))
                 Text("Enter to send · Shift+Enter for a new line", color = J.TextFaint, fontSize = 12.sp)
                 Spacer(Modifier.width(10.dp))
@@ -653,6 +648,34 @@ fun WakeChip(a: DesktopAssistant) {
  * One agent step, as the user sees it: what JARVIS did (✓) or couldn't do (✕), with Undo
  * for anything undoable (AGENT_PLAN §4). Every card is also in the Activity log.
  */
+/**
+ * The tool steps of one turn as a single quiet line ("Searched the web · Opened youtube.com"); click for each step with its
+ * Undo. A step that failed starts open, so a problem is never hidden behind a summary.
+ */
+@Composable
+private fun StepsLine(turns: List<Brain.Message>, a: DesktopAssistant) {
+    val cards = remember(turns) { turns.mapNotNull { t -> ActionCard.decode(t.content)?.let { t to it } } }
+    var open by remember(turns.first().id) { mutableStateOf(cards.any { !it.second.ok }) }
+    val allGood = cards.all { it.second.ok && !it.second.undone }
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(start = 46.dp).height(32.dp).clip(HudShapeSmall)
+                .border(1.dp, if (allGood) J.Border else Color(0x55FF4D4D), HudShapeSmall)
+                .clicky { open = !open }.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(if (allGood) "✓" else "✕", color = if (allGood) J.Green else Color(0xFFFF8A8A), fontSize = 12.sp)
+            Spacer(Modifier.width(10.dp))
+            Text(ChatGrouping.stepsLine(cards.map { it.second.summary }), color = J.TextMuted, fontSize = 12.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 520.dp))
+            Spacer(Modifier.width(8.dp))
+            Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null, tint = J.TextDim, modifier = Modifier.size(16.dp))
+        }
+        if (open) Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            cards.forEach { (t, c) -> StepCard(c) { a.undoAction(t.id) } }
+        }
+    }
+}
+
 @Composable
 private fun StepCard(card: ActionCard, onUndo: () -> Unit) {
     Row(

@@ -60,7 +60,9 @@ import com.jarvis.os.desktop.brain.Brain
  */
 @Composable
 fun ChatList(a: DesktopAssistant, screen: Screen, onOpen: (String) -> Unit, modifier: Modifier = Modifier) {
-    var collapsed by remember { mutableStateOf(setOf<String>()) }
+    // Projects start folded: they are the exception, and an open folder pushes today's chats off the screen.
+    var expanded by remember { mutableStateOf(setOf<String>()) }
+    var showAll by remember { mutableStateOf(false) }
     var showArchived by remember { mutableStateOf(false) }
     var newProjectFor by remember { mutableStateOf<String?>(null) }   // conversation to move into it
     var confirmDelete by remember { mutableStateOf<Brain.Conversation?>(null) }
@@ -89,19 +91,30 @@ fun ChatList(a: DesktopAssistant, screen: Screen, onOpen: (String) -> Unit, modi
         }
         a.projects.forEach { p ->
             val chats = byProject[p.id].orEmpty()
-            val open = p.id !in collapsed
+            val open = p.id in expanded
             item(key = "h-" + p.id) {
                 GroupHeader(
                     "${p.name} · ${chats.size}", Icons.Outlined.Folder, expanded = open,
-                    onToggle = { collapsed = if (open) collapsed + p.id else collapsed - p.id },
+                    onToggle = { expanded = if (open) expanded - p.id else expanded + p.id },
                     onRemove = { a.deleteProject(p.id) },
                 )
             }
             if (open) items(chats, key = { "c-" + it.id }) { item(it) }
         }
         if (ungrouped.isNotEmpty()) {
-            item(key = "h-recent") { GroupHeader("Recent", null, expanded = true, onToggle = null) }
-            items(ungrouped, key = { "u-" + it.id }) { item(it) }
+            // Under day headings, newest first, and only the latest few until asked — see ChatGrouping.
+            val days = ChatGrouping.byDay(ungrouped, System.currentTimeMillis())
+            val (visible, hidden) = if (showAll) days to 0 else ChatGrouping.capped(days)
+            visible.forEach { g ->
+                item(key = "h-day-" + g.label) { GroupHeader(g.label, null, expanded = true, onToggle = null) }
+                items(g.chats, key = { "u-" + it.id }) { item(it) }
+            }
+            if (hidden > 0) item(key = "see-all") {
+                Text("See all ${ungrouped.size} chats ›", color = J.Accent, fontSize = 12.5.sp, modifier = Modifier.clicky { showAll = true }.padding(horizontal = 12.dp, vertical = 10.dp))
+            }
+            if (showAll && ungrouped.size > ChatGrouping.VISIBLE_CHATS) item(key = "show-fewer") {
+                Text("‹ Show fewer", color = J.TextDim, fontSize = 12.5.sp, modifier = Modifier.clicky { showAll = false }.padding(horizontal = 12.dp, vertical = 10.dp))
+            }
         }
         if (a.archived.isNotEmpty()) {
             item(key = "h-archived") {
@@ -193,7 +206,7 @@ private fun ChatItem(
                 Hint("More") {
                     Icon(Icons.Outlined.MoreHoriz, "More", tint = J.TextMuted, modifier = Modifier.size(28.dp).clip(HudShapeSmall).clicky { menu = true }.padding(5.dp))
                 }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = J.Card) {
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = J.Solid) {
                     DropdownMenuItem(text = { Text(if (c.pinned) "Unpin" else "Pin to top") }, onClick = { a.setPinned(c.id, !c.pinned); menu = false })
                     HorizontalDivider(color = J.Hairline)
                     Text("MOVE TO", color = J.TextFaint, fontSize = 9.sp, fontFamily = J.Display, letterSpacing = 1.2.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))

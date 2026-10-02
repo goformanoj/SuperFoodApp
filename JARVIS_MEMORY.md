@@ -1,5 +1,13 @@
 # JARVIS OS — Build Memory
 
+## 2026-10-02 — building the approved redesign, and a "bug" that was a setting
+
+Design first, then build worked: after the Claude Design canvas the user said "implement the redesign" with no objections, so the sidebar and chat were rebuilt to match it (see PROGRESS). The decluttering logic that could be subtly wrong — grouping chats by LOCAL day, capping across groups, merging consecutive tool steps — is a pure object with tests; the drawing is thin. A test caught a real misstatement: a token formatter that rounded 1,997,191 to "2M" — it must round down, or the card claims nothing was used.
+
+**"The Quick bar doesn't work."** Reading the code first: the global hotkey is a standard RegisterHotKey on its own thread, and the feature was fine. The saved preference said `quickbar.off=true`. The Settings page showed it OFF. Turning it on and sending a real Alt+Space (keybd_event) opened the box. Lesson, twice now (theme, Quick bar): my own UI tests click real controls in the real user's app, and persist what they click. Verify against the user's real prefs file afterwards, or run tests against a scratch APPDATA as the shoot script does.
+
+**Menus:** a pop-up floats over content, so the glass look that suits panels made the account menu unreadable. Pop-ups get a solid surface.
+
 ## 2026-10-02 — two requests with different risk profiles, handled differently
 
 **"Cluttered — use Claude Design."** The sidebar had eleven things competing: logo, New chat, Search, six nav items, a project folder, a Recent list, an icon row of four unlabeled buttons, a "This laptop" chip, an account card and a sign-in button. The design groups by how often each is used: five places to go, chats under day headings (capped), and everything occasional behind one labeled menu on the account card. After "this is trash" earlier in the session about an unseen redesign, the rule is: show the design first, build second — so the canvas is published and the app is untouched.

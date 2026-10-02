@@ -369,7 +369,6 @@ private fun runApp(args: Array<String>) = application {
                             Screen.Tasks -> TasksScreen(assistant, ::openConversation)
                             Screen.Scheduled -> ScheduledScreen(assistant, onOpenChat = { screen = Screen.Chat })
                             Screen.Files -> FilesScreen(assistant, onAsk = { screen = Screen.Chat }, onOpenConversation = ::openConversation)
-                            Screen.Automations -> ComingSoon(screen, "PHASE 7", "Your devices working together: “on my phone, set an alarm” from the laptop, and the other way round.")
                         }
                     }
                     if (wide && screen == Screen.Chat && hasConversation(assistant)) {
