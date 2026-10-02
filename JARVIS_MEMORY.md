@@ -1,5 +1,17 @@
 # JARVIS OS — Build Memory
 
+## 2026-10-02 — themes redesigned: the weak part was the world, not the orb (and one over-busy background)
+
+The user's screenshots were the Themes and World pickers, both drawn by the phone's code: 4 themes with phone-sized previews and 10 phone backdrops. Their verdict: "too basic, only good enough for the phone". The desktop already had its own, richer HUD orb (`ReactorOrb`), so the gap was the backdrops and the picker, not the centrepiece.
+
+**Asked first, because taste is the user's:** Stark HUD vs cinematic vs minimal, and one flagship vs everything. They chose Stark HUD, one flagship. I built a flagship, then the user said "this is trash, before was better" without saying which part — the first mistake was building a new triangle-core orb nobody asked for and a text-heavy background whose labels sat under the sidebar. Asking "which part" got a clear answer: keep Stark (with the ORIGINAL orb), redesign ALL themes. Lesson: when a visual is rejected without detail, ask which part before reworking; and don't add unrequested centrepieces.
+
+**What shipped:** a `DesktopWorld` enum (pure, tested: every theme maps to a distinct own world through an exhaustive `when`, ids never collide with the phone's) and five Canvas worlds, one clock each, additive blending for glow instead of blur, drawn once when not on Home. Theme cards now show the world with the orb in it. The Stark palette is desktop-only: shared `JarvisPalette` gained `desktopOnly` and `phoneThemes`, and the phone's theme tests were pointed at the phone's four so they still assert what they were written to.
+
+**Second round of feedback:** "too much moving — Stark". I had made the data columns jitter, hex cells flicker and the radar sweep fast. Slowed everything an order of magnitude; the deck is now nearly still with a slow drift. A world is wallpaper: it must never compete with the content for attention.
+
+**Gotchas:** (1) `createDistributable` fails with "unable to delete directory" while a test copy runs from the build folder — kill only copies whose path starts with the repo, never the user's `D:JARVIS`. (2) Screenshots via CopyFromScreen capture whatever is on top; make the test window topmost (SetWindowPos HWND_TOPMOST) or you photograph another app. (3) Test against a scratch APPDATA so a visual test cannot overwrite the user's saved theme.
+
 ## 2026-10-02 — the emulator run found two bugs that 40+ unit tests could not
 
 The phone's native tool-calling was merged with unit tests only and flagged "NOT live-verified". Booting the emulator and typing "add a task to buy milk tomorrow" into the real chat screen failed straight away with "I couldn't reach my server", though the network was fine (the older Test AI button worked, and the phone could reach the Worker).

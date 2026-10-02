@@ -102,7 +102,7 @@ fun ThemesScreen(
             }
         }
 
-        items(JarvisPalette.entries, key = { "theme:${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { palette ->
+        items(JarvisPalette.phoneThemes, key = { "theme:${it.id}" }, span = { GridItemSpan(maxLineSpan) }) { palette ->
             val selected = palette == current
             val borderColor by animateColorAsState(
                 if (selected) palette.accent else JarvisTheme.glassBorder,

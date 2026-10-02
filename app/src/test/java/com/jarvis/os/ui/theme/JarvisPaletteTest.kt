@@ -22,7 +22,7 @@ class JarvisPaletteTest {
         //
         // The count is asserted so a theme cannot be dropped by accident: the id
         // is persisted, so losing one silently downgrades whoever had it selected.
-        assertEquals(4, JarvisPalette.entries.size)
+        assertEquals(4, JarvisPalette.phoneThemes.size)
     }
 
     @Test
@@ -41,12 +41,20 @@ class JarvisPaletteTest {
     fun `Orbit is the darkest ground, since its design is mostly empty space`() {
         val orbit = JarvisPalette.fromId("orbit")
         fun lum(c: androidx.compose.ui.graphics.Color) = 0.299f * c.red + 0.587f * c.green + 0.114f * c.blue
-        JarvisPalette.entries.filter { it != orbit }.forEach {
+        JarvisPalette.phoneThemes.filter { it != orbit }.forEach {
             assertTrue(
                 "orbit must stay the darkest ground; ${it.id} is darker",
                 lum(orbit.background) <= lum(it.background),
             )
         }
+    }
+
+    @Test
+    fun `desktop-only themes never reach the phone's picker`() {
+        val stark = JarvisPalette.fromId("stark")
+        assertTrue(stark.desktopOnly)
+        assertTrue("the phone must not offer a theme it cannot draw", stark !in JarvisPalette.phoneThemes)
+        assertTrue("the phone's own four stay offered", JarvisPalette.phoneThemes.all { !it.desktopOnly })
     }
 
     @Test

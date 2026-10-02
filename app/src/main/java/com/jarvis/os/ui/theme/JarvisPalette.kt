@@ -39,6 +39,12 @@ enum class JarvisPalette(
     val background: Color,
     val surface: Color,
     val orbStyle: OrbStyle,
+    /**
+     * Offered by the laptop app only. The phone's picker hides these: they lean on drawing
+     * (a full-window command deck) that is designed for a large screen and lives in the desktop module.
+     * [orbStyle] is still required by shared code, so a desktop-only theme names the nearest phone orb.
+     */
+    val desktopOnly: Boolean = false,
 ) {
     Arc(
         id = "arc",
@@ -94,10 +100,32 @@ enum class JarvisPalette(
         surface = Color(0xFF091426),
         orbStyle = OrbStyle.Orbit,
     ),
+    /**
+     * Desktop only. A command-deck look rather than a scene: near-black blue glass, ice-cyan
+     * instruments and an amber for anything that wants attention — the colours a HUD uses because
+     * they are legible, not because they are pretty. Its world and orb are drawn by the desktop
+     * module (StarkWorld); `orbStyle` is the phone orb it would fall back to.
+     */
+    Stark(
+        id = "stark",
+        displayName = "Stark HUD",
+        blurb = "A command deck: ice-cyan instruments, range rings and live data over black glass.",
+        accent = Color(0xFF9BE6FF),
+        secondary = Color(0xFF4C8DFF),
+        highlight = Color(0xFFFFB347),
+        wordmark = Color(0xFFEAF8FF),
+        background = Color(0xFF02060C),
+        surface = Color(0xFF07121E),
+        orbStyle = OrbStyle.Reactor,
+        desktopOnly = true,
+    ),
     ;
 
     companion object {
         val Default = Arc
+
+        /** What the phone offers: every theme not marked [desktopOnly]. */
+        val phoneThemes: List<JarvisPalette> get() = entries.filter { !it.desktopOnly }
 
         fun fromId(id: String): JarvisPalette = entries.firstOrNull { it.id == id } ?: Default
     }

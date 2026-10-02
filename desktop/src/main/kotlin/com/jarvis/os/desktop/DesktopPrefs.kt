@@ -17,6 +17,12 @@ class DesktopPrefs(private val file: File = AppDirs.file("prefs.properties")) {
 
     data class Appearance(val palette: JarvisPalette, val backdropId: String) {
         val backdrop: BackdropStyle get() = BackdropStyle.resolve(backdropId, palette.orbStyle)
+
+        /**
+         * The laptop-drawn world behind everything, or null when the user chose one of the phone's
+         * ten backdrops. A blank id is "the theme's own", which is always a laptop-drawn world.
+         */
+        val desktopWorld: DesktopWorld? get() = DesktopWorld.fromId(backdropId) ?: if (backdropId.isEmpty()) DesktopWorld.ownFor(palette) else null
     }
 
     fun load(): Appearance {

@@ -3,7 +3,9 @@ package com.jarvis.os.desktop
 import com.jarvis.os.ui.theme.BackdropStyle
 import com.jarvis.os.ui.theme.JarvisPalette
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -35,6 +37,44 @@ class DesktopPrefsTest {
         val prefs = DesktopPrefs(tmp.root.resolve("p.properties"))
         prefs.save(DesktopPrefs.Appearance(JarvisPalette.Orbit, ""))
         assertEquals(BackdropStyle.defaultFor(JarvisPalette.Orbit.orbStyle), prefs.load().backdrop)
+    }
+
+    @Test
+    fun everyThemeBringsItsOwnLaptopWorldAndANamedChoiceWins() {
+        assertEquals(DesktopWorld.Deck, DesktopPrefs.Appearance(JarvisPalette.Stark, "").desktopWorld)
+        assertEquals(DesktopWorld.ReactorHall, DesktopPrefs.Appearance(JarvisPalette.Arc, "").desktopWorld)
+        assertEquals(DesktopWorld.Foundry, DesktopPrefs.Appearance(JarvisPalette.Forge, "").desktopWorld)
+        // Picked on purpose under another theme.
+        assertEquals(DesktopWorld.Orbital, DesktopPrefs.Appearance(JarvisPalette.Forge, DesktopWorld.Orbital.id).desktopWorld)
+    }
+
+    @Test
+    fun aPhoneBackdropChoiceMeansNoLaptopWorld() {
+        assertNull(DesktopPrefs.Appearance(JarvisPalette.Stark, BackdropStyle.Canyon.id).desktopWorld)
+        // An id from some future or removed build also falls out to the phone path rather than a blank screen.
+        assertNull(DesktopPrefs.Appearance(JarvisPalette.Arc, "no-such-world").desktopWorld)
+    }
+
+    @Test
+    fun worldIdsAreUniqueAndNeverCollideWithThePhonesBackdrops() {
+        val ids = DesktopWorld.entries.map { it.id }
+        assertEquals(ids.size, ids.toSet().size)
+        val phone = BackdropStyle.entries.map { it.id }.toSet()
+        assertTrue("a shared id would make a saved choice ambiguous", ids.none { it in phone })
+        DesktopWorld.entries.forEach { assertEquals(it, DesktopWorld.fromId(it.id)) }
+    }
+
+    @Test
+    fun everyThemeHasADistinctOwnWorld() {
+        val own = JarvisPalette.entries.map { DesktopWorld.ownFor(it) }
+        assertEquals("two themes sharing a world would be recolours of each other", own.size, own.toSet().size)
+    }
+
+    @Test
+    fun theStarkThemeSurvivesARoundTrip() {
+        val prefs = DesktopPrefs(tmp.root.resolve("p.properties"))
+        prefs.save(DesktopPrefs.Appearance(JarvisPalette.Stark, DesktopWorld.Foundry.id))
+        assertEquals(DesktopPrefs.Appearance(JarvisPalette.Stark, DesktopWorld.Foundry.id), prefs.load())
     }
 
     @Test

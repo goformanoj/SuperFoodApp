@@ -46,11 +46,14 @@ import kotlin.math.sqrt
  *
  * One clock drives it, read only inside the draw — each frame invalidates this
  * Canvas and nothing else in the tree.
+ *
+ * [animated] = false draws it once at a fixed moment and runs no clock — what the theme picker uses.
  */
 @Composable
-fun ReactorOrb(size: Dp, state: OrbState, modifier: Modifier = Modifier, labels: Boolean = true) {
+fun ReactorOrb(size: Dp, state: OrbState, modifier: Modifier = Modifier, labels: Boolean = true, animated: Boolean = true) {
     val palette = LocalPalette.current
-    var t by remember { mutableFloatStateOf(0f) }
+    // A still orb (theme-picker previews) is drawn once at a fixed, good-looking moment and runs no clock at all.
+    var t by remember { mutableFloatStateOf(if (animated) 0f else 4f) }
     var speed by remember { mutableFloatStateOf(1f) }
     val target = when (state) {
         OrbState.Thinking -> 3.2f
@@ -59,7 +62,8 @@ fun ReactorOrb(size: Dp, state: OrbState, modifier: Modifier = Modifier, labels:
         else -> 1f
     }
     val liveTarget by rememberUpdatedState(target)
-    LaunchedEffect(Unit) {
+    LaunchedEffect(animated) {
+        if (!animated) return@LaunchedEffect
         var last = 0L
         while (true) {
             withFrameNanos { now ->

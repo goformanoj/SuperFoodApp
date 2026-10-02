@@ -50,7 +50,11 @@ import com.jarvis.os.desktop.GoogleSignIn
 import com.jarvis.os.desktop.brain.TaskDates
 import com.jarvis.os.desktop.StartWithWindows
 import com.jarvis.os.memory.MemoryFormat
-import com.jarvis.os.ui.components.OrbPreview
+import androidx.compose.runtime.CompositionLocalProvider
+import com.jarvis.os.desktop.DesktopWorld
+import com.jarvis.os.desktop.ui.stark.DesktopWorldView
+import com.jarvis.os.ui.theme.LocalPalette
+import com.jarvis.os.voice.OrbState
 import com.jarvis.os.ui.components.ThemeBackdrop
 import com.jarvis.os.ui.theme.BackdropStyle
 import com.jarvis.os.ui.theme.JarvisPalette
@@ -78,24 +82,30 @@ internal fun Card(modifier: Modifier = Modifier, selected: Boolean = false, onCl
 }
 
 /**
- * The phone's theme + world picker, on the desktop. Only the SELECTED orb moves:
- * the phone's picker once ran every preview live and lagged badly enough to be
- * reported twice (see HudOrb's `animated` parameter). World thumbnails are stills.
+ * The theme + world picker. A theme card IS its world with the orb sitting in it, so the card shows
+ * what you will actually get. Only the SELECTED orb moves (the phone's picker once ran every
+ * preview live and lagged badly enough to be reported twice); every world thumbnail is a still.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AppearanceScreen(appearance: DesktopPrefs.Appearance, onChange: (DesktopPrefs.Appearance) -> Unit) {
-    Page("Themes", "Each theme is a different JARVIS — its own orb, its own colour and its own world behind it. Same themes as the phone.", scroll = true) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Page("Themes", "Each theme is a different JARVIS: its own colour, its own orb and its own world. Pick a world separately below if you like.", scroll = true) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             JarvisPalette.entries.forEach { p ->
                 val selected = p == appearance.palette
-                Card(Modifier.width(236.dp), selected = selected, onClick = { onChange(DesktopPrefs.Appearance(p, "")) }) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        OrbPreview(palette = p, size = 150.dp, animated = selected)
-                        Spacer(Modifier.height(12.dp))
-                        Text(p.displayName.uppercase(), color = if (selected) p.accent else J.Text, fontSize = 13.sp, fontFamily = J.Display, letterSpacing = 1.5.sp)
-                        Spacer(Modifier.height(6.dp))
-                        Text(p.blurb, color = J.TextDim, fontSize = 12.sp, lineHeight = 17.sp, textAlign = TextAlign.Center)
+                Card(Modifier.width(300.dp), selected = selected, onClick = { onChange(DesktopPrefs.Appearance(p, "")) }) {
+                    Column {
+                        Box(Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)), contentAlignment = Alignment.Center) {
+                            DesktopWorldView(DesktopWorld.ownFor(p), p, live = false, thumbnail = true)
+                            CompositionLocalProvider(LocalPalette provides p) {
+                                ReactorOrb(size = 150.dp, state = OrbState.Idle, labels = false, animated = selected)
+                            }
+                        }
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+                            Text(p.displayName.uppercase(), color = if (selected) p.accent else J.Text, fontSize = 13.sp, fontFamily = J.Display, letterSpacing = 1.5.sp)
+                            Spacer(Modifier.height(5.dp))
+                            Text(p.blurb, color = J.TextDim, fontSize = 12.sp, lineHeight = 17.sp)
+                        }
                     }
                 }
             }
@@ -104,24 +114,37 @@ fun AppearanceScreen(appearance: DesktopPrefs.Appearance, onChange: (DesktopPref
         Spacer(Modifier.height(34.dp))
         Text("WORLD", color = J.Text, fontSize = 14.sp, fontFamily = J.Display, letterSpacing = 2.sp)
         Spacer(Modifier.height(6.dp))
-        Text("What JARVIS sits in. “Theme's own” follows the theme you pick.", color = J.TextDim, fontSize = 13.sp)
+        Text("What JARVIS sits in. The five on the first row are drawn for the laptop; the rest are the phone's. \"Theme's own\" follows the theme you pick.", color = J.TextDim, fontSize = 13.sp)
         Spacer(Modifier.height(16.dp))
-        val current = appearance.backdrop
+        val current = appearance.desktopWorld
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            DesktopWorld.entries.forEach { dw ->
+                val selected = current == dw
+                val own = dw == DesktopWorld.ownFor(appearance.palette)
+                WorldCard(selected, onClick = { onChange(appearance.copy(backdropId = if (own) "" else dw.id)) }, title = dw.displayName, subtitle = if (own) "Theme's own" else dw.blurb) {
+                    DesktopWorldView(dw, appearance.palette, live = false, thumbnail = true)
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             BackdropStyle.entries.forEach { b ->
-                val selected = b == current
-                val own = b == BackdropStyle.defaultFor(appearance.palette.orbStyle)
-                Card(Modifier.width(196.dp), selected = selected, onClick = { onChange(appearance.copy(backdropId = if (own) "" else b.id)) }) {
-                    Column {
-                        Box(Modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))) {
-                            ThemeBackdrop(palette = appearance.palette, backdrop = b, thumbnail = true, live = false)
-                        }
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                            Text(b.displayName, color = if (selected) J.Accent else J.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            Text(if (own) "Theme's own" else b.blurb, color = J.TextDim, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2)
-                        }
-                    }
+                WorldCard(current == null && b == appearance.backdrop, onClick = { onChange(appearance.copy(backdropId = b.id)) }, title = b.displayName, subtitle = b.blurb) {
+                    ThemeBackdrop(palette = appearance.palette, backdrop = b, thumbnail = true, live = false)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorldCard(selected: Boolean, onClick: () -> Unit, title: String, subtitle: String, preview: @Composable () -> Unit) {
+    Card(Modifier.width(196.dp), selected = selected, onClick = onClick) {
+        Column {
+            Box(Modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))) { preview() }
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Text(title, color = if (selected) J.Accent else J.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, color = J.TextDim, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2)
             }
         }
     }

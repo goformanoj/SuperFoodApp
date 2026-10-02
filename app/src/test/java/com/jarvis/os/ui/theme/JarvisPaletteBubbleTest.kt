@@ -38,14 +38,14 @@ class JarvisPaletteBubbleTest {
     @Test
     fun `the bubble covers exactly the themes the palette has, in the same order`() {
         assertEquals(
-            JarvisPalette.entries.map { it.id },
+            JarvisPalette.phoneThemes.map { it.id },
             BubbleColors.IDS,
         )
     }
 
     @Test
     fun `every bubble colour still equals the palette it was copied from`() {
-        JarvisPalette.entries.forEach { palette ->
+        JarvisPalette.phoneThemes.forEach { palette ->
             val bubble = BubbleColors.forTheme(palette.id)
             assertEquals("${palette.id} accent", rgb(palette.accent), rgb(bubble.accent))
             assertEquals("${palette.id} secondary", rgb(palette.secondary), rgb(bubble.secondary))
