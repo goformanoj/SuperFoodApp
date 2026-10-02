@@ -65,13 +65,14 @@ object GoogleSignIn {
         val verifier = newVerifier()
         val state = newVerifier().take(24)
         val result = CompletableDeferred<Callback>()
+        val logo = SignInPage.logoDataUri()
 
         // Port 0: the OS picks a free one. Bound to loopback only — nothing off this machine can reach it.
         val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
         server.createContext("/") { ex ->
             val cb = parseCallback(ex.requestURI.rawQuery.orEmpty())
             val ok = cb.code != null && cb.state == state
-            val bytes = (if (ok) PAGE_OK else PAGE_FAIL).toByteArray(Charsets.UTF_8)
+            val bytes = (if (ok) SignInPage.ok(logo) else SignInPage.failed(logo, cb.error?.let { if (it == "access_denied") "Sign-in was cancelled." else "Google reported: $it" })).toByteArray(Charsets.UTF_8)
             ex.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
             ex.sendResponseHeaders(200, bytes.size.toLong())
             ex.responseBody.use { it.write(bytes) }
@@ -210,11 +211,5 @@ object GoogleSignIn {
     fun idTokenFrom(tokenResponse: String): String? =
         runCatching { JSONObject(tokenResponse).optString("id_token").ifBlank { null } }.getOrNull()
 
-    private const val PAGE_OK = """<!doctype html><html><head><meta charset="utf-8"><title>JARVIS</title></head>
-<body style="background:#050B18;color:#E6F1FF;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-<div style="text-align:center"><h1 style="letter-spacing:.2em;color:#00D4FF">JARVIS</h1><p>You're signed in. You can close this tab and go back to JARVIS.</p></div></body></html>"""
 
-    private const val PAGE_FAIL = """<!doctype html><html><head><meta charset="utf-8"><title>JARVIS</title></head>
-<body style="background:#050B18;color:#E6F1FF;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
-<div style="text-align:center"><h1 style="letter-spacing:.2em;color:#FF4D4D">JARVIS</h1><p>Sign-in didn't complete. Go back to JARVIS and try again.</p></div></body></html>"""
 }

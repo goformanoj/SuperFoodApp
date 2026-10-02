@@ -1,5 +1,13 @@
 # JARVIS OS — Build Memory
 
+## 2026-10-02 — sign-in worked; polishing it hit a Google policy wall, so I stopped instead of faking pages
+
+With the Desktop OAuth client created (in the user's own logged-in Chrome, as agreed) and its values in local build settings, the user signed in: Pro, ~2M tokens, usage tracked to their account. They then asked for two refinements: a nicer web page after sign-in, and an explanation of why Google's screen says "project-367552839244".
+
+**The page** is ours (a one-shot server on 127.0.0.1), so it was a plain code change: a branded card, the logo inline as a data URI (the page must work offline and make no outside requests — tested), escaped failure text. **The project number** is not ours: it is the Cloud project's OAuth "App name", never set, so Google shows its placeholder. Setting it is a Cloud Console change, and Google refuses to save branding for an app that is In production without a public home page and privacy policy link. Neither exists. Fabricating a legal page and publishing it under the user's name is not a fix I should make for them; and the other route (back to Testing) changes who can sign in. Both are the user's call, so I discarded my unsaved edit, closed the tab, and asked.
+
+**Chrome-driving notes:** the Cloud Console tab sometimes stalls on screenshots after typing; opening a fresh tab and redoing the step worked. The Save button greys out silently — the accessibility tree's tooltip ("Please review and update the invalid fields") named the cause, which the screenshot did not.
+
 ## 2026-10-02 — "the bug" was an anonymous account hitting a free cap; the real fix is in Google Cloud
 
 The user's screenshots showed FAULT DETECTED, "That's today's AI allowance used up. It resets in about 9 hours.", "743 tokens left today", and a 46-second reply. Reading the screens as a chain rather than four bugs: the laptop was signed in as nobody (Guest, free plan, 60k tokens a day — the same identity every live test shares), the day's allowance ran out, and the error showed twice because two layers each reported it (the tool step card and the banner). The cure is not code: sign in as the owner. The code exists (GoogleSignIn: browser, loopback server, PKCE, then Firebase links it to the phone's account); it was dormant because the Desktop-app OAuth client was never created, so its two build values are empty. The Worker already lists the owner's email as Pro.
