@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +26,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.Painter
@@ -61,6 +64,8 @@ import com.jarvis.os.desktop.ui.Screen
 import com.jarvis.os.desktop.ui.SettingsScreen
 import com.jarvis.os.desktop.ui.Sidebar
 import com.jarvis.os.desktop.ui.TodayRail
+import com.jarvis.os.desktop.ui.WindowControls
+import kotlinx.coroutines.delay
 import com.jarvis.os.desktop.ui.hasConversation
 import com.jarvis.os.ui.components.ThemeBackdrop
 import com.jarvis.os.ui.theme.JarvisPalette
@@ -239,6 +244,9 @@ fun main(args: Array<String>) = application {
         onCloseRequest = ::hideToTray,
         visible = windowVisible,
         title = "JARVIS",
+        // No native title bar (the blue one): JARVIS draws its own window controls and the OS
+        // still handles dragging, edge-resizing and snapping — see WindowChrome.
+        undecorated = true,
         icon = remember(appearance.palette) { ReactorIcon(appearance.palette) },
         state = windowState,
         onPreviewKeyEvent = { e ->
@@ -252,7 +260,20 @@ fun main(args: Array<String>) = application {
             }
         },
     ) {
-        LaunchedEffect(Unit) { window.minimumSize = Dimension(980, 640) }
+        LaunchedEffect(Unit) {
+            window.minimumSize = Dimension(980, 640)
+            // The native handle exists once the window is on screen; frameless behaviour hooks it.
+            var handle = window.windowHandle
+            var tries = 0
+            while (handle == 0L && tries++ < 100) { delay(50); handle = window.windowHandle }
+            WindowChrome.install(handle)
+            // Compose creates the surface it draws into (a child window) a moment after the frame shows.
+            repeat(60) { WindowChrome.attachChildren(handle); delay(250) }
+        }
+        // The window's hairline border takes the theme's colour instead of the system accent.
+        LaunchedEffect(appearance.palette) {
+            WindowChrome.setBorderColor(window.windowHandle, lerp(appearance.palette.background, appearance.palette.accent, 0.28f).toArgb() and 0xFFFFFF)
+        }
         DesktopTheme(appearance.palette) {
             val home = screen == Screen.Chat && !hasConversation(assistant)
 
@@ -290,7 +311,19 @@ fun main(args: Array<String>) = application {
                 // The instrument grid and vignette over everything: the HUD's glass.
                 HudGrid(Modifier.fillMaxSize())
 
-                Row(Modifier.fillMaxSize()) {
+                // The strip the native title bar used to occupy: empty (the world shows through it), with the
+                // window's own controls at the right. The content starts below it.
+                WindowControls(
+                    maximized = windowState.placement == WindowPlacement.Maximized,
+                    onMinimize = { windowState.isMinimized = true },
+                    onToggleMaximize = {
+                        windowState.placement = if (windowState.placement == WindowPlacement.Maximized) WindowPlacement.Floating else WindowPlacement.Maximized
+                    },
+                    onClose = ::hideToTray,
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
+
+                Row(Modifier.fillMaxSize().padding(top = WindowChrome.TITLE_BAR_DP.dp)) {
                     Sidebar(assistant, screen, onHome = ::goHome, onSearch = { searchOpen = true }) { screen = it }
                     Divider()
                     Box(Modifier.weight(1f).fillMaxHeight()) {
