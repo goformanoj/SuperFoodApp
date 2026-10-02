@@ -39,6 +39,28 @@ export function d1Store(db, nowMs = () => Date.now()) {
       return 'free'
     },
 
+    /** Adds an address to the waitlist; created=false when it was already there. */
+    async addWaitlist(email, source, ipHash, atMs) {
+      const res = await db
+        .prepare('INSERT OR IGNORE INTO waitlist (email, created_at, source, ip_hash) VALUES (?1, ?2, ?3, ?4)')
+        .bind(email, atMs, source, ipHash)
+        .run()
+      return { created: (res?.meta?.changes ?? 0) > 0 }
+    },
+    /** Signups from one hashed network since [sinceMs] — the rate limit's input. */
+    async waitlistFrom(ipHash, sinceMs) {
+      const row = await db
+        .prepare('SELECT COUNT(*) AS n FROM waitlist WHERE ip_hash = ?1 AND created_at >= ?2')
+        .bind(ipHash, sinceMs)
+        .first()
+      return row?.n ?? 0
+    },
+    /** Everyone on the list, oldest first (the owner's export; never includes ip_hash). */
+    async waitlistAll() {
+      const res = await db.prepare('SELECT email, created_at, source FROM waitlist ORDER BY created_at ASC').all()
+      return res?.results ?? []
+    },
+
     async usedToday(uid, day) {
       const row = await db
         .prepare(
@@ -187,6 +209,7 @@ export function memoryStore(seed = {}) {
   const usage = new Map(Object.entries(seed.usage ?? {}))
   const subs = new Map(Object.entries(seed.subscriptions ?? {}))
   const syncRows = new Map()
+  const waitlist = new Map()
   const key = (uid, day) => `${uid}|${day}`
 
   return {
@@ -196,6 +219,17 @@ export function memoryStore(seed = {}) {
     async userPlan(uid) {
       if (!users.has(uid)) users.set(uid, 'free')
       return users.get(uid)
+    },
+    async addWaitlist(email, source, ipHash, atMs) {
+      if (waitlist.has(email)) return { created: false }
+      waitlist.set(email, { email, created_at: atMs, source, ip_hash: ipHash })
+      return { created: true }
+    },
+    async waitlistFrom(ipHash, sinceMs) {
+      return [...waitlist.values()].filter((r) => r.ip_hash === ipHash && r.created_at >= sinceMs).length
+    },
+    async waitlistAll() {
+      return [...waitlist.values()].sort((a, b) => a.created_at - b.created_at).map(({ email, created_at, source }) => ({ email, created_at, source }))
     },
     async usedToday(uid, day) {
       const row = usage.get(key(uid, day))

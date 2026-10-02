@@ -16,6 +16,8 @@ import { capFor, dayKey, isOverCap, overCapBody, remaining } from './quota.js'
 import { modelsFor } from './models.js'
 import { d1Store } from './db.js'
 import { MIGRATIONS } from './schema.js'
+import { HOUR_MS, MAX_BODY_BYTES, cleanSource, hashIp, normaliseEmail, overLimit } from './waitlist.js'
+import { PAGE_HEADERS, renderPrivacy, renderSite } from './site.js'
 import { SYSTEM_PROMPT, CONVERSATION_PROMPT, DESKTOP_AGENT_PROMPT, PHONE_AGENT_PROMPT } from './systemPrompt.js'
 import { lastUserText, looksActiony, shouldEscalate } from './promptTier.js'
 import { dropSecretMemories } from './guards.js'
@@ -47,6 +49,8 @@ export function createWorker({
   proUids = [],
   proEmails = [],
   conversationTier = false,
+  waitlistSalt = '',
+  waitlistContact = '',
   now = () => Date.now(),
 }) {
   return {
@@ -83,6 +87,44 @@ export function createWorker({
 
       if (request.method === 'GET' && url.pathname === '/health') {
         return Response.json({ ok: true })
+      }
+
+      // The public site and its waitlist. Deliberately BEFORE any auth: these are for strangers. The page makes no
+      // external requests; the form posts back to this same origin. See site.js and waitlist.js.
+      if (request.method === 'GET' && url.pathname === '/') {
+        return new Response(renderSite(), { headers: PAGE_HEADERS })
+      }
+      if (request.method === 'GET' && url.pathname === '/privacy') {
+        return new Response(renderPrivacy({ contact: waitlistContact }), { headers: PAGE_HEADERS })
+      }
+      if (request.method === 'POST' && url.pathname === '/waitlist') {
+        const text = await request.text()
+        if (text.length > MAX_BODY_BYTES) return Response.json({ error: 'too_large' }, { status: 413 })
+        let body
+        try {
+          body = JSON.parse(text)
+        } catch {
+          return Response.json({ error: 'bad_json' }, { status: 400 })
+        }
+        // A bot that fills the hidden field gets the same "ok" a person does and is not stored.
+        if (typeof body?.company === 'string' && body.company.trim() !== '') return Response.json({ ok: true })
+        const email = normaliseEmail(body?.email)
+        if (!email) return Response.json({ error: 'bad_email' }, { status: 400 })
+        const nowMs = now()
+        const ipHash = await hashIp(request.headers.get('CF-Connecting-IP') ?? '', waitlistSalt)
+        const recent = ipHash ? await store.waitlistFrom(ipHash, nowMs - HOUR_MS) : 0
+        if (overLimit(recent, ipHash)) {
+          return Response.json({ error: 'slow_down' }, { status: 429, headers: { 'retry-after': '3600' } })
+        }
+        await store.addWaitlist(email, cleanSource(body?.source), ipHash, nowMs)
+        // Same answer whether or not the address was already there, so the form cannot be used to find out who is on the list.
+        return Response.json({ ok: true }, { headers: { 'cache-control': 'no-store' } })
+      }
+      // The owner's export. Behind the same shared secret as every other private route.
+      if (request.method === 'GET' && url.pathname === '/admin/waitlist') {
+        if (!checkSecret(request, proxySecret)) return Response.json({ error: 'forbidden' }, { status: 403 })
+        const rows = await store.waitlistAll()
+        return Response.json({ count: rows.length, rows })
       }
 
       // PART C2.2 — per-app packs. `GET /apps/<package>` returns the generic
@@ -550,6 +592,7 @@ export default {
     const transcriber = env.GROQ_API_KEY ? groqTranscriber(env.GROQ_API_KEY) : null
     return createWorker({
       store, provider, transcriber, proxySecret: env.PROXY_SECRET, verifyToken, proUids, proEmails, conversationTier,
+      waitlistSalt: env.WAITLIST_SALT ?? '', waitlistContact: (env.WAITLIST_CONTACT ?? '').trim(),
     }).fetch(request)
   },
 }

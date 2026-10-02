@@ -43,3 +43,12 @@ CREATE TABLE IF NOT EXISTS sync_rows (
   data       TEXT NOT NULL DEFAULT '{}',  -- the entity's fields, as JSON
   PRIMARY KEY (uid, kind, ref_id)
 );
+
+-- The public waitlist. Email is the key (signing up twice changes nothing); ip_hash is a salted
+-- SHA-256 used only to rate-limit one network, never the address itself.
+CREATE TABLE IF NOT EXISTS waitlist (
+  email      TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  source     TEXT NOT NULL DEFAULT '',
+  ip_hash    TEXT NOT NULL DEFAULT ''
+);

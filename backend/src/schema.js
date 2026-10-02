@@ -57,7 +57,15 @@ export const MIGRATIONS = [
      data       TEXT NOT NULL DEFAULT '{}',
      PRIMARY KEY (uid, kind, ref_id)
    )`,
+  // The public waitlist: who asked for access, when, via which link, and a salted hash of their IP
+  // (rate-limiting only — see waitlist.js). Email is the key, so signing up twice is a no-op.
+  `CREATE TABLE IF NOT EXISTS waitlist (
+     email      TEXT PRIMARY KEY,
+     created_at INTEGER NOT NULL,
+     source     TEXT NOT NULL DEFAULT '',
+     ip_hash    TEXT NOT NULL DEFAULT ''
+   )`,
 ]
 
 /** Table names, for the drift check against `schema.sql`. */
-export const TABLES = ['users', 'usage_daily', 'subscriptions', 'sync_rows']
+export const TABLES = ['users', 'usage_daily', 'subscriptions', 'sync_rows', 'waitlist']
