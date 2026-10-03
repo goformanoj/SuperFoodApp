@@ -44,7 +44,7 @@ fun PermissionsScreen(a: DesktopAssistant) {
             PermissionRow(
                 icon = Icons.Outlined.Description,
                 title = "Laptop files",
-                grants = "Search this laptop's files by name and content, open one it found, and read a document by typing its file path.",
+                grants = "Search this laptop's files by name and content, look inside a folder (names and dates only — never keys or secrets), open a document it found, and read a document by typing its file path.",
                 exempt = "Documents you attach yourself — the paperclip, or dragging a file onto JARVIS — always work, permission or not.",
                 on = a.filesAllowed,
             ) { a.filesAllowed = it }

@@ -2,6 +2,8 @@
 
 ## Current position — 2026-10-01 — Phase 7 phone step 3: native tool-calling is wired into live chat for tasks/reminders/notes/recall — LIVE-VERIFIED on the emulator 2026-10-02 (found + fixed two bugs: main-thread networking, missing date context; delete refusal still model-driven, no phone approval UI yet); backend/model tracked per reply; today's own testing volume briefly exhausted the free router's shared capacity (watch for this before assuming a code regression); the step-budget stall has a REAL hard stop; a real trust eval exists; desktop CI's Linux-only failures fixed; off-screen-window bug fixed
 
+> **Folder access (2026-10-03):** the "it kept asking questions" miss is fixed (file access off is now announced to the model; one-question rule in the Worker prompt; new `list_folder` tool; garbled "!!!!" replies re-asked). Gotcha: **a tool hidden by a permission must be announced as hidden**, or the model quizzes the user. Open and honest: the Blinkit/screen-control errand is still device-unconfirmed (needs the real phone), the phone plan-label fix is unit-tested but not seen on a screen, and the installed laptop build predates all of this until the user reinstalls (UAC).
+
 > **Redesign built (2026-10-02):** sidebar/chat per the Design canvas; see PROGRESS. Waitlist site was rejected as 'horrible' — to be redone before anything is published (branch `waitlist-site`, not on main).
 
 > **Pending the user (2026-10-02):** (a) approve the Design canvas (artifact `2DrGtn8ZSkPiyRchXpiUiA`) before the sidebar/chat redesign is built; (b) the waitlist site is on branch `waitlist-site`, NOT on main — publishing needs their contact email, a WAITLIST_SALT secret and an OK on the privacy text; then deploy and POST /admin/migrate.

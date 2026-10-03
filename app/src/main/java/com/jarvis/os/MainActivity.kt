@@ -23,6 +23,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.jarvis.os.ai.Identity
 import com.jarvis.os.ai.PackClient
 import com.jarvis.os.ai.UsageStats
+import kotlinx.coroutines.launch
 import com.jarvis.os.assistant.AssistantEngine
 import com.jarvis.os.data.ProfileMigration
 import com.jarvis.os.debug.DebugLog
@@ -74,6 +75,15 @@ class MainActivity : ComponentActivity() {
         PackClient.init(applicationContext)
         // Today's token allowance, updated from each Worker reply and shown in the drawer.
         UsageStats.init(applicationContext)
+        // Ask the Worker for the plan and today's allowance right away, so the drawer never says "Free" for a
+        // Pro account until the first reply. It can lose a race with the network or the sign-in token, so it
+        // retries a few times, quietly (the same schedule the laptop uses).
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            for (wait in listOf(0L, 4_000L, 15_000L, 60_000L)) {
+                kotlinx.coroutines.delay(wait)
+                if (runCatching { com.jarvis.os.ai.UsageClient.refresh() }.getOrNull() != null) break
+            }
+        }
         engine = AssistantEngine(applicationContext)
         setContent {
             // Held above the theme so a change repaints the whole app immediately,

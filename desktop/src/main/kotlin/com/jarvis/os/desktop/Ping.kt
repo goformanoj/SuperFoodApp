@@ -117,6 +117,7 @@ fun main(args: Array<String>) {
                 override fun openFile(path: String): Boolean { println("  (would open a file)"); return true }
                 override suspend fun webSearch(query: String) = com.jarvis.os.desktop.knowledge.KnowledgeClient.webSearch(query)
                 override suspend fun searchFiles(q: com.jarvis.os.desktop.knowledge.FileSearch.Query) = com.jarvis.os.desktop.knowledge.FileSearch.run(q)
+                override fun folderRoots() = listOf(java.io.File(System.getProperty("user.home"))) + java.io.File.listRoots().filter { it.isDirectory }
                 override suspend fun youtubeVideo(query: String) = com.jarvis.os.desktop.knowledge.YouTubeSearch.firstVideo(query)
                 override suspend fun youtubePlaylist(query: String) = com.jarvis.os.desktop.knowledge.YouTubeSearch.firstPlaylist(query)
             }

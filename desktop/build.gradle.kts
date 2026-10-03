@@ -36,6 +36,8 @@ val SHARED_FROM_APP = listOf(
     "com/jarvis/os/ai/GroqClient.kt",
     "com/jarvis/os/ai/ModelRouter.kt",
     "com/jarvis/os/ai/RateLimit.kt",
+    // "Who am I and what is left today" (GET /usage): one client for the phone and the laptop.
+    "com/jarvis/os/ai/UsageClient.kt",
     "com/jarvis/os/ai/SystemPrompt.kt",
     "com/jarvis/os/voice/VoiceState.kt",
     // What is safe to read aloud (strips markdown, emoji, markers) — the phone's own rules.

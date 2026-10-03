@@ -94,6 +94,10 @@ fun AccountScreen(
     LaunchedEffect(Unit) {
         account = Identity.account()
         usage = UsageStats.today()
+        // Opening the screen asks the Worker for the real plan, so it is right before any reply.
+        com.jarvis.os.ai.UsageClient.refresh()
+        account = Identity.account()
+        usage = UsageStats.today()
     }
 
     val signIn: () -> Unit = {
@@ -106,6 +110,7 @@ fun AccountScreen(
                     // Switch the app's data to this account's partition immediately,
                     // and refresh what this screen shows for the new account.
                     onAccountChanged()
+                    com.jarvis.os.ai.UsageClient.refresh()   // the new account's plan, now, not after its first reply
                     account = Identity.account()
                     usage = UsageStats.today()
                 } catch (e: Exception) {
@@ -122,6 +127,7 @@ fun AccountScreen(
     val doRefresh: () -> Unit = {
         refreshing = true
         scope.launch {
+            com.jarvis.os.ai.UsageClient.refresh()
             account = Identity.account()
             usage = UsageStats.today()
             delay(450) // let the indicator register even when the read is instant

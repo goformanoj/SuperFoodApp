@@ -7383,3 +7383,20 @@ testable; `InstructionsScreenUiTest` keeps a Compose-UI smoke test on-device. Ke
 retry as cheap insurance for genuine random flakiness. GOTCHA banked: **do not drive a screen that
 renders `HudOrb` (or any `rememberInfiniteTransition`) from a Compose emulator test — it crashes the
 GitHub VM; test such screens' logic in the fast tiers instead.**
+
+### 2026-10-03 — "Access the SuperFoodApp folder" got a string of questions; the cause was a silence, not a bad model
+
+The user asked JARVIS to access the SuperFoodApp folder and got precise, repeated questions instead of "you haven't
+given me access". Reading the code before theorising (Rule 4): with Permissions → Laptop files off, `ToolBox.specs`
+drops `search_files`/`open_file`, and the model was never told. A model with no matching tool and no explanation
+does the only thing left, which is ask. **A capability you hide has to be announced as hidden**, or the model fills the
+gap by quizzing the user. Fix in three layers (a prompt-only fix would be probabilistic, Rule 6): the app's context
+line states that file access is off and where to switch it on; the Worker prompt limits questions to one and forbids
+them when something is switched off; and the tool list has a real answer when it is on. Second finding, same trace
+of thought: even with access ON the request could not have worked — Windows Search leaves code out and returns files,
+never folders — so `list_folder` was added (read-only, capped, secrets never shown, found by name under home and
+drives). The live eval (the only test that exercises the real model) passed both new scenarios and, separately,
+caught a wall of "!!!!" from one backend on "what's today's date?"; the loop now re-asks and then apologises plainly.
+The phone had the same "Free until the first reply" label bug the laptop had; `UsageClient` moved into `app/`
+and is shared. **What the evidence did not cover:** nothing here touches the Blinkit screen-control bug — that needs
+the real phone with the real app and has never been device-confirmed since 2026-08-14.
