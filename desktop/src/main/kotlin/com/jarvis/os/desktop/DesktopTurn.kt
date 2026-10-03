@@ -60,6 +60,14 @@ object DesktopTurn {
         .filter { it.isNotEmpty() && !it.matches(Regex("[-*_]{3,}")) }
         .joinToString("\n")
 
+    /** Sent while file access is off: tell the user how to turn it on, don't interrogate them. */
+    const val FILES_OFF_NOTE =
+        "The user has NOT allowed you to see files or folders on this laptop (Settings → Permissions → Laptop files), " +
+            "so you have no file or folder tools right now. If they ask you to open, find, list or read anything on the " +
+            "laptop (a folder, a project, a document that isn't attached), do not ask which drive, folder or file type: " +
+            "say in one or two sentences that file access is switched off and that they can turn it on in Settings → " +
+            "Permissions → Laptop files. A document they attach to the chat can still be read."
+
     const val PHONE_ONLY_NOTE =
         "That's something I can only do on your phone for now — desktop control is coming."
 
@@ -154,6 +162,8 @@ object DesktopTurn {
         nowText: String, memory: String, attachedDocs: List<String> = emptyList(), today: java.time.LocalDate? = null,
         /** The connected Google account (Calendar + Gmail), or null. */
         google: String? = null,
+        /** Whether the user has allowed JARVIS to look at files and folders on this laptop (Settings → Permissions). */
+        laptopFiles: Boolean = true,
     ): String = listOf(
         "Current date/time: $nowText." + (today?.let { " " + weekAhead(it) } ?: ""),
         // The agent's tools cover tasks, reminders, notes, memory, search, documents, files,
@@ -161,10 +171,13 @@ object DesktopTurn {
         // reminders were unavailable, and the live model obeyed it, asking instead of acting.)
         "The user is talking to you in the JARVIS desktop app on their Windows laptop. Use your " +
             "tools to add tasks, set reminders, save notes, remember things, search their past " +
-            "chats, read their documents, find files on the laptop, search the web, look at the " +
+            "chats, read their documents, " + (if (laptopFiles) "find files and look inside folders on the laptop, " else "") + "search the web, look at the " +
             "screen, and open apps, files or websites. Phone-only actions (calls, texts, phone alarms, " +
             "tapping inside phone apps) aren't available from the laptop: do not emit any " +
             "device-action marker; say those work from the phone.",
+        // Without this the model has no file tools and no idea why, so it quizzes the user ("which drive? what
+        // kind of file?") instead of saying the one thing that unblocks them: the permission is off.
+        if (laptopFiles) "" else FILES_OFF_NOTE,
         if (google == null) "" else
             "Google Calendar and Gmail are connected" + (if ('@' in google) " ($google)" else "") +
                 ": use them for the user's schedule and email. Emails are drafted, and only sent when the user asks and approves.",

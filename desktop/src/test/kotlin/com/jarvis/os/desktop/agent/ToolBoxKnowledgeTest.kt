@@ -63,10 +63,10 @@ class ToolBoxKnowledgeTest {
     @Test
     fun onlyTheScreenLookSharesAndEveryKnowledgeToolIsDeclared() {
         val names = tools.specs.map { it.name }
-        listOf("web_search", "read_document", "search_documents", "search_files", "open_file", "look_at_screen").forEach { assertTrue(it, it in names) }
+        listOf("web_search", "read_document", "search_documents", "search_files", "list_folder", "open_file", "look_at_screen").forEach { assertTrue(it, it in names) }
         assertEquals(setOf("look_at_screen"), tools.specs.filter { it.risk == Risk.SHARES }.map { it.name }.toSet())
         assertEquals(setOf("delete_task", "forget", "look_at_screen"), tools.specs.filter { it.risk.needsApproval }.map { it.name }.toSet())
-        assertTrue(tools.specs.size <= 24)     // the Worker's MAX_TOOLS
+        assertTrue(tools.specs.size <= 36)     // the Worker's MAX_TOOLS (index.js)
         assertTrue(tools.approvalNote("look_at_screen").contains("isn't saved"))
         assertEquals("This can't be undone.", tools.approvalNote("delete_task"))
     }

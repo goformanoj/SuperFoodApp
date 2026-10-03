@@ -54,6 +54,10 @@ class WindowsHost(
 
     override suspend fun searchFiles(q: FileSearch.Query) = FileSearch.run(q)
 
+    /** Where a folder named in words ("my SuperFoodApp folder") is looked for: the user's home, then every drive. */
+    override fun folderRoots(): List<File> =
+        listOf(File(System.getProperty("user.home"))) + File.listRoots().filter { it.isDirectory }
+
     override suspend fun youtubeVideo(query: String) = YouTubeSearch.firstVideo(query)
     override suspend fun youtubePlaylist(query: String) = YouTubeSearch.firstPlaylist(query)
 

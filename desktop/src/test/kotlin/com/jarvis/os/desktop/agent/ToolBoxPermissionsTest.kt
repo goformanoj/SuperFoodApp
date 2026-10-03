@@ -88,4 +88,45 @@ class ToolBoxPermissionsTest {
         assertTrue(r.forModel, r.ok)
         assertEquals(1, brain.documents().size)
     }
+
+    // --- list_folder (live miss 2026-10-03: "access the SuperFoodApp folder" got a run of questions) ---
+
+    @Test
+    fun offHidesListFolderAndRefusesItWithTheWayToTurnItOn() {
+        val t = tools(false)
+        assertFalse("list_folder" in t.specs.map { it.name })
+        val r = run(t, "list_folder", """{"folder":"SuperFoodApp"}""")
+        assertFalse(r.ok)
+        assertTrue(r.summary.contains("Settings → Permissions → Laptop files"))
+    }
+
+    @Test
+    fun onListsAFolderGivenByFullPath() {
+        val d = java.nio.file.Files.createTempDirectory("jarvis-proj").toFile().apply { deleteOnExit() }
+        File(d, "app").mkdirs(); File(d, "README.md").writeText("hi"); File(d, ".env").writeText("KEY=1")
+        val r = run(tools(true), "list_folder", "{\"folder\":\"${d.path.replace("\\", "\\\\")}\"}")
+        assertTrue(r.forModel, r.ok)
+        val j = org.json.JSONObject(r.forModel)
+        assertEquals(2, j.getInt("total"))
+        assertEquals("app", j.getJSONArray("entries").getJSONObject(0).getString("name"))
+        assertTrue("the .env is counted but never shown", j.has("hidden") && !r.forModel.contains(".env\""))
+    }
+
+    @Test
+    fun onFindsAFolderByNameUnderTheHostsRoots() {
+        val root = java.nio.file.Files.createTempDirectory("jarvis-home").toFile().apply { deleteOnExit() }
+        File(root, "Work/SuperFoodApp").mkdirs(); File(root, "Work/SuperFoodApp/notes.txt").writeText("x")
+        val hostWithRoots = object : ToolBox.Host by host { override fun folderRoots() = listOf(root) }
+        val t = ToolBox(brain, hostWithRoots, { 1_000L }, ZoneId.of("Asia/Kolkata"), filesAllowed = { true })
+        val r = run(t, "list_folder", """{"folder":"super food app"}""")
+        assertTrue(r.forModel, r.ok)
+        assertTrue(r.summary.contains("SuperFoodApp"))
+    }
+
+    @Test
+    fun anUnknownFolderNamedInWordsSaysSoAndAsksForThePathOnce() {
+        val r = run(tools(true), "list_folder", """{"folder":"NoSuchFolderAnywhere"}""")
+        assertFalse(r.ok)
+        assertTrue(r.summary.contains("full path"))
+    }
 }

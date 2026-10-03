@@ -265,4 +265,33 @@ class AgentLoopTest {
         assertEquals("Notepad++", ShortcutMatch.best("notepad", names))
         assertEquals(null, ShortcutMatch.best("photoshop", names))
     }
+
+    // --- a wall of "!!!!" is never shown (live miss in the eval, 2026-10-03) ---
+
+    @Test
+    fun aGarbledReplyIsAskedAgainAndTheRealAnswerIsShown() = runBlocking {
+        val script = Script(
+            AgentClient.Reply("!".repeat(300), emptyList()),
+            AgentClient.Reply("Today is Wednesday, 7 October.", emptyList()),
+        )
+        val loop = AgentLoop(tools, script::step, approve = { error("none") }, onStep = { _, _ -> })
+        assertEquals("Today is Wednesday, 7 October.", loop.run(listOf(ChatTurn(ChatTurn.USER, "What's the date?")), "ctx", "conv"))
+        assertEquals(2, script.sent.size)
+    }
+
+    @Test
+    fun ifEveryTryIsGarbledTheUserIsToldNotShownTheJunk() = runBlocking {
+        val script = Script(*Array(3) { AgentClient.Reply("!".repeat(300), emptyList()) })
+        val loop = AgentLoop(tools, script::step, approve = { error("none") }, onStep = { _, _ -> })
+        assertEquals(AgentLoop.GARBLED_REPLY, loop.run(listOf(ChatTurn(ChatTurn.USER, "hi")), "ctx", "conv"))
+    }
+
+    @Test
+    fun onlyAReplyThatIsMostlyOneCharacterCountsAsGarbled() {
+        assertTrue(AgentLoop.isDegenerate("!".repeat(120)))
+        assertTrue(AgentLoop.isDegenerate("Sure " + "!".repeat(40)))
+        assertFalse("a real sentence with a short dash line is fine", AgentLoop.isDegenerate("Here is the plan for the week ahead and what to do first. " + "-".repeat(20)))
+        assertFalse(AgentLoop.isDegenerate("Done!!!"))
+        assertFalse(AgentLoop.isDegenerate(""))
+    }
 }

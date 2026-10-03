@@ -58,8 +58,18 @@ class AgentLoop(
             // is the real, code-level guarantee (Rule 6): send NO tools at all, so there is
             // nothing left to call and the model MUST answer in words, using whatever the
             // turn already learned, instead of ending in the generic stall message.
-            val reply = step(messages, context, if (lastStep) noTools else schemas)
+            var reply = step(messages, context, if (lastStep) noTools else schemas)
             onReply(reply)
+            // A model that has fallen into a loop sometimes "answers" with a wall of one character ("!!!!…" —
+            // found live on one backend). Showing that is useless; asking again almost always gets a real reply
+            // (the next try may land on another backend), and if it doesn't, say so plainly.
+            var garbled = 0
+            while (reply.toolCalls.isEmpty() && isDegenerate(reply.text) && garbled < GARBLED_RETRIES) {
+                garbled++
+                reply = step(messages, context, if (lastStep) noTools else schemas)
+                onReply(reply)
+            }
+            if (reply.toolCalls.isEmpty() && isDegenerate(reply.text)) return GARBLED_REPLY
             if (reply.toolCalls.isEmpty()) return reply.text.ifBlank { fallback(doneSoFar) }
             if (lastStep) return fallback(doneSoFar)   // nothing was offered — never trust a stray tool call blindly
             messages.put(AgentClient.assistantToolMessage(reply.text, reply.toolCalls))
@@ -123,6 +133,17 @@ class AgentLoop(
     data class Ask(val description: String, val note: String)
 
     companion object {
+        /** How many times a garbled reply is re-asked before the user is told. */
+        const val GARBLED_RETRIES = 2
+        const val GARBLED_REPLY = "Sorry — my answer came out garbled. Could you ask me that again?"
+        private val RUN_OF_ONE_CHAR = Regex("""(.)\1{19,}""")
+
+        /** A reply that is mostly one repeated character, not language. Pure; tested. */
+        fun isDegenerate(text: String): Boolean {
+            val run = RUN_OF_ONE_CHAR.find(text) ?: return false
+            return run.value.length * 2 >= text.trim().length
+        }
+
         const val MAX_STEPS = 6
         /** How many real failures in one turn before every further failure also says "stop probing, report instead". */
         const val WRAP_UP_AFTER_FAILURES = 2

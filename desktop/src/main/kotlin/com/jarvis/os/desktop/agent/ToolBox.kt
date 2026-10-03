@@ -6,6 +6,7 @@ import com.jarvis.os.desktop.google.GoogleApis
 import com.jarvis.os.desktop.brain.TaskDates
 import com.jarvis.os.desktop.knowledge.DocText
 import com.jarvis.os.desktop.knowledge.FileSearch
+import com.jarvis.os.desktop.knowledge.FolderList
 import com.jarvis.os.desktop.knowledge.KnowledgeClient
 import com.jarvis.os.desktop.knowledge.Library
 import java.io.File
@@ -90,6 +91,8 @@ class ToolBox(
         fun clipboardText(): String?
         /** Opens a document with its default app (never a program; the tool checks). */
         fun openFile(path: String): Boolean = false
+        /** Where list_folder looks for a folder given by name rather than by full path. */
+        fun folderRoots(): List<java.io.File> = emptyList()
         suspend fun webSearch(query: String): KnowledgeClient.WebAnswer = throw UnsupportedOperationException("Web search isn't available here.")
         suspend fun searchFiles(q: FileSearch.Query): List<FileSearch.Found> = throw UnsupportedOperationException("File search isn't available here.")
         /** One screenshot (JARVIS's own window out of the way) → the vision model's answer. */
@@ -300,6 +303,11 @@ class ToolBox(
                 "modified_before" to str("Optional date YYYY-MM-DD"),
                 required = listOf("query"),
             ),
+            Risk.READ,
+        ),
+        Spec(
+            "list_folder", "Look inside a folder on this laptop and list what is in it (names, sizes, dates — not file contents). Give the folder's full path, or just its name (\"SuperFoodApp\") and it will be found. Only offered when the user has allowed laptop-file access in Settings → Permissions. To read a document inside it, use read_document with the file's path.",
+            obj("folder" to str("The folder's full path, or its name"), required = listOf("folder")),
             Risk.READ,
         ),
         Spec(
@@ -563,6 +571,28 @@ class ToolBox(
                 ok(JSONObject().put("files", arr).apply { if (found.isEmpty()) put("note", "No files matched. Try fewer or different words, or no dates.") },
                     "Searched the laptop for “${args.optString("query")}” (${found.size} file${if (found.size == 1) "" else "s"})")
             }
+            "list_folder" -> {
+                if (!filesAllowed()) return fail("The user hasn't allowed JARVIS to look at folders on this laptop. It can be turned on in Settings → Permissions → Laptop files.")
+                val ref = args.optString("folder").trim().trim('"', '“', '”')
+                if (ref.isEmpty()) return fail("Which folder?")
+                val dir = if (File(ref).isAbsolute) File(ref)
+                else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { FolderList.find(ref, host.folderRoots()) }.firstOrNull()
+                    ?: return fail("I couldn't find a folder called “$ref”. Ask the user for its full path (for example D:\\Projects\\${ref.replace(" ", "")}).")
+                if (!dir.isDirectory) return fail("There's no folder at that path.")
+                val l = FolderList.list(dir) ?: return fail("Windows wouldn't let me open that folder.")
+                brain.log("files", "Looked inside ${dir.name}", detail = dir.path)
+                val arr = JSONArray()
+                l.entries.forEach { e ->
+                    arr.put(JSONObject().put("name", e.name).put("type", if (e.isDir) "folder" else "file")
+                        .apply { e.size?.let { put("bytes", it) }; e.modified?.let { put("modified", it) } })
+                }
+                ok(JSONObject().put("folder", l.path).put("total", l.total).put("entries", arr)
+                    .apply {
+                        if (l.total > l.entries.size) put("note", "Showing the first ${l.entries.size} of ${l.total}. Ask for a subfolder to see more.")
+                        if (l.hidden > 0) put("hidden", "${l.hidden} items (keys, secrets, hidden files) are not shown.")
+                    },
+                    "Looked inside “${dir.name}” (${l.total} item${if (l.total == 1) "" else "s"})")
+            }
             "open_file" -> {
                 if (!filesAllowed()) return fail("The user hasn't allowed JARVIS to open files on this laptop. It can be turned on in Settings → Permissions.")
                 val f = File(args.optString("path").trim())
@@ -778,7 +808,7 @@ class ToolBox(
         /** Gated by the laptop-files permission (Settings → Permissions). read_document stays
          *  listed always — it also serves documents the user attached themselves, which the
          *  permission never restricts; only its own path-lookup branch is gated, in code. */
-        val FILE_TOOLS = setOf("search_files", "open_file")
+        val FILE_TOOLS = setOf("search_files", "open_file", "list_folder")
         /** Characters of document text handed to the model in one read (~3k tokens). */
         const val READ_BUDGET = 12_000
         /** Never opened by open_file, whatever the model asks: things that run code. */

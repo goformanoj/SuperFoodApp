@@ -522,7 +522,7 @@ class DesktopAssistant(
         thinkingIn = conv.id
         refreshConversations()
         val (text, ok) = try {
-            val context = DesktopTurn.context(nowLine(), formatMemory("", facts), today = java.time.LocalDate.now(), google = googleEmail) + "\n\n" +
+            val context = DesktopTurn.context(nowLine(), formatMemory("", facts), today = java.time.LocalDate.now(), google = googleEmail, laptopFiles = filesAllowed) + "\n\n" +
                 DesktopTurn.routineNote(r.name, manual)
             val raw = AgentLoop(
                 toolBox,
@@ -729,7 +729,7 @@ class DesktopAssistant(
                 val history = modelHistory(id).takeLast(DesktopTurn.MAX_CONTEXT_TURNS)
                 // Exact local time and zone: the agent turns "tomorrow at 5" into a real time.
                 val attached = brain.attachedDocuments(id).map { "${it.name} (${it.pages} ${it.unit}${if (it.pages == 1) "" else "s"})" }
-                val context = DesktopTurn.context(nowLine(), formatMemory("", facts), attached, java.time.LocalDate.now(), googleEmail) +
+                val context = DesktopTurn.context(nowLine(), formatMemory("", facts), attached, java.time.LocalDate.now(), googleEmail, filesAllowed) +
                     (extraContext?.let { "\n\n$it" } ?: "")
                 val started = System.currentTimeMillis()
                 val raw = if (shot != null && ProxyClient.isConfigured()) {

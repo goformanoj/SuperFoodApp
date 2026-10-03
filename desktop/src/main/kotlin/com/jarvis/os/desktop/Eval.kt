@@ -47,7 +47,17 @@ object Eval {
 
     private val NOW_TEXT = NOW.format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy, HH:mm")) +
         " (" + ZONE.id + ", UTC" + NOW.offset.id + ")"
-    private val CONTEXT = DesktopTurn.context(NOW_TEXT, "", emptyList(), NOW.toLocalDate())
+    private fun contextFor(filesOn: Boolean) = DesktopTurn.context(NOW_TEXT, "", emptyList(), NOW.toLocalDate(), laptopFiles = filesOn)
+
+    /** A real folder on disk for the folder scenarios: "my SuperFoodApp folder" with three things in it. */
+    private val DEMO_ROOT: java.io.File by lazy {
+        java.nio.file.Files.createTempDirectory("jarvis-eval-home").toFile().also { root ->
+            java.io.File(root, "Projects/SuperFoodApp/app").mkdirs()
+            java.io.File(root, "Projects/SuperFoodApp/README.md").writeText("JARVIS")
+            java.io.File(root, "Projects/SuperFoodApp/notes.txt").writeText("todo")
+            root.deleteOnExit()
+        }
+    }
 
     private const val STALL_PREFIX = "I stopped there"
 
@@ -69,6 +79,8 @@ object Eval {
         val setup: (Brain) -> Unit = {},
         /** Auto-approve every irreversible/SHARES step this scenario hits (default: decline, like a cautious real user). */
         val approveAll: Boolean = false,
+        /** Whether the user has allowed laptop-file access in this scenario (the app ships with it off). */
+        val filesOn: Boolean = true,
         val check: Run.() -> List<String>,
     )
 
@@ -84,6 +96,7 @@ object Eval {
         )
         override suspend fun searchFiles(q: FileSearch.Query) =
             listOf(FileSearch.Found("C:\\Users\\me\\Documents\\Quarterly-Report.pdf", "2026-10-01T10:00", 48_213))
+        override fun folderRoots() = listOf(DEMO_ROOT)
         override suspend fun youtubeVideo(query: String): YouTubeSearch.Result? = null
         override suspend fun youtubePlaylist(query: String): YouTubeSearch.Result? = null
     }
@@ -281,6 +294,24 @@ object Eval {
             }
         },
 
+        // Live miss 2026-10-03: "access the SuperFoodApp folder" with file access OFF got a run of precise
+        // questions instead of one plain sentence saying the permission is off.
+        Scenario("files_off_says_so_instead_of_quizzing", "Access the SuperFoodApp folder and tell me what's inside", filesOn = false) {
+            buildList {
+                if (steps.any { it.first.name in ToolBox.FILE_TOOLS }) add("called a file tool that was switched off")
+                if (!Regex("(?i)permission|settings").containsMatchIn(answer)) add("didn't tell the user where to turn file access on: \"${answer.take(160)}\"")
+                val questions = answer.count { it == '?' }
+                if (questions > 1) add("asked $questions questions instead of saying access is off: \"${answer.take(200)}\"")
+            }
+        },
+        Scenario("files_on_lists_the_named_folder", "What's inside my SuperFoodApp folder?") {
+            buildList {
+                if (!called("list_folder")) add("never looked inside the folder (called ${steps.map { it.first.name }})")
+                if (!Regex("(?i)readme|notes|app").containsMatchIn(answer)) add("the answer doesn't name anything that is in the folder: \"${answer.take(200)}\"")
+                if (answer.count { it == '?' } > 1) add("quizzed the user instead of looking")
+            }
+        },
+
         // ── doesn't stall or flail on something genuinely open-ended ──────────
         Scenario("vague_request_does_not_flail", "Help me get organized for tomorrow") {
             buildList {
@@ -299,7 +330,7 @@ object Eval {
             val brain = Brain.inMemory(CLOCK)
             try {
                 s.setup(brain)
-                val tools = ToolBox(brain, host, clock = CLOCK, zone = ZONE)
+                val tools = ToolBox(brain, host, clock = CLOCK, zone = ZONE, filesAllowed = { s.filesOn })
                 val conv = brain.createConversation("eval").id
                 val steps = mutableListOf<Pair<AgentClient.ToolCall, ToolBox.Result>>()
                 val asks = mutableListOf<AgentLoop.Ask>()
@@ -313,7 +344,7 @@ object Eval {
                     approve = { a -> asks += a; s.approveAll },
                     onStep = { call, r -> steps += call to r },
                     onReply = { replies += it },
-                ).run(listOf(ChatTurn(ChatTurn.USER, s.prompt)), CONTEXT, conv)
+                ).run(listOf(ChatTurn(ChatTurn.USER, s.prompt)), contextFor(s.filesOn), conv)
                 // The reply whose text became the final answer — the one worth blaming for it.
                 val answeredBy = replies.lastOrNull()
                 val backendTag = answeredBy?.backend?.let { b -> " [$b${answeredBy.model?.let { "/$it" } ?: ""}]" } ?: ""

@@ -90,6 +90,21 @@ class DesktopTurnTest {
     }
 
     @Test
+    fun contextSaysSoWhenFileAccessIsOffSoTheModelDoesNotQuizTheUser() {
+        val off = DesktopTurn.context("Sunday", "", laptopFiles = false)
+        assertTrue(off.contains("Settings → Permissions → Laptop files"))
+        assertTrue(off.contains("do not ask which drive, folder or file type"))
+        assertFalse("must not promise file tools it was not given", off.contains("find files and look inside folders"))
+    }
+
+    @Test
+    fun contextIsQuietAboutFilesWhenAccessIsOn() {
+        val on = DesktopTurn.context("Sunday", "")
+        assertFalse(on.contains("NOT allowed"))
+        assertTrue(on.contains("find files and look inside folders"))
+    }
+
+    @Test
     fun titleIsTheFirstUserLine() {
         val turns = listOf(ChatTurn(ChatTurn.USER, "\n  Plan my   morning\nwith details"), ChatTurn(ChatTurn.ASSISTANT, "ok"))
         assertEquals("Plan my morning", DesktopTurn.titleFor(turns))
