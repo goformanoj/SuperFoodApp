@@ -354,7 +354,7 @@ class ScreenControlService : AccessibilityService() {
                 // the content to actually change before the next step runs,
                 // otherwise a following tap resolves against the OLD screen.
                 val before = contentFingerprint()
-                pressImeAction()
+                if (!pressImeAction()) tapImeActionKey()
                 awaitContentChange(before, 0) { advance(expectedPackage) }
             }
         }
@@ -526,10 +526,28 @@ class ScreenControlService : AccessibilityService() {
     private fun typeWhenReady(text: String, tries: Int, onDone: (Boolean) -> Unit) {
         val field = rootInActiveWindow?.let { findEditable(it) }
         if (field != null) {
-            val args = Bundle().apply {
-                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            if (setFieldText(field, text)) {
+                onDone(true)
+                return
             }
-            onDone(field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args))
+            // The field won't take text from an accessibility service at all (Blinkit: not even a click reaches
+            // it). A person would press the keyboard's keys, and the keyboard is a window we can see and tap.
+            if (tries == 0 && ScreenMatch.keyboardLabels(text) != null && imeRoot() != null) {
+                DebugLog.log(DebugLog.Stage.SCREEN, "the field refuses direct text — typing on the keyboard instead (${describeField(field)})")
+                typeOnKeyboard(text, onDone)
+                return
+            }
+            // Found the field but Android refused the text. Live (Blinkit, 2026-10-03): this was reported as
+            // "no editable field appeared" after 90 ms, though the field was right there — a screen still
+            // mid-transition, or a field that hadn't taken focus yet, refuses SET_TEXT the first time. So it
+            // gets a few more tries a moment later, and the trace says what the field looked like.
+            if (tries < TYPE_RETRY_TRIES) {
+                if (tries == 0) DebugLog.log(DebugLog.Stage.SCREEN, "found a field but it refused the text — retrying (${describeField(field)})")
+                handler.postDelayed({ typeWhenReady(text, tries + 1, onDone) }, STEP_SETTLE_MS)
+                return
+            }
+            DebugLog.log(DebugLog.Stage.SCREEN, "a field refused the text every time — ${describeField(field)}")
+            onDone(false)
             return
         }
         // Recovery attempts are spaced out and work through the candidates in
@@ -554,6 +572,144 @@ class ScreenControlService : AccessibilityService() {
             onDone(false)
         }
     }
+
+    /**
+     * Puts [text] in [field]. Focuses it first (a field that is on screen but not focused is the usual reason
+     * SET_TEXT is refused), then sets the text. True only if Android says it was done.
+     */
+    private fun setFieldText(field: AccessibilityNodeInfo, text: String): Boolean {
+        val valid = field.refresh()
+        var focusTry = "already"
+        if (!field.isFocused) {
+            focusTry = "focus=" + field.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            if (!field.isFocused) focusTry += " click=" + field.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        }
+        val args = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
+        val set = field.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        lastTypeProbe = "valid=$valid pkg=${field.packageName} win=${field.windowId} focusTry=$focusTry set=$set"
+        if (set) return true
+        // Diagnostic only, on the failure path: does ANY action reach this node? (click is harmless on a field)
+        lastTypeProbe += " click=${field.performAction(AccessibilityNodeInfo.ACTION_CLICK)} parent=${field.parent != null} children=${field.childCount}"
+        // Some apps' fields (Blinkit's search box, live 2026-10-03: editable, focused, enabled, SET_TEXT listed —
+        // and still refused) never accept a programmatic set. Pasting is what a person would do.
+        return pasteText(field, text)
+    }
+
+    /**
+     * Types by paste: puts [text] on the clipboard, replaces what is in the field, pastes, and puts the user's own
+     * clipboard back a moment later. True only if the field took the paste.
+     */
+    private fun pasteText(field: AccessibilityNodeInfo, text: String): Boolean {
+        val cm = getSystemService(android.content.ClipboardManager::class.java) ?: return false
+        val previous = runCatching { cm.primaryClip }.getOrNull()
+        return try {
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("JARVIS", text))
+            val existing = if (Build.VERSION.SDK_INT >= 26 && field.isShowingHintText) 0 else (field.text?.length ?: 0)
+            if (existing > 0) {
+                val sel = Bundle().apply {
+                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, existing)
+                }
+                field.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
+            }
+            val done = field.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+            lastTypeProbe += " paste=$done"
+            if (done) DebugLog.log(DebugLog.Stage.SCREEN, "typed by paste — the field refused a direct set")
+            done
+        } catch (e: Exception) {
+            false
+        } finally {
+            // Put the user's clipboard back (or clear ours) once the paste has landed.
+            handler.postDelayed({
+                runCatching {
+                    if (previous != null) cm.setPrimaryClip(previous)
+                    else if (Build.VERSION.SDK_INT >= 28) cm.clearPrimaryClip()
+                }
+            }, 1500)
+        }
+    }
+
+    /** The on-screen keyboard's window, if one is up. */
+    private fun imeRoot(): AccessibilityNodeInfo? = try {
+        windows.orEmpty().firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }?.root
+    } catch (e: Exception) {
+        null
+    }
+
+    /** The keyboard key labelled [label] (a letter, or "Space"), matched on its text or description. */
+    private fun findKey(ime: AccessibilityNodeInfo, label: String): AccessibilityNodeInfo? {
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(ime)
+        var seen = 0
+        while (queue.isNotEmpty() && seen < NODE_SCAN_LIMIT) {
+            val n = queue.removeFirst()
+            seen++
+            val t = n.text?.toString().orEmpty()
+            val d = n.contentDescription?.toString().orEmpty()
+            val hit = t.equals(label, ignoreCase = true) || d.equals(label, ignoreCase = true) ||
+                (label == "Space" && d.contains("space", ignoreCase = true))
+            if (hit) return n
+            for (i in 0 until n.childCount) n.getChild(i)?.let { queue.add(it) }
+        }
+        return null
+    }
+
+    /** One real tap at a point, reported when the system has finished (or refused) it. */
+    private fun tapPoint(x: Float, y: Float, done: (Boolean) -> Unit) {
+        val path = Path().apply { moveTo(x, y) }
+        val gesture = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0L, 50L)).build()
+        val accepted = dispatchGesture(
+            gesture,
+            object : GestureResultCallback() {
+                override fun onCompleted(g: GestureDescription?) = done(true)
+                override fun onCancelled(g: GestureDescription?) = done(false)
+            },
+            handler,
+        )
+        if (!accepted) done(false)
+    }
+
+    /** Types [text] by tapping the keyboard's letter keys one after another. */
+    private fun typeOnKeyboard(text: String, onDone: (Boolean) -> Unit) {
+        val labels = ScreenMatch.keyboardLabels(text)
+        if (labels == null) { onDone(false); return }
+        fun next(i: Int) {
+            if (i >= labels.size) { onDone(true); return }
+            val key = imeRoot()?.let { findKey(it, labels[i]) }
+            if (key == null) { DebugLog.log(DebugLog.Stage.SCREEN, "keyboard has no key for \"${labels[i]}\""); onDone(false); return }
+            val r = Rect()
+            key.getBoundsInScreen(r)
+            tapPoint(r.exactCenterX(), r.exactCenterY()) { ok ->
+                if (ok) handler.postDelayed({ next(i + 1) }, KEY_GAP_MS) else onDone(false)
+            }
+        }
+        next(0)
+    }
+
+    /** Presses the keyboard's action key (Search / Go / Done / Enter) by tapping it. True if one was found. */
+    private fun tapImeActionKey(): Boolean {
+        val ime = imeRoot() ?: return false
+        for (label in listOf("Search", "Go", "Done", "Enter", "Send", "Next")) {
+            val key = findKey(ime, label) ?: continue
+            val r = Rect()
+            key.getBoundsInScreen(r)
+            DebugLog.log(DebugLog.Stage.SCREEN, "pressing the keyboard's \"$label\" key")
+            tapPoint(r.exactCenterX(), r.exactCenterY()) { }
+            return true
+        }
+        return false
+    }
+
+    /** The last typing attempt's per-action results, for the trace. */
+    private var lastTypeProbe = ""
+
+    /** What a field looked like when it refused text — so the next trace names the cause. */
+    private fun describeField(f: AccessibilityNodeInfo): String =
+        "$lastTypeProbe class=${f.className ?: "?"} id=${f.viewIdResourceName ?: "-"} editable=${f.isEditable} focused=${f.isFocused} " +
+            "enabled=${f.isEnabled} setText=${f.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }} " +
+            "visible=${f.isVisibleToUser}"
 
     /** A one-line account of what the field hunt actually saw. */
     private fun fieldHunt(): String {
@@ -668,7 +824,7 @@ class ScreenControlService : AccessibilityService() {
             else -> frontPkg != null && frontPkg != packageName
         }
         if (ready) {
-            seek(label, 0, onDone)
+            seek(label, 0, onDone = onDone)
         } else if (tries < APP_WAIT_TRIES) {
             handler.postDelayed({ awaitApp(targetPackage, label, tries + 1, onDone) }, STEP_MS)
         } else {
@@ -681,7 +837,7 @@ class ScreenControlService : AccessibilityService() {
      * otherwise scroll and try again. When there's nothing left to scroll, tap the
      * best weak match we saw, or give up.
      */
-    private fun seek(label: String, scrolls: Int, onDone: (Boolean) -> Unit) {
+    private fun seek(label: String, scrolls: Int, waits: Int = 0, lastLook: String? = null, onDone: (Boolean) -> Unit) {
         val root = rootInActiveWindow
         if (root == null) {
             onDone(false)
@@ -720,8 +876,21 @@ class ScreenControlService : AccessibilityService() {
                 return
             }
         }
+        // Not there — but is the screen still filling in? An app counts as "open" the moment it is in front, and
+        // plenty of them (Blinkit, live on a phone) draw their home content a beat later: the old code looked
+        // once, found no "Search", and gave up in 44 ms, so the model was asked to improvise on a half-drawn
+        // screen and tapped Categories, Home, Home. Only on the first look (before any scrolling), and only
+        // while the screen is still changing — a settled screen without the control really lacks it.
+        if (scrolls == 0) {
+            val now = contentFingerprint()
+            if (ScreenMatch.keepWaitingForScreen(waits, LOAD_WAIT_TRIES, lastLook, now)) {
+                if (waits == 0) DebugLog.log(DebugLog.Stage.SCREEN, "\"$label\" isn't on screen yet — waiting for the app to finish drawing")
+                handler.postDelayed({ seek(label, scrolls, waits + 1, now, onDone) }, LOAD_POLL_MS)
+                return
+            }
+        }
         if (scrolls < MAX_SCROLLS && scrollForward(root)) {
-            handler.postDelayed({ seek(label, scrolls + 1, onDone) }, SCROLL_SETTLE_MS)
+            handler.postDelayed({ seek(label, scrolls + 1, onDone = onDone) }, SCROLL_SETTLE_MS)
             return
         }
         // Nothing confident left: take the best weak match if there is one, but
@@ -919,6 +1088,12 @@ class ScreenControlService : AccessibilityService() {
         private const val APP_OPEN_MS = 1200L
         private const val FIELD_WAIT_TRIES = 15
 
+        /** Pause between two keyboard key presses, so each lands before the next. */
+        private const val KEY_GAP_MS = 140L
+
+        /** Extra tries (about a second apart) when a field is found but refuses the text. */
+        private const val TYPE_RETRY_TRIES = 4
+
         /** Bounds the field hunt per window, so a deep tree cannot stall a step. */
         private const val NODE_SCAN_LIMIT = 600
         // Scrolling to hunt for an off-screen target.
@@ -926,6 +1101,10 @@ class ScreenControlService : AccessibilityService() {
         private const val SCROLL_SETTLE_MS = 550L
         // A match this good is tapped immediately; weaker ones make us scroll first.
         private const val GOOD_SCORE = 70
+
+        /** While the screen is still arriving, how often to look again and how many looks at most (~4 s). */
+        private const val LOAD_POLL_MS = 400L
+        private const val LOAD_WAIT_TRIES = 10
 
         /** Separator between node texts in the screen fingerprint. */
         private const val SEP = '\u0001'

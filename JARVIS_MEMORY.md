@@ -7400,3 +7400,27 @@ caught a wall of "!!!!" from one backend on "what's today's date?"; the loop now
 The phone had the same "Free until the first reply" label bug the laptop had; `UsageClient` moved into `app/`
 and is shared. **What the evidence did not cover:** nothing here touches the Blinkit screen-control bug — that needs
 the real phone with the real app and has never been device-confirmed since 2026-08-14.
+
+### 2026-10-03 — The Blinkit bug, reproduced on the real phone and fixed in three steps
+
+The user connected their phone and asked for the Blinkit bug to be checked. The trace of the first run (Rule 4: read it
+before theorising) showed:
+
+    step 1/1 Tap(label=Search) FAILED — no control matching "Search"     (44 ms after the app came to the front)
+    errand step 2/8: Tap(label=Categories) … Tap(label=Blinkit in) … Tap(label=Home) … Tap(label=Home) …
+
+A dump of Blinkit's accessibility tree showed the search box IS matchable once drawn (a clickable container whose child
+text is "Search for atta, dal, coke and more", scoring 90 against "search"), so the matcher was never the problem: the
+service waits for the app to be *in front* and looks once; Blinkit draws its home a beat later. Fix 1: wait while the
+screen is still changing. That moved the failure down a layer, as every Blinkit fix has: the next run opened the search
+screen and then "Type(text=bread) FAILED — no editable field appeared" after 90 ms. A probe added to the trace showed the
+truth: the field was found (EditText, editable, focused, enabled, SET_TEXT listed, visible) and Android refused every
+action on it — set, paste, even click — with `refresh()` false. So the old message was wrong twice (the field existed;
+and it hadn't "appeared"). Fix 2: when a field cannot be written, press the keyboard's keys (the keyboard is a window the
+service can see and tap). Fix 3: press the keyboard's action key when the field can't take the IME action. Result on the
+phone: opened Blinkit, searched bread, chose Britannia Milk Bread ₹55, added it; "View cart · 1 item"; stopped there.
+**Lessons banked:** (a) a failure message that guesses at the cause hides the real one — log what the object looked like;
+(b) when a platform API silently refuses, fall back to what a person does (the keys) instead of retrying the same call;
+(c) the whole chain failed one layer at a time, so only a real device run after EACH fix found the next fault — unit
+tests on the matcher were green throughout; (d) the earlier handoff note "Blinkit's field has no isEditable" was a
+guess — the field is editable; it refuses actions.

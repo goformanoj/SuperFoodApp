@@ -1,6 +1,7 @@
 package com.jarvis.os.control
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -99,5 +100,39 @@ class ScreenMatchTest {
         // The OTP heuristic is a bare 4-8 digit run; 3 digits and a 9-digit run are left as-is.
         assertEquals("pin 123", ScreenMatch.redactSensitive("pin 123", isPassword = false))
         assertEquals("id 123456789", ScreenMatch.redactSensitive("id 123456789", isPassword = false))
+    }
+
+    // --- Device trace 2026-10-03 (realme, real Blinkit): "go to blinkit and add bread to my cart" ---------------------
+
+    @Test
+    fun blinkitsRealSearchBoxMatchesTheGenericWordSearch() {
+        // The home screen's search box, exactly as accessibility exposes it: the label is a child TextView's text.
+        // Once drawn it scores far above the tap threshold (70), so the first step's failure was never the matcher.
+        val score = ScreenMatch.matchScore("Search for atta, dal, coke and more", "", "search")
+        assertTrue("score $score", score >= 70)
+        // The bottom-bar "Categories" tab must not be a candidate for "Search".
+        assertEquals(0, ScreenMatch.matchScore("Categories", "", "search"))
+    }
+
+    @Test
+    fun aScreenStillFillingInIsWaitedForUntilItSettlesOrTheBudgetRuns() {
+        // First look: nothing to compare with yet, so look once more.
+        assertTrue(ScreenMatch.keepWaitingForScreen(0, 10, null, "shimmer"))
+        // The text changed since the last look: it is still arriving.
+        assertTrue(ScreenMatch.keepWaitingForScreen(3, 10, "shimmer", "Blinkit in 8 minutes"))
+        // Unchanged between two looks: settled, the control really is missing — stop waiting.
+        assertFalse(ScreenMatch.keepWaitingForScreen(3, 10, "Blinkit in 8 minutes", "Blinkit in 8 minutes"))
+        // A screen that never stops changing (a ticking banner) is not waited on forever.
+        assertFalse(ScreenMatch.keepWaitingForScreen(10, 10, "a", "b"))
+    }
+
+    @Test
+    fun keyboardTypingCoversLettersAndSpacesOnly() {
+        assertEquals(listOf("b", "r", "e", "a", "d"), ScreenMatch.keyboardLabels("bread"))
+        assertEquals(listOf("m", "i", "l", "k", "Space", "a"), ScreenMatch.keyboardLabels("Milk a"))
+        // A digit or symbol needs another keyboard page, so the caller must not pretend it can type it.
+        assertEquals(null, ScreenMatch.keyboardLabels("5 litre milk"))
+        assertEquals(null, ScreenMatch.keyboardLabels("   "))
+        assertEquals(null, ScreenMatch.keyboardLabels("दूध"))
     }
 }

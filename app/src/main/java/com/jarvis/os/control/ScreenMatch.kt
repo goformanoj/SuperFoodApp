@@ -54,6 +54,32 @@ internal object ScreenMatch {
         return maxOf(fieldScore(t, query, isText = true), fieldScore(d, query, isText = false))
     }
 
+    /**
+     * The on-screen keyboard keys that spell [text] — letters and spaces only — or null if any character can't be
+     * typed that way (digits and symbols live on other keyboard pages). Used when an app's field refuses
+     * programmatic text and the only option left is pressing keys like a person. Pure; tested.
+     */
+    fun keyboardLabels(text: String): List<String>? {
+        if (text.isBlank()) return null
+        val out = ArrayList<String>(text.length)
+        for (c in text.trim()) {
+            when {
+                c == ' ' -> out += "Space"
+                c in 'a'..'z' || c in 'A'..'Z' -> out += c.lowercaseChar().toString()
+                else -> return null
+            }
+        }
+        return out
+    }
+
+    /**
+     * Whether a control that is not on screen YET is worth waiting for: the screen is still arriving (its text
+     * changed since the last look, or this is the first look) and the wait budget isn't spent. A screen that has
+     * stopped changing and still lacks the control is genuinely missing it — waiting longer would only be delay.
+     */
+    fun keepWaitingForScreen(waits: Int, maxWaits: Int, previous: String?, current: String): Boolean =
+        waits < maxWaits && (previous == null || previous != current)
+
     /** Score one field ([value], already normalised) against [query]. Exact beats partial. */
     fun fieldScore(value: String, query: String, isText: Boolean): Int {
         if (value.isEmpty()) return 0
